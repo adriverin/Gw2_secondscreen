@@ -10,6 +10,17 @@ final class TelemetryDecodingTests: XCTestCase {
         XCTAssertEqual(value.map?.id, 15)
         XCTAssertEqual(value.player?.continentX, 11000.2)
     }
+
+    @MainActor
+    func testRemoteComputerClockDoesNotMakeFreshlyReceivedTelemetryStale() {
+        let telemetry = TelemetryEnvelope(
+            protocolVersion: 1, timestampUnixMs: 1, connected: true, uiTick: 10,
+            positionAvailable: true, character: nil, map: nil, player: nil, camera: nil,
+            ui: UITelemetry(inCombat: false, mapOpen: false, gameHasFocus: true),
+            mount: MountTelemetry(index: 0), statusMessage: nil)
+
+        XCTAssertEqual(TelemetryStore.state(for: telemetry), .live)
+    }
 }
 
 final class TokenInfoTests: XCTestCase {

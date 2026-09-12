@@ -158,7 +158,7 @@ struct MockTelemetryProvider: LiveTelemetryProvider {
                         ui: UITelemetry(inCombat: false, mapOpen: false, gameHasFocus: true),
                         mount: MountTelemetry(index: 0),
                         statusMessage: nil))
-                    try await Task.sleep(for: .milliseconds(67))
+                    try await Task.sleep(for: .milliseconds(50))
                 }
                 continuation.finish()
             }

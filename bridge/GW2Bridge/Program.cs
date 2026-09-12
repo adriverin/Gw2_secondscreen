@@ -76,7 +76,7 @@ app.Map("/telemetry", async context =>
             var telemetry = telemetryHub.Latest;
             var bytes = JsonSerializer.SerializeToUtf8Bytes(telemetry, BridgeJson.Options);
             await socket.SendAsync(bytes, WebSocketMessageType.Text, true, context.RequestAborted);
-            await Task.Delay(TimeSpan.FromMilliseconds(67), context.RequestAborted);
+            await Task.Delay(TimeSpan.FromMilliseconds(50), context.RequestAborted);
         }
     }
     catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }

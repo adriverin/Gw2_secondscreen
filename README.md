@@ -66,6 +66,8 @@ Use another port with `--port 40000`.
 
 The iPhone downloads static landmarks for the current map and floor from ArenaNet's `/v2/continents` API and caches successful floor responses on disk. The Layers panel controls waypoints, points of interest, vistas, renown hearts, and hero challenges independently.
 
+Landmark and gathering markers use the matching in-game artwork published through ArenaNet's `/v2/files` render-service catalog, with built-in symbols as an offline/error fallback.
+
 Possible gathering locations come from a versioned conversion of the CC0 Tyrian Gathering Marker Project. The bundled snapshot contains 1,418 locations on maps 20, 21, 23, 27, 29, 34, 51, 54, 65, and 73. Resource nodes vary by day and map instance, so these markers describe places to check rather than live spawns. Walking near a marker gives it a yellow outline; tapping it separately marks it harvested. Attribution and snapshot details are in `ios/GW2Companion/Resources/THIRD_PARTY_NOTICES.md`.
 
 ## Simulation mode

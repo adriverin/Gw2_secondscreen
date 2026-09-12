@@ -37,7 +37,9 @@ struct NativeTileMapView: View {
             .gesture(panGesture.simultaneously(with: zoomGesture))
             .onChange(of: player) { _, newPlayer in
                 guard followPlayer, let newPlayer else { return }
-                withAnimation(.linear(duration: 0.08)) { center = newPlayer }
+                // Follow the newest sample directly. Animating both the center and the
+                // marker caused every incoming sample to restart an older animation.
+                center = newPlayer
             }
         }
         .accessibilityLabel("Guild Wars 2 live map")
@@ -76,11 +78,8 @@ struct NativeTileMapView: View {
     private func marker(_ node: GatheringNode, size: CGSize) -> some View {
         let position = screenPosition(ContinentPoint(x: node.continentX, y: node.continentY), size: size)
         return Button { onToggleHarvested(node.id) } label: {
-            Image(systemName: node.category.symbol)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(node.reliability == .possible ? .orange : .white)
-                .padding(7)
-                .background(nodeColor(node).opacity(harvested.contains(node.id) ? 0.25 : 0.92), in: Circle())
+            officialIcon(url: node.category.officialIconURL, fallback: node.category.symbol)
+                .frame(width: 31, height: 31)
                 .overlay(Circle().strokeBorder(visited.contains(node.id) ? .yellow : .white.opacity(0.35), lineWidth: visited.contains(node.id) ? 2 : 1))
                 .opacity(harvested.contains(node.id) ? 0.45 : 1)
         }
@@ -91,12 +90,8 @@ struct NativeTileMapView: View {
 
     private func landmarkMarker(_ landmark: MapLandmark, size: CGSize) -> some View {
         Button { onSelectLandmark(landmark) } label: {
-            Image(systemName: landmark.kind.symbol)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
-                .padding(6)
-                .background(landmarkColor(landmark.kind).opacity(0.92), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.5), lineWidth: 1))
+            officialIcon(url: landmark.kind.officialIconURL, fallback: landmark.kind.symbol)
+                .frame(width: 31, height: 31)
         }
         .buttonStyle(.plain)
         .position(screenPosition(landmark.coordinate, size: size))
@@ -110,8 +105,23 @@ struct NativeTileMapView: View {
             .shadow(color: .black.opacity(0.8), radius: 3)
             .rotationEffect(.radians(heading))
             .position(screenPosition(point, size: size))
-            .animation(.linear(duration: 0.08), value: point)
+            .animation(.linear(duration: 0.04), value: point)
             .accessibilityLabel("Current player position")
+    }
+
+    private func officialIcon(url: URL, fallback: String) -> some View {
+        AsyncImage(url: url) { phase in
+            if let image = phase.image {
+                image.resizable().scaledToFit()
+            } else {
+                Image(systemName: fallback)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(.gray.opacity(0.92), in: Circle())
+            }
+        }
+        .shadow(color: .black.opacity(0.75), radius: 2)
     }
 
     private func screenPosition(_ point: ContinentPoint, size: CGSize) -> CGPoint {
@@ -143,22 +153,4 @@ struct NativeTileMapView: View {
             }
     }
 
-    private func nodeColor(_ node: GatheringNode) -> Color {
-        switch node.category {
-        case .ore: .gray
-        case .wood: .brown
-        case .plant: .green
-        case .other: .blue
-        }
-    }
-
-    private func landmarkColor(_ kind: MapLandmarkKind) -> Color {
-        switch kind {
-        case .waypoint: .blue
-        case .pointOfInterest: .purple
-        case .vista: .cyan
-        case .heart: .red
-        case .heroChallenge: .green
-        }
-    }
 }

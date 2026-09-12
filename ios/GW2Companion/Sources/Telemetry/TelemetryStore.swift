@@ -115,13 +115,11 @@ final class TelemetryStore: ObservableObject {
         }
     }
 
-    private static func state(for telemetry: TelemetryEnvelope) -> TelemetryConnectionState {
+    static func state(for telemetry: TelemetryEnvelope) -> TelemetryConnectionState {
         guard telemetry.connected else { return .gameNotRunning }
         guard telemetry.positionAvailable else {
             return .positionUnavailable(telemetry.statusMessage ?? "Live positioning is unavailable on this map.")
         }
-        let age = Date().timeIntervalSince1970 - Double(telemetry.timestampUnixMs) / 1_000
-        guard age < 2.5 else { return .positionUnavailable("Telemetry is stale.") }
         return .live
     }
 }

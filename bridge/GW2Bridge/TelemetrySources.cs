@@ -30,7 +30,9 @@ public sealed class MumbleLinkTelemetrySource : ITelemetrySource
 {
     private readonly string _mappingName;
     private readonly MumbleLinkParser _parser = new();
-    private readonly TickStalenessDetector _staleness = new(TimeSpan.FromSeconds(2));
+    // Brief frame/tick pauses occur during loading screens and when Windows throttles
+    // the game in the background. Do not hide the last good position immediately.
+    private readonly TickStalenessDetector _staleness = new(TimeSpan.FromSeconds(5));
     private MemoryMappedFile? _mapping;
     private MemoryMappedViewAccessor? _view;
 

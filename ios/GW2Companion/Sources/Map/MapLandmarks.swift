@@ -26,6 +26,17 @@ enum MapLandmarkKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .heroChallenge: "figure.strengthtraining.traditional"
         }
     }
+
+    var officialIconURL: URL {
+        let value = switch self {
+        case .waypoint: "https://render.guildwars2.com/file/32633AF8ADEA696A1EF56D3AE32D617B10D3AC57/157353.png"
+        case .pointOfInterest: "https://render.guildwars2.com/file/25B230711176AB5728E86F5FC5F0BFAE48B32F6E/97461.png"
+        case .vista: "https://render.guildwars2.com/file/A2C16AF497BA3A0903A0499FFBAF531477566F10/358415.png"
+        case .heart: "https://render.guildwars2.com/file/09ACBA53B7412CC3C76E7FEF39929843C20CB0E4/102440.png"
+        case .heroChallenge: "https://render.guildwars2.com/file/B4EC6BB3FDBC42557C3CAE0CAA9E57EBF9E462E3/156626.png"
+        }
+        return URL(string: value)!
+    }
 }
 
 struct MapLandmark: Identifiable, Equatable, Sendable {

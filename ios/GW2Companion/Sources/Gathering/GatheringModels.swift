@@ -12,6 +12,16 @@ enum GatheringCategory: String, Codable, CaseIterable, Identifiable, Sendable {
         case .other: "mappin"
         }
     }
+
+    var officialIconURL: URL {
+        let value = switch self {
+        case .ore: "https://render.guildwars2.com/file/A89EB66C39C7C006A4A6CBEDA28061F16847E9BC/157334.png"
+        case .wood: "https://render.guildwars2.com/file/FC01BB452D5327A0E5B2E4A3F5EFDF03F8264A7B/157333.png"
+        case .plant: "https://render.guildwars2.com/file/995534EBE5D26804AE605E205E50539821C0CBCB/157332.png"
+        case .other: "https://render.guildwars2.com/file/25B230711176AB5728E86F5FC5F0BFAE48B32F6E/97461.png"
+        }
+        return URL(string: value)!
+    }
 }
 
 enum GatheringReliability: String, Codable, CaseIterable, Identifiable, Sendable {

@@ -21,7 +21,7 @@ The bridge pairing token is stable across launches and stored under the current 
 
 Static map landmarks come from the public `/v2/continents/{continent}/floors/{floor}` hierarchy and are cached per floor. Possible gathering locations are bundled from a versioned CC0 marker snapshot and converted from TacO/Mumble world meters to the same continent-coordinate space used by map tiles and live telemetry.
 
-The bridge reads the shared mapping at the transmit cadence (~15 Hz). MumbleLink itself updates more frequently; sending every source tick would add LAN and rendering work with little perceptual gain. The iOS marker animates between received positions without rebuilding the entire map.
+The bridge reads shared memory at 25 Hz and transmits the latest sample at ~20 Hz. The iOS map follows each newly received position directly, while the free-moving player marker uses only a sub-frame interpolation to avoid accumulating animation lag.
 
 ## Account path
 
