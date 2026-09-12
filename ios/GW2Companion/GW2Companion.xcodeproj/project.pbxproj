@@ -1,0 +1,630 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		14156D656A81DD2BB559CCDF /* sample-gathering-nodes.json in Resources */ = {isa = PBXBuildFile; fileRef = 2E82FE9EAA41B5CC09C61C16 /* sample-gathering-nodes.json */; };
+		23C6E5373B0B575521A9B631 /* MetadataDiskCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFC16DAE75FC39EE4D34A83A /* MetadataDiskCache.swift */; };
+		2EDD2DDDB8AAD0CA74C0E573 /* tokeninfo.json in Resources */ = {isa = PBXBuildFile; fileRef = 862FA9BA760ED284306BC65F /* tokeninfo.json */; };
+		2F09B90B1BFF58A250EF351C /* GatheringStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E04A3691D07B3AAD65C0E0F /* GatheringStore.swift */; };
+		34108CCE20A26CA27FDC0483 /* NativeTileMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDDA2B781B4D8F637DCD608C /* NativeTileMapView.swift */; };
+		37059E1DED23032BCEA6A277 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED30358E8898943C2A040207 /* AccountView.swift */; };
+		391B0E39007F694113B38626 /* CharactersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243BAFB217A2BB4AD971BA86 /* CharactersView.swift */; };
+		697B9256626686AA0A02F8D1 /* LiveMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4652B2A909BF40925A934C7A /* LiveMapView.swift */; };
+		6DB149BECB3ABBD92A66EF70 /* GW2CompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952ED51680CB884ABC47123F /* GW2CompanionApp.swift */; };
+		7BE6AF1E087CCAB57FC611BA /* TelemetryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E632A3DC4FA45C7AC68E3D1 /* TelemetryStore.swift */; };
+		7E44EE0ACDD01030AC357E69 /* GW2CoordinateTransformer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */; };
+		88552A8B46973C6FAE2448CD /* GatheringModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A6F223952DBE15B185DF60 /* GatheringModels.swift */; };
+		970B569714A37AE010A4A747 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D945F404EE6F376D785DDB /* KeychainService.swift */; };
+		A6F64FAD9C880063A68A345F /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0557C9CF9C9322538E0C4D7 /* PairingView.swift */; };
+		AAC22B99DA142B2F786DA24C /* GW2APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B5D0BCDD3FC918EB995016 /* GW2APIClient.swift */; };
+		AC584770BEDAD91339AC7AAC /* telemetry.v1.json in Resources */ = {isa = PBXBuildFile; fileRef = D44F55A238B6556BC1530438 /* telemetry.v1.json */; };
+		B13AA7D36A0C4F8E758871D4 /* TelemetryProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D1D0CC8C8C4E7DCC4CC2F5 /* TelemetryProvider.swift */; };
+		BABE242F1D082AFA026C1AA8 /* MapTileProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197E6205FE2FA510BEF687D0 /* MapTileProvider.swift */; };
+		C3C6C5C94A3FA181FA0E0AE8 /* InventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E23DF52F865064CC0D61208 /* InventoryView.swift */; };
+		CC2245B6C2E514841CAAD1E4 /* APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B618919C976E88C4BBD672 /* APIModels.swift */; };
+		CF8F4DCFD311BB8D3FB0CEE7 /* LayerPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0E34597606127CBEDFC31A /* LayerPanelView.swift */; };
+		E41065CF999C6BFB1A88AF9A /* GW2CompanionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11ABF849A24D7DFAD5A540F6 /* GW2CompanionTests.swift */; };
+		EEA674C4106111A0545994B8 /* PairingScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B528091E160CEEA68A794B07 /* PairingScannerView.swift */; };
+		FBCF11D4AB3880DBFEEB042B /* TelemetryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 257418ACDDC9486519D78389 /* TelemetryModels.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CA769B48ACC9ECE49C00424C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 699FCD67C5B69349B495B41E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 088CC8461AA405A2F04326F4;
+			remoteInfo = GW2Companion;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		09B5D0BCDD3FC918EB995016 /* GW2APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2APIClient.swift; sourceTree = "<group>"; };
+		0A2F634635A7235050177692 /* GW2CompanionTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GW2CompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		10B618919C976E88C4BBD672 /* APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModels.swift; sourceTree = "<group>"; };
+		11ABF849A24D7DFAD5A540F6 /* GW2CompanionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2CompanionTests.swift; sourceTree = "<group>"; };
+		197E6205FE2FA510BEF687D0 /* MapTileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTileProvider.swift; sourceTree = "<group>"; };
+		243BAFB217A2BB4AD971BA86 /* CharactersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharactersView.swift; sourceTree = "<group>"; };
+		257418ACDDC9486519D78389 /* TelemetryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryModels.swift; sourceTree = "<group>"; };
+		2E82FE9EAA41B5CC09C61C16 /* sample-gathering-nodes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "sample-gathering-nodes.json"; sourceTree = "<group>"; };
+		3E23DF52F865064CC0D61208 /* InventoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryView.swift; sourceTree = "<group>"; };
+		4652B2A909BF40925A934C7A /* LiveMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMapView.swift; sourceTree = "<group>"; };
+		4E04A3691D07B3AAD65C0E0F /* GatheringStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatheringStore.swift; sourceTree = "<group>"; };
+		58A6F223952DBE15B185DF60 /* GatheringModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatheringModels.swift; sourceTree = "<group>"; };
+		77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2CoordinateTransformer.swift; sourceTree = "<group>"; };
+		862FA9BA760ED284306BC65F /* tokeninfo.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokeninfo.json; sourceTree = "<group>"; };
+		952ED51680CB884ABC47123F /* GW2CompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2CompanionApp.swift; sourceTree = "<group>"; };
+		98D1D0CC8C8C4E7DCC4CC2F5 /* TelemetryProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryProvider.swift; sourceTree = "<group>"; };
+		9E632A3DC4FA45C7AC68E3D1 /* TelemetryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryStore.swift; sourceTree = "<group>"; };
+		A2D945F404EE6F376D785DDB /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		B528091E160CEEA68A794B07 /* PairingScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScannerView.swift; sourceTree = "<group>"; };
+		BF0E34597606127CBEDFC31A /* LayerPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayerPanelView.swift; sourceTree = "<group>"; };
+		D44F55A238B6556BC1530438 /* telemetry.v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = telemetry.v1.json; sourceTree = "<group>"; };
+		DFC16DAE75FC39EE4D34A83A /* MetadataDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataDiskCache.swift; sourceTree = "<group>"; };
+		ED30358E8898943C2A040207 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		EE59F1F0127AAB88631A307D /* GW2Companion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GW2Companion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0557C9CF9C9322538E0C4D7 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
+		FDDA2B781B4D8F637DCD608C /* NativeTileMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTileMapView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0D3865CE11AE3A67A84A5DEC /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				257418ACDDC9486519D78389 /* TelemetryModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		143085ACE55B937E46F00F3C /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				0D3865CE11AE3A67A84A5DEC /* Models */,
+				E50DEB30F96E0796D88310C9 /* Persistence */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		23C7AC3D28843850CFC60DD9 /* Gathering */ = {
+			isa = PBXGroup;
+			children = (
+				58A6F223952DBE15B185DF60 /* GatheringModels.swift */,
+				4E04A3691D07B3AAD65C0E0F /* GatheringStore.swift */,
+			);
+			path = Gathering;
+			sourceTree = "<group>";
+		};
+		2F59ABB15C1284AD382B7BE5 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				11ABF849A24D7DFAD5A540F6 /* GW2CompanionTests.swift */,
+				4903F6B23816345A33B8B24E /* Fixtures */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		4903F6B23816345A33B8B24E /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				D44F55A238B6556BC1530438 /* telemetry.v1.json */,
+				862FA9BA760ED284306BC65F /* tokeninfo.json */,
+			);
+			path = Fixtures;
+			sourceTree = "<group>";
+		};
+		51063D3CB91BA1CA3314A5A3 /* Characters */ = {
+			isa = PBXGroup;
+			children = (
+				243BAFB217A2BB4AD971BA86 /* CharactersView.swift */,
+			);
+			path = Characters;
+			sourceTree = "<group>";
+		};
+		59C3D3DF1EA7615D26FBC196 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				2E82FE9EAA41B5CC09C61C16 /* sample-gathering-nodes.json */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		6CCF6E3795E639FD98939DFF /* Map */ = {
+			isa = PBXGroup;
+			children = (
+				77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */,
+				197E6205FE2FA510BEF687D0 /* MapTileProvider.swift */,
+				FDDA2B781B4D8F637DCD608C /* NativeTileMapView.swift */,
+			);
+			path = Map;
+			sourceTree = "<group>";
+		};
+		6D4690AB17AA25E87E563885 /* LiveMap */ = {
+			isa = PBXGroup;
+			children = (
+				BF0E34597606127CBEDFC31A /* LayerPanelView.swift */,
+				4652B2A909BF40925A934C7A /* LiveMapView.swift */,
+			);
+			path = LiveMap;
+			sourceTree = "<group>";
+		};
+		82D7A798BBC822270EE3D1BE /* Telemetry */ = {
+			isa = PBXGroup;
+			children = (
+				B528091E160CEEA68A794B07 /* PairingScannerView.swift */,
+				98D1D0CC8C8C4E7DCC4CC2F5 /* TelemetryProvider.swift */,
+				9E632A3DC4FA45C7AC68E3D1 /* TelemetryStore.swift */,
+			);
+			path = Telemetry;
+			sourceTree = "<group>";
+		};
+		93AF703BFDF0F3326EBFA1CC /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				EE59F1F0127AAB88631A307D /* GW2Companion.app */,
+				0A2F634635A7235050177692 /* GW2CompanionTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A2461B67A26F2776251090A6 /* GW2API */ = {
+			isa = PBXGroup;
+			children = (
+				10B618919C976E88C4BBD672 /* APIModels.swift */,
+				09B5D0BCDD3FC918EB995016 /* GW2APIClient.swift */,
+				DFC16DAE75FC39EE4D34A83A /* MetadataDiskCache.swift */,
+			);
+			path = GW2API;
+			sourceTree = "<group>";
+		};
+		BE930CFA7D527AF6DE036486 = {
+			isa = PBXGroup;
+			children = (
+				59C3D3DF1EA7615D26FBC196 /* Resources */,
+				DC84587E506D36554D433FFC /* Sources */,
+				2F59ABB15C1284AD382B7BE5 /* Tests */,
+				93AF703BFDF0F3326EBFA1CC /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BF44FF66E2A7FC88788066E4 /* Account */ = {
+			isa = PBXGroup;
+			children = (
+				ED30358E8898943C2A040207 /* AccountView.swift */,
+			);
+			path = Account;
+			sourceTree = "<group>";
+		};
+		DC84587E506D36554D433FFC /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				DD67DFC54543DCFB466FB581 /* App */,
+				143085ACE55B937E46F00F3C /* Core */,
+				FC9A9C6FBC2B3D2523DDB074 /* Features */,
+				23C7AC3D28843850CFC60DD9 /* Gathering */,
+				A2461B67A26F2776251090A6 /* GW2API */,
+				6CCF6E3795E639FD98939DFF /* Map */,
+				82D7A798BBC822270EE3D1BE /* Telemetry */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		DD1BCA48F7B3A9ACF1925E79 /* Inventory */ = {
+			isa = PBXGroup;
+			children = (
+				3E23DF52F865064CC0D61208 /* InventoryView.swift */,
+			);
+			path = Inventory;
+			sourceTree = "<group>";
+		};
+		DD67DFC54543DCFB466FB581 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				952ED51680CB884ABC47123F /* GW2CompanionApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		E50DEB30F96E0796D88310C9 /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				A2D945F404EE6F376D785DDB /* KeychainService.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+		F987954ABB728B5AA44AA981 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				F0557C9CF9C9322538E0C4D7 /* PairingView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		FC9A9C6FBC2B3D2523DDB074 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				BF44FF66E2A7FC88788066E4 /* Account */,
+				51063D3CB91BA1CA3314A5A3 /* Characters */,
+				DD1BCA48F7B3A9ACF1925E79 /* Inventory */,
+				6D4690AB17AA25E87E563885 /* LiveMap */,
+				F987954ABB728B5AA44AA981 /* Settings */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		088CC8461AA405A2F04326F4 /* GW2Companion */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4058D65D56230FC251F5B01B /* Build configuration list for PBXNativeTarget "GW2Companion" */;
+			buildPhases = (
+				0160B3F04626BA075EC0E5A8 /* Sources */,
+				F6652E41F198EF00AD496BB3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GW2Companion;
+			packageProductDependencies = (
+			);
+			productName = GW2Companion;
+			productReference = EE59F1F0127AAB88631A307D /* GW2Companion.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9760848F6C87A7088A9457A0 /* GW2CompanionTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 55DF2B0B2B3CBD910F950777 /* Build configuration list for PBXNativeTarget "GW2CompanionTests" */;
+			buildPhases = (
+				58E846F335C9F5FF55E77F06 /* Sources */,
+				B92D46ED6EFAFE9ADA00F0C6 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				919C1118B91952BDB35E5858 /* PBXTargetDependency */,
+			);
+			name = GW2CompanionTests;
+			packageProductDependencies = (
+			);
+			productName = GW2CompanionTests;
+			productReference = 0A2F634635A7235050177692 /* GW2CompanionTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		699FCD67C5B69349B495B41E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					088CC8461AA405A2F04326F4 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					9760848F6C87A7088A9457A0 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = E0237908F96FC5BF7DC1F2FB /* Build configuration list for PBXProject "GW2Companion" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BE930CFA7D527AF6DE036486;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 93AF703BFDF0F3326EBFA1CC /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				088CC8461AA405A2F04326F4 /* GW2Companion */,
+				9760848F6C87A7088A9457A0 /* GW2CompanionTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B92D46ED6EFAFE9ADA00F0C6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC584770BEDAD91339AC7AAC /* telemetry.v1.json in Resources */,
+				2EDD2DDDB8AAD0CA74C0E573 /* tokeninfo.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F6652E41F198EF00AD496BB3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				14156D656A81DD2BB559CCDF /* sample-gathering-nodes.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0160B3F04626BA075EC0E5A8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC2245B6C2E514841CAAD1E4 /* APIModels.swift in Sources */,
+				37059E1DED23032BCEA6A277 /* AccountView.swift in Sources */,
+				391B0E39007F694113B38626 /* CharactersView.swift in Sources */,
+				AAC22B99DA142B2F786DA24C /* GW2APIClient.swift in Sources */,
+				6DB149BECB3ABBD92A66EF70 /* GW2CompanionApp.swift in Sources */,
+				7E44EE0ACDD01030AC357E69 /* GW2CoordinateTransformer.swift in Sources */,
+				88552A8B46973C6FAE2448CD /* GatheringModels.swift in Sources */,
+				2F09B90B1BFF58A250EF351C /* GatheringStore.swift in Sources */,
+				C3C6C5C94A3FA181FA0E0AE8 /* InventoryView.swift in Sources */,
+				970B569714A37AE010A4A747 /* KeychainService.swift in Sources */,
+				CF8F4DCFD311BB8D3FB0CEE7 /* LayerPanelView.swift in Sources */,
+				697B9256626686AA0A02F8D1 /* LiveMapView.swift in Sources */,
+				BABE242F1D082AFA026C1AA8 /* MapTileProvider.swift in Sources */,
+				23C6E5373B0B575521A9B631 /* MetadataDiskCache.swift in Sources */,
+				34108CCE20A26CA27FDC0483 /* NativeTileMapView.swift in Sources */,
+				EEA674C4106111A0545994B8 /* PairingScannerView.swift in Sources */,
+				A6F64FAD9C880063A68A345F /* PairingView.swift in Sources */,
+				FBCF11D4AB3880DBFEEB042B /* TelemetryModels.swift in Sources */,
+				B13AA7D36A0C4F8E758871D4 /* TelemetryProvider.swift in Sources */,
+				7BE6AF1E087CCAB57FC611BA /* TelemetryStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		58E846F335C9F5FF55E77F06 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E41065CF999C6BFB1A88AF9A /* GW2CompanionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		919C1118B91952BDB35E5858 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 088CC8461AA405A2F04326F4 /* GW2Companion */;
+			targetProxy = CA769B48ACC9ECE49C00424C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		03470B7746B24F43230C3AF8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		1C15F76FF6FB4A2017D6D588 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.GW2CompanionTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GW2Companion.app/GW2Companion";
+			};
+			name = Release;
+		};
+		6BCE3F7963D4ED297F8A9AE7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		79DC3E67EF41F1A2D52D629D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.GW2Companion;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9B9CD8BBBEEEF79B35061D51 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.GW2CompanionTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GW2Companion.app/GW2Companion";
+			};
+			name = Debug;
+		};
+		D4DEBBD09957DACCAECB5D15 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.GW2Companion;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4058D65D56230FC251F5B01B /* Build configuration list for PBXNativeTarget "GW2Companion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				79DC3E67EF41F1A2D52D629D /* Debug */,
+				D4DEBBD09957DACCAECB5D15 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		55DF2B0B2B3CBD910F950777 /* Build configuration list for PBXNativeTarget "GW2CompanionTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9B9CD8BBBEEEF79B35061D51 /* Debug */,
+				1C15F76FF6FB4A2017D6D588 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E0237908F96FC5BF7DC1F2FB /* Build configuration list for PBXProject "GW2Companion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6BCE3F7963D4ED297F8A9AE7 /* Debug */,
+				03470B7746B24F43230C3AF8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 699FCD67C5B69349B495B41E /* Project object */;
+}

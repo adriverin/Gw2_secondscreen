@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/gw2-companion/telemetry.schema.json",
+  "title": "GW2 Companion Telemetry v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["protocolVersion", "timestampUnixMs", "connected", "uiTick", "positionAvailable", "ui", "mount"],
+  "properties": {
+    "protocolVersion": { "const": 1 },
+    "timestampUnixMs": { "type": "integer" },
+    "connected": { "type": "boolean" },
+    "uiTick": { "type": "integer", "minimum": 0 },
+    "positionAvailable": { "type": "boolean" },
+    "statusMessage": { "type": ["string", "null"] },
+    "character": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "profession": { "type": ["integer", "null"] },
+        "specialization": { "type": ["integer", "null"] },
+        "race": { "type": ["integer", "null"] }
+      }
+    },
+    "map": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "required": ["id", "type", "shardId", "instanceId"],
+      "properties": {
+        "id": { "type": "integer" },
+        "type": { "type": "integer" },
+        "shardId": { "type": "integer" },
+        "instanceId": { "type": "integer" }
+      }
+    },
+    "player": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "required": ["continentX", "continentY", "avatarX", "avatarY", "avatarZ", "headingX", "headingY"],
+      "properties": {
+        "continentX": { "type": "number" }, "continentY": { "type": "number" },
+        "avatarX": { "type": "number" }, "avatarY": { "type": "number" }, "avatarZ": { "type": "number" },
+        "headingX": { "type": "number" }, "headingY": { "type": "number" }
+      }
+    },
+    "camera": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "required": ["frontX", "frontY", "frontZ"],
+      "properties": { "frontX": { "type": "number" }, "frontY": { "type": "number" }, "frontZ": { "type": "number" } }
+    },
+    "ui": {
+      "type": "object", "additionalProperties": true,
+      "required": ["inCombat", "mapOpen", "gameHasFocus"],
+      "properties": { "inCombat": { "type": "boolean" }, "mapOpen": { "type": "boolean" }, "gameHasFocus": { "type": "boolean" } }
+    },
+    "mount": {
+      "type": "object", "additionalProperties": true, "required": ["index"],
+      "properties": { "index": { "type": "integer", "minimum": 0, "maximum": 255 } }
+    }
+  }
+}

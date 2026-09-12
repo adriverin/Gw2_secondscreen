@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "timestampUnixMs": 1780000000000,
+  "connected": true,
+  "uiTick": 182930,
+  "positionAvailable": true,
+  "character": { "name": "Example Character", "profession": 7, "specialization": 66, "race": 2 },
+  "map": { "id": 15, "type": 5, "shardId": 1234, "instanceId": 5678 },
+  "player": { "continentX": 11000.2, "continentY": 13200.7, "avatarX": 12.1, "avatarY": 4.2, "avatarZ": -18.5, "headingX": 0.4, "headingY": 0.9 },
+  "camera": { "frontX": 0.1, "frontY": 0.8, "frontZ": 0.2 },
+  "ui": { "inCombat": false, "mapOpen": false, "gameHasFocus": true },
+  "mount": { "index": 8 },
+  "futureField": true
+}
