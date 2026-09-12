@@ -24,6 +24,7 @@ actor GW2APIClient {
     private var itemCache: [Int: ItemMetadata] = [:]
     private var currencyCache: [Int: CurrencyMetadata] = [:]
     private var mapCache: [Int: GW2MapMetadata] = [:]
+    private var floorCache: [String: GW2FloorMetadata] = [:]
     private var loadedItemCache = false
     private var loadedCurrencyCache = false
     private var loadedMapCache = false
@@ -118,6 +119,26 @@ actor GW2APIClient {
         return metadata
     }
 
+    func landmarks(continentId: Int, floor: Int, mapId: Int) async throws -> [MapLandmark] {
+        let key = "\(continentId)-\(floor)"
+        let metadata: GW2FloorMetadata
+        if let cached = floorCache[key] {
+            metadata = cached
+        } else if let cached = await diskCache.load(GW2FloorMetadata.self, named: "floor-\(key)") {
+            floorCache[key] = cached
+            metadata = cached
+        } else {
+            let loaded: GW2FloorMetadata = try await request("continents/\(continentId)/floors/\(floor)")
+            floorCache[key] = loaded
+            await diskCache.save(loaded, named: "floor-\(key)")
+            metadata = loaded
+        }
+        guard let map = metadata.regions.values.lazy.compactMap({ $0.maps.values.first { $0.id == mapId } }).first else {
+            return []
+        }
+        return map.landmarks()
+    }
+
     static func batchedIDs(_ ids: [Int]) -> [String] {
         Array(Set(ids)).sorted().map(String.init)
     }
@@ -145,3 +166,5 @@ actor GW2APIClient {
         return try JSONDecoder().decode(T.self, from: data)
     }
 }
+
+extension GW2APIClient: MapLandmarkDataProvider {}

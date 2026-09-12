@@ -1,14 +1,17 @@
 import SwiftUI
+import UIKit
 
 struct LiveMapView: View {
     let api: GW2APIClient
     @EnvironmentObject private var telemetry: TelemetryStore
     @EnvironmentObject private var gathering: GatheringStore
+    @EnvironmentObject private var overlays: MapOverlayStore
     @State private var metadata: GW2MapMetadata?
     @State private var metadataFailed = false
     @State private var followPlayer = true
     @State private var showingLayers = false
     @State private var showingPairing = false
+    @State private var selectedLandmark: MapLandmark?
 
     private var playerPoint: ContinentPoint? {
         guard telemetry.latest?.positionAvailable == true, let player = telemetry.latest?.player else { return nil }
@@ -22,7 +25,7 @@ struct LiveMapView: View {
 
     private var nearest: GatheringNode? {
         guard let playerPoint else { return nil }
-        return GatheringGeometry.nearest(to: playerPoint, among: gathering.visibleNodes.filter { !gathering.visited.contains($0.id) })
+        return GatheringGeometry.nearest(to: playerPoint, among: gathering.visibleNodes.filter { !gathering.harvested.contains($0.id) })
     }
 
     var body: some View {
@@ -33,15 +36,19 @@ struct LiveMapView: View {
                     heading: heading,
                     metadata: metadata,
                     nodes: gathering.visibleNodes,
+                    landmarks: overlays.visibleLandmarks,
                     visited: gathering.visited,
+                    harvested: gathering.harvested,
                     followPlayer: $followPlayer,
-                    onToggleVisited: gathering.toggleVisited)
+                    onToggleHarvested: gathering.toggleHarvested,
+                    onSelectLandmark: { selectedLandmark = $0 })
                     .ignoresSafeArea(edges: .top)
 
                 VStack(spacing: 10) {
                     header
                     connectionBanner
                     if metadataFailed { unavailableArtworkBanner }
+                    overlayStatusBanner
                     Spacer()
                     if let nearest { nearestCard(nearest) }
                     controls
@@ -52,12 +59,15 @@ struct LiveMapView: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingLayers) { LayerPanelView() }
             .sheet(isPresented: $showingPairing) { PairingView() }
+            .sheet(item: $selectedLandmark) { LandmarkDetailView(landmark: $0) }
             .task(id: telemetry.latest?.map?.id) {
-                guard let mapId = telemetry.latest?.map?.id else { return }
-                metadataFailed = false
-                async let mapLoad: Void = loadMetadata(mapId)
-                async let markerLoad: Void = gathering.load(mapId: mapId)
-                _ = await (mapLoad, markerLoad)
+                guard let mapId = telemetry.latest?.map?.id else {
+                    metadata = nil
+                    gathering.clear()
+                    overlays.clear()
+                    return
+                }
+                await loadMap(mapId)
             }
             .onChange(of: playerPoint) { _, point in
                 if let point { gathering.updatePlayer(point) }
@@ -113,6 +123,27 @@ struct LiveMapView: View {
     }
 
     @ViewBuilder
+    private var overlayStatusBanner: some View {
+        switch overlays.state {
+        case .loading:
+            statusBanner("Loading map landmarks…", symbol: "map")
+        case .loaded where overlays.landmarks.isEmpty:
+            statusBanner("No official landmarks were returned for this map and floor.", symbol: "map")
+        case let .unavailable(message):
+            statusBanner("Landmarks unavailable: \(message)", symbol: "exclamationmark.triangle")
+        default:
+            switch gathering.availability {
+            case .unavailable:
+                statusBanner("Known gathering locations are not yet available for this map.", symbol: "leaf")
+            case .failed:
+                statusBanner("Gathering locations could not be loaded.", symbol: "exclamationmark.triangle")
+            default:
+                EmptyView()
+            }
+        }
+    }
+
+    @ViewBuilder
     private var connectionBanner: some View {
         switch telemetry.state {
         case .unpaired:
@@ -129,10 +160,17 @@ struct LiveMapView: View {
             statusBanner("Guild Wars 2 is not running.", symbol: "gamecontroller")
         case let .positionUnavailable(message):
             statusBanner(message, symbol: "location.slash")
-        case .pcOffline:
+        case .bridgeOffline:
             statusBanner("Can't reach your PC. Make sure both devices are on the same network.", symbol: "wifi.slash")
         case .connecting:
             statusBanner("Connecting to GW2 Companion Bridge…", symbol: "arrow.triangle.2.circlepath")
+        case .reconnecting:
+            statusBanner("Connection lost. Reconnecting automatically…", symbol: "arrow.triangle.2.circlepath")
+        case .pairAgain:
+            VStack(spacing: 8) {
+                statusBanner("The bridge pairing changed. Scan its QR code again.", symbol: "qrcode")
+                Button("Pair again") { showingPairing = true }.buttonStyle(.borderedProminent).tint(.orange)
+            }
         case .live:
             EmptyView()
         }
@@ -162,14 +200,59 @@ struct LiveMapView: View {
     private var statusColor: Color {
         switch telemetry.state {
         case .live: .green
-        case .connecting: .yellow
+        case .connecting, .reconnecting: .yellow
         default: .orange
         }
     }
 
-    private func loadMetadata(_ id: Int) async {
-        do { metadata = try await api.map(id: id) }
-        catch { metadata = nil; metadataFailed = true }
+    private func loadMap(_ id: Int) async {
+        metadataFailed = false
+        do {
+            let loadedMetadata = try await api.map(id: id)
+            guard telemetry.latest?.map?.id == id else { return }
+            metadata = loadedMetadata
+            async let landmarkLoad: Void = overlays.load(provider: api, metadata: loadedMetadata)
+            async let gatheringLoad: Void = gathering.load(
+                mapId: id, metadata: loadedMetadata, simulation: telemetry.isSimulating)
+            _ = await (landmarkLoad, gatheringLoad)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard telemetry.latest?.map?.id == id else { return }
+            metadata = nil
+            metadataFailed = true
+            gathering.clear()
+            overlays.clear()
+        }
+    }
+}
+
+private struct LandmarkDetailView: View {
+    let landmark: MapLandmark
+    @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Label(landmark.name, systemImage: landmark.kind.symbol).font(.headline)
+                    Text(landmark.kind.title).foregroundStyle(.secondary)
+                }
+                if let chatLink = landmark.chatLink, !chatLink.isEmpty {
+                    Section("In-game chat link") {
+                        Text(chatLink).textSelection(.enabled).monospaced()
+                        Button(copied ? "Copied" : "Copy chat link") {
+                            UIPasteboard.general.string = chatLink
+                            copied = true
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Map marker")
+            .toolbar { Button("Done") { dismiss() } }
+        }
+        .presentationDetents([.medium])
     }
 }
 

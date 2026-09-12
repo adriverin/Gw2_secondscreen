@@ -10,12 +10,15 @@ struct NativeTileMapView: View {
     let heading: Double
     let metadata: GW2MapMetadata?
     let nodes: [GatheringNode]
+    let landmarks: [MapLandmark]
     let visited: Set<String>
+    let harvested: Set<String>
     @Binding var followPlayer: Bool
-    let onToggleVisited: (String) -> Void
+    let onToggleHarvested: (String) -> Void
+    let onSelectLandmark: (MapLandmark) -> Void
 
     private let tileProvider: MapTileProvider = ArenaNetTileProvider()
-    @State private var center = ContinentPoint(x: 15_710, y: 13_370)
+    @State private var center = ContinentPoint(x: 11_710, y: 13_370)
     @State private var zoom = 6
     @GestureState private var dragOffset: CGSize = .zero
     @GestureState private var magnification = 1.0
@@ -25,6 +28,7 @@ struct NativeTileMapView: View {
             ZStack {
                 Color(red: 0.10, green: 0.12, blue: 0.14)
                 tileLayer(size: geometry.size)
+                ForEach(landmarks) { landmark in landmarkMarker(landmark, size: geometry.size) }
                 ForEach(nodes) { node in marker(node, size: geometry.size) }
                 if let player { playerMarker(player, size: geometry.size) }
             }
@@ -57,7 +61,7 @@ struct NativeTileMapView: View {
                     if let image = phase.image { image.resizable() }
                     else { tilePlaceholder }
                 }
-                .frame(width: 257, height: 257)
+                .frame(width: 257 * magnification, height: 257 * magnification)
                 .position(
                     x: size.width / 2 + (Double(tile.x * 256) + 128 - centerPixelX) * magnification + dragOffset.width,
                     y: size.height / 2 + (Double(tile.y * 256) + 128 - centerPixelY) * magnification + dragOffset.height)
@@ -71,18 +75,32 @@ struct NativeTileMapView: View {
 
     private func marker(_ node: GatheringNode, size: CGSize) -> some View {
         let position = screenPosition(ContinentPoint(x: node.continentX, y: node.continentY), size: size)
-        return Button { onToggleVisited(node.id) } label: {
+        return Button { onToggleHarvested(node.id) } label: {
             Image(systemName: node.category.symbol)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(node.reliability == .possible ? .orange : .white)
                 .padding(7)
-                .background(nodeColor(node).opacity(visited.contains(node.id) ? 0.25 : 0.92), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(node.reliability == .fixed ? 0.75 : 0.3), lineWidth: 1))
-                .opacity(visited.contains(node.id) ? 0.5 : 1)
+                .background(nodeColor(node).opacity(harvested.contains(node.id) ? 0.25 : 0.92), in: Circle())
+                .overlay(Circle().strokeBorder(visited.contains(node.id) ? .yellow : .white.opacity(0.35), lineWidth: visited.contains(node.id) ? 2 : 1))
+                .opacity(harvested.contains(node.id) ? 0.45 : 1)
         }
         .buttonStyle(.plain)
         .position(position)
-        .accessibilityLabel("\(node.name), \(node.reliability.title) location")
+        .accessibilityLabel("\(node.name), possible location\(harvested.contains(node.id) ? ", marked harvested" : "")")
+    }
+
+    private func landmarkMarker(_ landmark: MapLandmark, size: CGSize) -> some View {
+        Button { onSelectLandmark(landmark) } label: {
+            Image(systemName: landmark.kind.symbol)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(6)
+                .background(landmarkColor(landmark.kind).opacity(0.92), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.5), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .position(screenPosition(landmark.coordinate, size: size))
+        .accessibilityLabel("\(landmark.name), \(landmark.kind.title)")
     }
 
     private func playerMarker(_ point: ContinentPoint, size: CGSize) -> some View {
@@ -131,6 +149,16 @@ struct NativeTileMapView: View {
         case .wood: .brown
         case .plant: .green
         case .other: .blue
+        }
+    }
+
+    private func landmarkColor(_ kind: MapLandmarkKind) -> Color {
+        switch kind {
+        case .waypoint: .blue
+        case .pointOfInterest: .purple
+        case .vista: .cyan
+        case .heart: .red
+        case .heroChallenge: .green
         }
     }
 }

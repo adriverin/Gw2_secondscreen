@@ -1,0 +1,27 @@
+GW2 Companion Bridge for Windows x64
+====================================
+
+1. Extract the entire ZIP to a normal folder.
+2. Start Guild Wars 2 and enter the world.
+3. Double-click GW2Bridge.exe. Allow private-network access if Windows asks.
+4. Keep the console window open. After this update, scan its QR code once in the
+   iPhone app. Future bridge restarts reuse the same protected pairing token.
+
+If the iPhone says PAIR AGAIN, close the bridge and run this in PowerShell from
+the extracted folder, then scan the new QR code:
+
+    .\GW2Bridge.exe --reset-pairing
+
+Useful options:
+
+    .\GW2Bridge.exe --simulate
+    .\GW2Bridge.exe --port 40000
+    .\GW2Bridge.exe --mumble-name NAME
+
+The bridge must run as the same Windows user and at the same elevation level as
+Guild Wars 2. Remove the game's "-mumble 0" option because it disables
+MumbleLink. The default private-network firewall port is TCP 38291.
+
+The pairing secret is protected for the current Windows user under local
+application data. Deleting that data or using --reset-pairing requires pairing
+the phone again.

@@ -1,6 +1,6 @@
 # GW2 Companion
 
-GW2 Companion is an unofficial, local-first iPhone second screen for Guild Wars 2. Its home screen follows the character on a pan/zoom map, shows an oriented player marker, and overlays configurable sample gathering locations. The same app talks directly to the official Guild Wars 2 API for characters, inventory, materials, bank, shared inventory, and wallet data.
+GW2 Companion is an unofficial, local-first iPhone second screen for Guild Wars 2. Its home screen follows the character on a pan/zoom map, shows an oriented player marker, and overlays official waypoints, vistas, points of interest, renown hearts, hero challenges, and configurable possible gathering locations. The same app talks directly to the official Guild Wars 2 API for characters, inventory, materials, bank, shared inventory, and wallet data.
 
 Live position does **not** come from the GW2 web API:
 
@@ -15,7 +15,7 @@ The bridge never receives the ArenaNet API key. The iPhone stores API and bridge
 
 - Xcode 26 or newer and XcodeGen to build the iOS 17+ app
 - An iPhone/iPad on the same LAN as the Windows PC (the simulator also supports in-app mock mode)
-- Windows with the .NET 10 SDK/runtime
+- Windows 10/11 (the packaged bridge is self-contained; the .NET SDK is needed only when building from source)
 - Guild Wars 2 for real telemetry
 - Optional ArenaNet API key with `account`, `characters`, `inventories`, and `wallet` permissions
 
@@ -50,6 +50,8 @@ dotnet run --project bridge/GW2Bridge/GW2Bridge.csproj
 
 Allow TCP port `38291` on the Windows private-network firewall when prompted. The console shows GW2/MumbleLink mode, the LAN address, a pairing JSON payload, and an ASCII QR code. Keep the window open while playing. Start the bridge before Guild Wars 2 (or restart the game once after starting the bridge) so the game can attach to the shared-memory mapping.
 
+The bridge creates one pairing token and protects it with Windows Data Protection for the current Windows user. After upgrading from an older build, scan the QR code once; the iPhone then reconnects after normal bridge restarts. Use `--reset-pairing` only when you deliberately want to invalidate paired phones and create a new QR code.
+
 If Guild Wars 2 is launched with a custom `-mumble NAME` option, give the bridge the same name:
 
 ```powershell
@@ -59,6 +61,12 @@ dotnet run --project bridge/GW2Bridge/GW2Bridge.csproj -- --mumble-name NAME
 Remove `-mumble 0`, which disables MumbleLink. Run the bridge and the game as the same Windows user and at the same elevation level (normally, neither should be run as administrator).
 
 Use another port with `--port 40000`.
+
+## Map layers and gathering data
+
+The iPhone downloads static landmarks for the current map and floor from ArenaNet's `/v2/continents` API and caches successful floor responses on disk. The Layers panel controls waypoints, points of interest, vistas, renown hearts, and hero challenges independently.
+
+Possible gathering locations come from a versioned conversion of the CC0 Tyrian Gathering Marker Project. The bundled snapshot contains 1,418 locations on maps 20, 21, 23, 27, 29, 34, 51, 54, 65, and 73. Resource nodes vary by day and map instance, so these markers describe places to check rather than live spawns. Walking near a marker gives it a yellow outline; tapping it separately marks it harvested. Attribution and snapshot details are in `ios/GW2Companion/Resources/THIRD_PARTY_NOTICES.md`.
 
 ## Simulation mode
 
@@ -101,7 +109,7 @@ The command-line build above is an unsigned compile check. To run in Simulator w
 2. Put the PC and phone on the same trusted LAN/Wi-Fi.
 3. On Map, tap the computer button, then **Scan QR code**.
 4. If scanning is unavailable, enter the displayed IP, port, and pairing token manually.
-5. A bad or missing token receives HTTP 401. Restarting the bridge creates a new random token, so pair again.
+5. A bad or missing token shows **PAIR AGAIN**. Normal bridge restarts reuse the protected token; only `--reset-pairing` deliberately invalidates the saved pairing.
 
 MVP LAN traffic is plain `ws://`, so use it only on a network you trust. The random token prevents unauthenticated subscriptions but does not encrypt character/location data; see [protocol security](docs/protocol.md#security).
 
@@ -113,7 +121,8 @@ Open Account and paste a key created at [ArenaNet account applications](https://
 
 ```bash
 dotnet test bridge/GW2Bridge.Tests/GW2Bridge.Tests.csproj
-dotnet publish bridge/GW2Bridge/GW2Bridge.csproj -c Release -r win-x64 --self-contained false
+dotnet publish bridge/GW2Bridge/GW2Bridge.csproj -c Release -r win-x64 \
+  --self-contained true -p:PublishSingleFile=true
 ```
 
 ## Real GW2/MumbleLink validation
@@ -124,7 +133,7 @@ This environment was macOS and could not perform real MumbleLink validation. On 
 2. Run the bridge without `--simulate`.
 3. Pair the phone and confirm the character, map ID, and coordinates update while moving.
 4. Stop GW2 and confirm **GW2 NOT RUNNING**; restart it and confirm recovery.
-5. Stop the bridge and confirm **PC OFFLINE**, followed by automatic reconnection after restart/re-pairing.
+5. Stop the bridge and confirm **BRIDGE OFFLINE**/**RECONNECTING**, followed by automatic reconnection after restart without another QR scan.
 6. Enter a competitive map and confirm the marker does not falsely move when continent position is unavailable.
 
 ## Limitations
@@ -133,10 +142,10 @@ This environment was macOS and could not perform real MumbleLink validation. On 
 - The official tile artwork can be outdated or missing for newer maps. The app keeps overlays usable on a neutral background.
 - Live position requires the Windows bridge; `/v2` has no live coordinates.
 - Competitive maps can restrict useful continent-position telemetry.
-- Bundled gathering points are original synthetic samples, not guaranteed or verified spawns.
+- Normal mode bundles 1,418 possible locations from the versioned CC0 Tyrian Gathering Marker Project snapshot; synthetic samples are restricted to simulation mode. These are not confirmed active spawns.
 - “Visited” means the player entered a radius, not that the node was harvested; session visits reset on app relaunch.
 - MVP WebSocket transport is authenticated but not TLS-encrypted.
-- Bonjour discovery, TacO/Blish import, routes and map POIs are intentionally deferred.
+- Automatic discovery after a PC address change, routes, and character-specific map completion are intentionally deferred.
 
 See [architecture](docs/architecture.md), [protocol](docs/protocol.md), [map coordinates](docs/map-coordinates.md), and [development](docs/development.md).
 

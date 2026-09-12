@@ -39,6 +39,27 @@ struct AccountMaterial: Codable, Sendable {
 
 struct WalletEntry: Codable, Sendable { let id: Int; let value: Int }
 
+struct CoinAmount: Equatable, Sendable {
+    let gold: Int
+    let silver: Int
+    let copper: Int
+
+    init(gold: Int, silver: Int, copper: Int) {
+        self.gold = gold
+        self.silver = silver
+        self.copper = copper
+    }
+
+    init(copperValue: Int) {
+        let value = max(0, copperValue)
+        self.init(gold: value / 10_000, silver: value % 10_000 / 100, copper: value % 100)
+    }
+
+    var accessibilityLabel: String {
+        "\(gold) gold, \(silver) silver, \(copper) copper"
+    }
+}
+
 struct ItemMetadata: Codable, Sendable, Identifiable {
     let id: Int
     let name: String

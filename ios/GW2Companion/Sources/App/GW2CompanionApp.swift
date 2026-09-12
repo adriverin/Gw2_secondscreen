@@ -5,6 +5,7 @@ struct GW2CompanionApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var telemetry = TelemetryStore()
     @StateObject private var gathering = GatheringStore()
+    @StateObject private var overlays = MapOverlayStore()
     private let api = GW2APIClient()
 
     var body: some Scene {
@@ -12,6 +13,7 @@ struct GW2CompanionApp: App {
             RootTabView(api: api)
                 .environmentObject(telemetry)
                 .environmentObject(gathering)
+                .environmentObject(overlays)
                 .preferredColorScheme(.dark)
                 .task { telemetry.connectSavedPairing() }
         }

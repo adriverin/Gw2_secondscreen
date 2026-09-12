@@ -39,7 +39,11 @@ struct AccountView: View {
                                         .frame(width: 28, height: 28)
                                     Text(value.metadata?.name ?? "Currency \(value.id)")
                                     Spacer()
-                                    Text(value.entry.value.formatted()).monospacedDigit()
+                                    if value.entry.id == 1 {
+                                        CoinAmountView(value: value.entry.value)
+                                    } else {
+                                        Text(value.entry.value.formatted()).monospacedDigit()
+                                    }
                                 }
                             }
                         }
@@ -100,5 +104,28 @@ struct AccountView: View {
     private func disconnect() async {
         do { try await api.disconnect(); tokenInfo = nil; wallet = []; errorMessage = nil }
         catch { errorMessage = "The saved API key could not be removed." }
+    }
+}
+
+private struct CoinAmountView: View {
+    let value: Int
+    private var amount: CoinAmount { CoinAmount(copperValue: value) }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            denomination(amount.gold, suffix: "g", color: Color(red: 0.93, green: 0.70, blue: 0.20))
+            denomination(amount.silver, suffix: "s", color: Color(white: 0.76))
+            denomination(amount.copper, suffix: "c", color: Color(red: 0.75, green: 0.42, blue: 0.23))
+        }
+        .monospacedDigit()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(amount.accessibilityLabel)
+    }
+
+    private func denomination(_ number: Int, suffix: String, color: Color) -> some View {
+        HStack(spacing: 1) {
+            Text("\(number)")
+            Text(suffix).foregroundStyle(color)
+        }
     }
 }

@@ -144,7 +144,7 @@ public sealed class SimulatedTelemetrySource : ITelemetrySource
     {
         cancellationToken.ThrowIfCancellationRequested();
         var seconds = (DateTimeOffset.UtcNow - _started).TotalSeconds;
-        const double centerX = 15710;
+        const double centerX = 11710;
         const double centerY = 13370;
         const double radiusX = 520;
         const double radiusY = 330;

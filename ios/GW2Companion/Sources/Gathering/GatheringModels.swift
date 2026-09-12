@@ -33,20 +33,69 @@ struct GatheringNode: Identifiable, Codable, Equatable, Sendable {
 }
 
 protocol MarkerDataProvider: Sendable {
-    func markers(for mapId: Int) async throws -> [GatheringNode]
+    func markers(for mapId: Int, metadata: GW2MapMetadata) async throws -> [GatheringNode]
+    func coveredMapIDs() async throws -> Set<Int>
 }
 
 struct BundledGatheringProvider: MarkerDataProvider {
     let bundle: Bundle
     init(bundle: Bundle = .main) { self.bundle = bundle }
 
-    func markers(for mapId: Int) async throws -> [GatheringNode] {
+    func markers(for mapId: Int, metadata: GW2MapMetadata) async throws -> [GatheringNode] {
+        let dataset = try load()
+        let transformer = GW2CoordinateTransformer(metadata: metadata)
+        return try dataset.markers.filter { $0.mapId == mapId }.map { marker in
+            let coordinate = try transformer.continentPoint(worldX: marker.worldX, worldZ: marker.worldZ)
+            return GatheringNode(
+                id: marker.id, mapId: marker.mapId, continentX: coordinate.x, continentY: coordinate.y,
+                category: marker.category, name: marker.name, reliability: marker.reliability,
+                source: marker.source, notes: marker.notes)
+        }
+    }
+
+    func coveredMapIDs() async throws -> Set<Int> { Set(try load().coveredMapIds) }
+
+    private func load() throws -> BundledGatheringDataset {
+        guard let url = bundle.url(forResource: "tyrian-gathering-v1", withExtension: "json") else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return try JSONDecoder().decode(BundledGatheringDataset.self, from: Data(contentsOf: url))
+    }
+}
+
+struct BundledSampleGatheringProvider: MarkerDataProvider {
+    let bundle: Bundle
+    init(bundle: Bundle = .main) { self.bundle = bundle }
+
+    func markers(for mapId: Int, metadata: GW2MapMetadata) async throws -> [GatheringNode] {
         guard let url = bundle.url(forResource: "sample-gathering-nodes", withExtension: "json") else {
             throw CocoaError(.fileNoSuchFile)
         }
-        let nodes = try JSONDecoder().decode([GatheringNode].self, from: Data(contentsOf: url))
-        return nodes.filter { $0.mapId == mapId }
+        return try JSONDecoder().decode([GatheringNode].self, from: Data(contentsOf: url)).filter { $0.mapId == mapId }
     }
+
+    func coveredMapIDs() async throws -> Set<Int> { [15, 50] }
+}
+
+private struct BundledGatheringDataset: Codable {
+    let version: Int
+    let sourceURL: String
+    let sourceRevision: String
+    let license: String
+    let coveredMapIds: [Int]
+    let markers: [BundledWorldGatheringMarker]
+}
+
+private struct BundledWorldGatheringMarker: Codable {
+    let id: String
+    let mapId: Int
+    let worldX: Double
+    let worldZ: Double
+    let category: GatheringCategory
+    let name: String
+    let reliability: GatheringReliability
+    let source: String?
+    let notes: String?
 }
 
 enum CompassDirection: String, Sendable {

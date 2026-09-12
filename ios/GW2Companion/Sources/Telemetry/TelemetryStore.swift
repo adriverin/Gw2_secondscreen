@@ -3,8 +3,10 @@ import Foundation
 enum TelemetryConnectionState: Equatable {
     case unpaired
     case connecting
+    case reconnecting
     case live
-    case pcOffline
+    case bridgeOffline
+    case pairAgain
     case gameNotRunning
     case positionUnavailable(String)
 
@@ -12,8 +14,10 @@ enum TelemetryConnectionState: Equatable {
         switch self {
         case .unpaired: "PAIR PC"
         case .connecting: "CONNECTING…"
+        case .reconnecting: "RECONNECTING…"
         case .live: "LIVE"
-        case .pcOffline: "PC OFFLINE"
+        case .bridgeOffline: "BRIDGE OFFLINE"
+        case .pairAgain: "PAIR AGAIN"
         case .gameNotRunning: "GW2 NOT RUNNING"
         case .positionUnavailable: "POSITION UNAVAILABLE"
         }
@@ -97,12 +101,16 @@ final class TelemetryStore: ObservableObject {
                     }
                 } catch {
                     guard !Task.isCancelled else { return }
-                    self.state = .pcOffline
+                    if case BridgeConnectionError.pairAgain = error {
+                        self.state = .pairAgain
+                        return
+                    }
+                    self.state = .bridgeOffline
                 }
                 guard reconnect else { return }
                 try? await Task.sleep(for: .seconds(backoff))
                 backoff = min(backoff * 2, 30)
-                if !Task.isCancelled { self.state = .connecting }
+                if !Task.isCancelled { self.state = .reconnecting }
             }
         }
     }

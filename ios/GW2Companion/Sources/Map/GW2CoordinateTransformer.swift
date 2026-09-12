@@ -41,6 +41,13 @@ struct GW2CoordinateTransformer: Sendable {
             y: rectangles.c0.y + ny * (rectangles.c1.y - rectangles.c0.y))
     }
 
+    func continentPoint(worldX: Double, worldZ: Double) throws -> ContinentPoint {
+        let metersToInches = 39.370_078_740_157_48
+        return try continentPoint(from: MapPoint(
+            x: worldX * metersToInches,
+            y: -worldZ * metersToInches))
+    }
+
     func tilePoint(from continent: ContinentPoint, zoom: Int) -> TilePoint {
         let clampedZoom = min(max(zoom, 0), Self.maximumTileZoom)
         let scale = pow(2.0, Double(Self.maximumTileZoom - clampedZoom))

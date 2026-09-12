@@ -14,12 +14,15 @@
 		34108CCE20A26CA27FDC0483 /* NativeTileMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDDA2B781B4D8F637DCD608C /* NativeTileMapView.swift */; };
 		37059E1DED23032BCEA6A277 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED30358E8898943C2A040207 /* AccountView.swift */; };
 		391B0E39007F694113B38626 /* CharactersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243BAFB217A2BB4AD971BA86 /* CharactersView.swift */; };
+		502B1EA971EA0575DC7F3F7A /* MapLandmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71EBC9CAC050BEBCA0EC5677 /* MapLandmarks.swift */; };
 		697B9256626686AA0A02F8D1 /* LiveMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4652B2A909BF40925A934C7A /* LiveMapView.swift */; };
 		6DB149BECB3ABBD92A66EF70 /* GW2CompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952ED51680CB884ABC47123F /* GW2CompanionApp.swift */; };
 		7BE6AF1E087CCAB57FC611BA /* TelemetryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E632A3DC4FA45C7AC68E3D1 /* TelemetryStore.swift */; };
 		7E44EE0ACDD01030AC357E69 /* GW2CoordinateTransformer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */; };
 		88552A8B46973C6FAE2448CD /* GatheringModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A6F223952DBE15B185DF60 /* GatheringModels.swift */; };
+		91425164586232ECEF531838 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = 4C83866BB25238A1F481E603 /* THIRD_PARTY_NOTICES.md */; };
 		970B569714A37AE010A4A747 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D945F404EE6F376D785DDB /* KeychainService.swift */; };
+		A0557736B0499CB4B17F8BC2 /* tyrian-gathering-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = A6A4F980E9D96A9AEBCEAE84 /* tyrian-gathering-v1.json */; };
 		A6F64FAD9C880063A68A345F /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0557C9CF9C9322538E0C4D7 /* PairingView.swift */; };
 		AAC22B99DA142B2F786DA24C /* GW2APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B5D0BCDD3FC918EB995016 /* GW2APIClient.swift */; };
 		AC584770BEDAD91339AC7AAC /* telemetry.v1.json in Resources */ = {isa = PBXBuildFile; fileRef = D44F55A238B6556BC1530438 /* telemetry.v1.json */; };
@@ -54,14 +57,17 @@
 		2E82FE9EAA41B5CC09C61C16 /* sample-gathering-nodes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "sample-gathering-nodes.json"; sourceTree = "<group>"; };
 		3E23DF52F865064CC0D61208 /* InventoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryView.swift; sourceTree = "<group>"; };
 		4652B2A909BF40925A934C7A /* LiveMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMapView.swift; sourceTree = "<group>"; };
+		4C83866BB25238A1F481E603 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		4E04A3691D07B3AAD65C0E0F /* GatheringStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatheringStore.swift; sourceTree = "<group>"; };
 		58A6F223952DBE15B185DF60 /* GatheringModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatheringModels.swift; sourceTree = "<group>"; };
+		71EBC9CAC050BEBCA0EC5677 /* MapLandmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLandmarks.swift; sourceTree = "<group>"; };
 		77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2CoordinateTransformer.swift; sourceTree = "<group>"; };
 		862FA9BA760ED284306BC65F /* tokeninfo.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokeninfo.json; sourceTree = "<group>"; };
 		952ED51680CB884ABC47123F /* GW2CompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2CompanionApp.swift; sourceTree = "<group>"; };
 		98D1D0CC8C8C4E7DCC4CC2F5 /* TelemetryProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryProvider.swift; sourceTree = "<group>"; };
 		9E632A3DC4FA45C7AC68E3D1 /* TelemetryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryStore.swift; sourceTree = "<group>"; };
 		A2D945F404EE6F376D785DDB /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		A6A4F980E9D96A9AEBCEAE84 /* tyrian-gathering-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "tyrian-gathering-v1.json"; sourceTree = "<group>"; };
 		B528091E160CEEA68A794B07 /* PairingScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScannerView.swift; sourceTree = "<group>"; };
 		BF0E34597606127CBEDFC31A /* LayerPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayerPanelView.swift; sourceTree = "<group>"; };
 		D44F55A238B6556BC1530438 /* telemetry.v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = telemetry.v1.json; sourceTree = "<group>"; };
@@ -129,6 +135,8 @@
 			isa = PBXGroup;
 			children = (
 				2E82FE9EAA41B5CC09C61C16 /* sample-gathering-nodes.json */,
+				4C83866BB25238A1F481E603 /* THIRD_PARTY_NOTICES.md */,
+				A6A4F980E9D96A9AEBCEAE84 /* tyrian-gathering-v1.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -137,6 +145,7 @@
 			isa = PBXGroup;
 			children = (
 				77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */,
+				71EBC9CAC050BEBCA0EC5677 /* MapLandmarks.swift */,
 				197E6205FE2FA510BEF687D0 /* MapTileProvider.swift */,
 				FDDA2B781B4D8F637DCD608C /* NativeTileMapView.swift */,
 			);
@@ -350,7 +359,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				91425164586232ECEF531838 /* THIRD_PARTY_NOTICES.md in Resources */,
 				14156D656A81DD2BB559CCDF /* sample-gathering-nodes.json in Resources */,
+				A0557736B0499CB4B17F8BC2 /* tyrian-gathering-v1.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -373,6 +384,7 @@
 				970B569714A37AE010A4A747 /* KeychainService.swift in Sources */,
 				CF8F4DCFD311BB8D3FB0CEE7 /* LayerPanelView.swift in Sources */,
 				697B9256626686AA0A02F8D1 /* LiveMapView.swift in Sources */,
+				502B1EA971EA0575DC7F3F7A /* MapLandmarks.swift in Sources */,
 				BABE242F1D082AFA026C1AA8 /* MapTileProvider.swift in Sources */,
 				23C6E5373B0B575521A9B631 /* MetadataDiskCache.swift in Sources */,
 				34108CCE20A26CA27FDC0483 /* NativeTileMapView.swift in Sources */,

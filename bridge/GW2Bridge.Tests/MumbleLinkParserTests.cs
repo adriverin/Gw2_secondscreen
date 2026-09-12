@@ -99,3 +99,54 @@ public sealed class TickStalenessDetectorTests
         Assert.False(detector.IsStale(11, start.AddSeconds(3)));
     }
 }
+
+public sealed class PairingTokenStoreTests
+{
+    [Fact]
+    public void PersistsTokenUntilExplicitReset()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"gw2-pairing-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "token.bin");
+        try
+        {
+            var store = new PairingTokenStore(path, new ReversingProtector());
+            var first = store.LoadOrCreate(false);
+            var second = store.LoadOrCreate(false);
+            var reset = store.LoadOrCreate(true);
+
+            Assert.Equal(first, second);
+            Assert.NotEqual(first, reset);
+            Assert.DoesNotContain(first, Convert.ToBase64String(File.ReadAllBytes(path)));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void InvalidPersistedTokenIsReportedInsteadOfSilentlyReplaced()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"gw2-pairing-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "token.bin");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllBytes(path, new ReversingProtector().Protect(Encoding.UTF8.GetBytes("bad")));
+            var store = new PairingTokenStore(path, new ReversingProtector());
+
+            var error = Assert.Throws<InvalidOperationException>(() => store.LoadOrCreate(false));
+            Assert.IsType<InvalidDataException>(error.InnerException);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    private sealed class ReversingProtector : IUserDataProtector
+    {
+        public byte[] Protect(byte[] data) => data.Reverse().ToArray();
+        public byte[] Unprotect(byte[] data) => data.Reverse().ToArray();
+    }
+}

@@ -9,7 +9,17 @@ using GW2Bridge;
 using QRCoder;
 
 var options = BridgeOptions.Parse(args);
-var pairingToken = Base64Url(RandomNumberGenerator.GetBytes(32));
+string pairingToken;
+try
+{
+    pairingToken = PairingTokenStore.CreateDefault().LoadOrCreate(options.ResetPairing);
+}
+catch (InvalidOperationException error)
+{
+    Console.Error.WriteLine($"PAIRING STORAGE ERROR: {error.Message}");
+    Console.Error.WriteLine("Fix access to the folder above or run once with --reset-pairing.");
+    return;
+}
 using ITelemetrySource source = options.Simulate
     ? new SimulatedTelemetrySource()
     : new MumbleLinkTelemetrySource(options.MumbleName);
@@ -34,11 +44,18 @@ var telemetryHub = app.Services.GetRequiredService<TelemetryHub>();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", protocolVersion = 1 }));
+app.MapGet("/pairing/validate", (HttpContext context) =>
+{
+    var authorization = context.Request.Headers.Authorization.ToString();
+    var suppliedToken = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+        ? authorization[7..]
+        : string.Empty;
+    return IsValidToken(suppliedToken, pairingToken) ? Results.NoContent() : Results.Unauthorized();
+});
 app.Map("/telemetry", async context =>
 {
     var suppliedToken = context.Request.Query["token"].ToString();
-    if (string.IsNullOrEmpty(suppliedToken) ||
-        !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(suppliedToken), Encoding.UTF8.GetBytes(pairingToken)))
+    if (!IsValidToken(suppliedToken, pairingToken))
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
         return;
@@ -85,10 +102,19 @@ using (var qrCode = new AsciiQRCode(qrData))
     Console.WriteLine(qrCode.GetGraphic(1, "██", "  "));
 }
 Console.WriteLine("The pairing token is intentionally shown only for local pairing and is never logged again.");
+Console.WriteLine(options.ResetPairing
+    ? "Pairing was reset. Scan this QR code once on the iPhone."
+    : "The same pairing will be reused after bridge restarts.");
 
 await app.RunAsync();
 
-static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+static bool IsValidToken(string supplied, string expected)
+{
+    var suppliedBytes = Encoding.UTF8.GetBytes(supplied);
+    var expectedBytes = Encoding.UTF8.GetBytes(expected);
+    return suppliedBytes.Length == expectedBytes.Length &&
+           CryptographicOperations.FixedTimeEquals(suppliedBytes, expectedBytes);
+}
 
 static string GetLanAddress()
 {
@@ -105,11 +131,12 @@ static string GetLanAddress()
     return "127.0.0.1";
 }
 
-public sealed record BridgeOptions(int Port, bool Simulate, string MumbleName)
+public sealed record BridgeOptions(int Port, bool Simulate, string MumbleName, bool ResetPairing)
 {
     public static BridgeOptions Parse(string[] args)
     {
         var simulate = args.Contains("--simulate", StringComparer.OrdinalIgnoreCase);
+        var resetPairing = args.Contains("--reset-pairing", StringComparer.OrdinalIgnoreCase);
         var port = 38291;
         var portIndex = Array.IndexOf(args, "--port");
         if (portIndex >= 0 && portIndex + 1 < args.Length && int.TryParse(args[portIndex + 1], out var parsed) && parsed is > 0 and <= 65535)
@@ -118,7 +145,7 @@ public sealed record BridgeOptions(int Port, bool Simulate, string MumbleName)
         var mumbleIndex = Array.IndexOf(args, "--mumble-name");
         if (mumbleIndex >= 0 && mumbleIndex + 1 < args.Length && !string.IsNullOrWhiteSpace(args[mumbleIndex + 1]))
             mumbleName = args[mumbleIndex + 1];
-        return new BridgeOptions(port, simulate, mumbleName);
+        return new BridgeOptions(port, simulate, mumbleName, resetPairing);
     }
 }
 

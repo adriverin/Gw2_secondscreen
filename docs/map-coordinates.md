@@ -6,6 +6,7 @@
 2. **Map coordinates** are a map-local system bounded by `/v2/maps/{id}.map_rect`. Their Y axis is opposite the rendered continent rectangle.
 3. **Continent coordinates** are flat global pixel-like coordinates. Mumble context `playerX/playerY`, `/v2/maps.continent_rect`, gathering nodes, and maximum-zoom tile pixels share this space. This is the MVP’s canonical space.
 4. **Tile coordinates** select a 256×256 image at an integer zoom from the tile service.
+5. **TacO world coordinates** use Mumble's 3D meter units. Gathering marker `xpos` maps east/west and `zpos` maps south/north; both are converted to game inches (`×39.37007874`) and Z is negated before the normal map-to-continent transform.
 
 All formulas live in `GW2CoordinateTransformer`; views must not add correction constants.
 
