@@ -43,13 +43,17 @@ private struct RootNavigationView: View {
     let api: GW2APIClient
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var navigation: AppNavigation
+    @State private var splitVisibility: NavigationSplitViewVisibility = .detailOnly
 
     var body: some View {
         if horizontalSizeClass == .regular {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $splitVisibility) {
                 List {
                     ForEach(AppTab.allCases) { tab in
-                        Button { navigation.selectedTab = tab } label: {
+                        Button {
+                            navigation.selectedTab = tab
+                            splitVisibility = .detailOnly
+                        } label: {
                             Label(tab.title, systemImage: tab.symbol)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
@@ -59,6 +63,7 @@ private struct RootNavigationView: View {
                     }
                 }
                 .navigationTitle("GW2 Companion")
+                .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 250)
             } detail: {
                 content(for: navigation.selectedTab)
             }

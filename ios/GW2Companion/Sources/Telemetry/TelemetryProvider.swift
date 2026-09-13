@@ -147,7 +147,8 @@ struct MockTelemetryProvider: LiveTelemetryProvider {
                 while !Task.isCancelled {
                     let seconds = Double(start.duration(to: clock.now).components.attoseconds) / 1e18 +
                         Double(start.duration(to: clock.now).components.seconds)
-                    let angle = seconds * 0.14
+                    // Start opposite the acceptance-test hero challenge, then approach it after ~22 seconds.
+                    let angle = seconds * 0.14 - .pi
                     tick &+= 1
                     continuation.yield(TelemetryEnvelope(
                         protocolVersion: 1,

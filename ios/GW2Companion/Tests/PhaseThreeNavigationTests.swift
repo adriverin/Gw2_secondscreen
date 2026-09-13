@@ -151,6 +151,21 @@ final class MapObjectiveStoreTests: XCTestCase {
         XCTAssertEqual(store.objective(first.id)?.state, .visited)
         XCTAssertNotEqual(store.objective(first.id)?.state, .manuallyCompleted)
         XCTAssertEqual(store.currentTargetID, second.id)
+        XCTAssertEqual(store.arrivalNotice?.objectiveName, first.name)
+        XCTAssertEqual(store.arrivalNotice?.nextObjectiveName, second.name)
+    }
+
+    func testSelectedTargetStillArrivesWhenItsLayerIsHidden() async {
+        let store = freshStore()
+        let target = objective("hidden-target", x: 10, y: 0, type: .heroChallenge)
+        await store.load(provider: FixedObjectiveProvider(values: [target]), metadata: metadata(15))
+        store.setTarget(target)
+        store.visibleTypes = []
+
+        store.updatePlayer(.init(x: 10, y: 0), force: true)
+
+        XCTAssertEqual(store.objective(target.id)?.state, .visited)
+        XCTAssertEqual(store.arrivalNotice?.objectiveName, target.name)
     }
 
     func testQueensdaleSimulationReachesOfficialHeroChallengeAndAdvances() async throws {

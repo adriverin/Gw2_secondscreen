@@ -151,7 +151,8 @@ public sealed class SimulatedTelemetrySource : ITelemetrySource
         const double centerY = 29863.7;
         const double radiusX = 520;
         const double radiusY = 330;
-        var angle = seconds * 0.14;
+        // Start opposite the target so the user has time to select it before the first crossing.
+        var angle = seconds * 0.14 - Math.PI;
         var x = (float)(centerX + Math.Cos(angle) * radiusX);
         var y = (float)(centerY + Math.Sin(angle) * radiusY);
         var hx = (float)-Math.Sin(angle);

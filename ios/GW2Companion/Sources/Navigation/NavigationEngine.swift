@@ -56,6 +56,7 @@ final class ObjectiveProximityEngine: @unchecked Sendable {
         player: ContinentPoint,
         objectives: [MapObjective],
         targetID: MapObjectiveID?,
+        targetObjective: MapObjective? = nil,
         now: Date = Date(),
         force: Bool = false,
         nearbyLimit: Int = 20
@@ -78,7 +79,13 @@ final class ObjectiveProximityEngine: @unchecked Sendable {
             return $0.id.rawValue < $1.id.rawValue
         }
 
-        let inside = Set(measured.filter { $0.distance <= $0.objective.type.arrivalRadius }.map(\.id))
+        var inside = Set(measured.filter { $0.distance <= $0.objective.type.arrivalRadius }.map(\.id))
+        // A target remains navigable even if the user hides its marker layer after selecting it.
+        if let targetObjective,
+           !inside.contains(targetObjective.id),
+           ObjectiveDistanceEngine.distance(from: player, to: targetObjective.coordinate) <= targetObjective.type.arrivalRadius {
+            inside.insert(targetObjective.id)
+        }
         let newlyVisited = inside.subtracting(targetsInsideRadius)
         let targetReached = targetID.map(newlyVisited.contains) ?? false
         targetsInsideRadius = inside

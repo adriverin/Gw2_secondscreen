@@ -36,7 +36,7 @@ struct LiveMapView: View {
                         mapSurface
                         Divider()
                         NavigatorPanelView(player: playerPoint, onSelect: select)
-                            .frame(minWidth: 320, idealWidth: 360, maxWidth: 400)
+                            .frame(minWidth: 280, idealWidth: 310, maxWidth: 340)
                             .background(.regularMaterial)
                     }
                 } else {
@@ -78,6 +78,11 @@ struct LiveMapView: View {
             .onChange(of: objectives.currentTargetID) { _, id in
                 if id != nil { focusRequest = MapFocusRequest(mode: .both) }
             }
+            .task(id: objectives.arrivalNotice?.id) {
+                guard objectives.arrivalNotice != nil else { return }
+                try? await Task.sleep(for: .seconds(4))
+                objectives.clearArrivalNotice()
+            }
         }
     }
 
@@ -94,6 +99,7 @@ struct LiveMapView: View {
             VStack(spacing: 10) {
                 header
                 connectionBanner
+                if let notice = objectives.arrivalNotice { arrivalBanner(notice) }
                 if metadataFailed { unavailableArtworkBanner }
                 objectiveStatusBanner
                 Spacer()
@@ -280,6 +286,21 @@ struct LiveMapView: View {
     private func statusBanner(_ message: String, symbol: String) -> some View {
         Label(message, systemImage: symbol).font(.caption).padding(10)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func arrivalBanner(_ notice: ObjectiveArrivalNotice) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label("\(notice.objectiveName) visited", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.bold())
+            if let next = notice.nextObjectiveName {
+                Text("Next: \(next)").font(.caption)
+            } else {
+                Text("Target reached").font(.caption)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 13).padding(.vertical, 10)
+        .background(.green.opacity(0.92), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var statusColor: Color {

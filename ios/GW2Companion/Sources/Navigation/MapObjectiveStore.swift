@@ -36,6 +36,12 @@ enum NearbyFilter: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+struct ObjectiveArrivalNotice: Identifiable, Equatable {
+    let id = UUID()
+    let objectiveName: String
+    let nextObjectiveName: String?
+}
+
 @MainActor
 final class MapObjectiveStore: ObservableObject {
     @Published private(set) var objectives: [MapObjective] = []
@@ -47,6 +53,7 @@ final class MapObjectiveStore: ObservableObject {
     @Published private(set) var state: MapObjectiveLoadState = .idle
     @Published private(set) var mapMetadata: GW2MapMetadata?
     @Published private(set) var sessionVisitedIDs: Set<MapObjectiveID> = []
+    @Published private(set) var arrivalNotice: ObjectiveArrivalNotice?
     @Published var visibleTypes: Set<MapObjectiveType> { didSet { filtersChanged() } }
     @Published var hideVisited: Bool { didSet { filtersChanged() } }
     @Published var hideManuallyCompleted: Bool { didSet { filtersChanged() } }
@@ -148,6 +155,7 @@ final class MapObjectiveStore: ObservableObject {
         gatheringObjectives = []
         player = nil
         nearby = []
+        arrivalNotice = nil
         proximity.reset()
         if currentTarget.map({ $0.mapId != mapId }) == true { currentTargetID = nil }
         rebuildObjectives()
@@ -160,11 +168,18 @@ final class MapObjectiveStore: ObservableObject {
         player = point
         guard let result = proximity.evaluate(
             player: point, objectives: filteredForNearby(), targetID: currentTargetID,
+            targetObjective: currentTarget,
             now: now, force: force) else { return }
         nearby = result.nearby
         if !result.newlyVisited.isEmpty {
+            let reachedTarget = result.targetReached ? currentTarget : nil
             for id in result.newlyVisited { markVisited(id, at: now) }
             if result.targetReached, autoAdvance { advanceRoute() }
+            if let reachedTarget {
+                arrivalNotice = ObjectiveArrivalNotice(
+                    objectiveName: reachedTarget.name,
+                    nextObjectiveName: autoAdvance ? currentTarget?.name : nil)
+            }
         }
     }
 
@@ -174,6 +189,8 @@ final class MapObjectiveStore: ObservableObject {
     }
 
     func clearTarget() { currentTargetID = nil }
+
+    func clearArrivalNotice() { arrivalNotice = nil }
 
     func markManuallyCompleted(_ id: MapObjectiveID) { setManualState(.manuallyCompleted, for: id) }
     func skip(_ id: MapObjectiveID) {
@@ -375,6 +392,7 @@ final class MapObjectiveStore: ObservableObject {
     private func refreshNearby(force: Bool) {
         guard let player, let result = proximity.evaluate(
             player: player, objectives: filteredForNearby(), targetID: currentTargetID,
+            targetObjective: currentTarget,
             force: force) else { return }
         nearby = result.nearby
     }
