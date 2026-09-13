@@ -1,0 +1,20 @@
+{
+  "regions": {
+    "4": {
+      "maps": {
+        "15": {
+          "id": 15,
+          "points_of_interest": {
+            "17": {"name":"Shaemoor Waypoint","type":"waypoint","floor":1,"coord":[43728.4,28589.9],"id":17,"chat_link":"[&BO8AAAA=]"},
+            "44": {"name":"Village of Shaemoor","type":"landmark","floor":1,"coord":[44808.0,29894.0],"id":44,"chat_link":"[&BCwAAAA=]"},
+            "65": {"name":"","type":"vista","floor":1,"coord":[44688.0,29794.0],"id":65,"chat_link":"[&BEEAAAA=]"}
+          },
+          "tasks": {
+            "7": {"objective":"Help the people of Shaemoor","level":2,"coord":[44848.0,29924.0],"bounds":[],"id":7,"chat_link":"[&BHQAAAA=]"}
+          },
+          "skill_challenges": [{"coord":[45135.5,29863.7],"id":"0-7"}]
+        }
+      }
+    }
+  }
+}

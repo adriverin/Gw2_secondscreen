@@ -1,6 +1,6 @@
 # GW2 Companion
 
-GW2 Companion is an unofficial, local-first iPhone second screen for Guild Wars 2. Its home screen follows the character on a pan/zoom map, shows an oriented player marker, and overlays official waypoints, vistas, points of interest, renown hearts, hero challenges, and configurable possible gathering locations. The same app talks directly to the official Guild Wars 2 API for characters, inventory, materials, bank, shared inventory, and wallet data.
+GW2 Companion is an unofficial, local-first iPhone and iPad second screen for Guild Wars 2. Its home screen follows the character on a pan/zoom map, overlays official world objectives and gathering locations, and provides live Nearby, target direction/distance, local visit history and geometric route playback. A native Character & Account Hub uses the official Guild Wars 2 API to show the character roster, equipment and build templates, bag contents, wallet, account summary, and fast account-wide item search.
 
 Live position does **not** come from the GW2 web API:
 
@@ -17,7 +17,7 @@ The bridge never receives the ArenaNet API key. The iPhone stores API and bridge
 - An iPhone/iPad on the same LAN as the Windows PC (the simulator also supports in-app mock mode)
 - Windows 10/11 (the packaged bridge is self-contained; the .NET SDK is needed only when building from source)
 - Guild Wars 2 for real telemetry
-- Optional ArenaNet API key with `account`, `characters`, `inventories`, and `wallet` permissions
+- Optional ArenaNet API key with `account`, `characters`, `inventories`, `builds`, and `wallet` permissions
 
 ## Repository
 
@@ -64,7 +64,9 @@ Use another port with `--port 40000`.
 
 ## Map layers and gathering data
 
-The iPhone downloads static landmarks for the current map and floor from ArenaNet's `/v2/continents` API and caches successful floor responses on disk. The Layers panel controls waypoints, points of interest, vistas, renown hearts, and hero challenges independently.
+The iPhone downloads static objectives for the current map and floor from ArenaNet's `/v2/continents` API and caches map/language-specific snapshots on disk. The Layers panel controls waypoints, points of interest, vistas, renown hearts, hero challenges, mastery insights, adventures and gathering categories independently. Nearby and generated routes use only visible layers.
+
+“Visited by Companion” means the live player entered a local arrival radius. “Marked complete” means the user explicitly set a local state. Neither claims that the Guild Wars 2 API reported per-character map completion. Route generation is a geometric nearest-neighbor suggested order and does not account for terrain, portals or elevation.
 
 Landmark and gathering markers use the matching in-game artwork published through ArenaNet's `/v2/files` render-service catalog, with built-in symbols as an offline/error fallback.
 
@@ -117,7 +119,13 @@ MVP LAN traffic is plain `ws://`, so use it only on a network you trust. The ran
 
 ## Connect a GW2 account
 
-Open Account and paste a key created at [ArenaNet account applications](https://account.arena.net/applications). The app validates it with `/v2/tokeninfo`, saves it only after validation, and lists granted permissions. Missing optional permissions disable only the affected data. Pull to refresh account screens.
+Open Account and paste a key created at [ArenaNet account applications](https://account.arena.net/applications). The app validates it with `/v2/tokeninfo`, saves it only after validation, and lists granted permissions without ever redisplaying the secret. Missing optional permissions disable only the affected data. Pull to refresh account screens.
+
+The Characters tab shows a visual roster and marks the character reported by live MumbleLink telemetry. Character profiles provide Equipment, Build, and Inventory sections, including equipment/build-tab switching and reusable item, trait, and skill detail sheets. A locally chosen character portrait can be attached with PhotosPicker; it remains on device and can be removed at any time.
+
+The Inventory tab searches a pre-aggregated local index spanning every character, bank, shared inventory, and material storage. Search does not issue per-keystroke API requests. Material storage is grouped with ArenaNet's material-category metadata. Previously loaded account and metadata caches remain visible with a saved/offline indicator when refresh fails.
+
+On iPad, the four primary areas use a native sidebar and content column. On iPhone they use the same views in a tab bar rather than a separate implementation.
 
 ## Test the bridge
 
@@ -147,8 +155,8 @@ This environment was macOS and could not perform real MumbleLink validation. On 
 - Normal mode bundles 1,418 possible locations from the versioned CC0 Tyrian Gathering Marker Project snapshot; synthetic samples are restricted to simulation mode. These are not confirmed active spawns.
 - “Visited” means the player entered a radius, not that the node was harvested; session visits reset on app relaunch.
 - MVP WebSocket transport is authenticated but not TLS-encrypted.
-- Automatic discovery after a PC address change, routes, and character-specific map completion are intentionally deferred.
+- Automatic discovery after a PC address change and character-specific official map completion remain unavailable. Cross-map route pathfinding is intentionally deferred.
 
-See [architecture](docs/architecture.md), [protocol](docs/protocol.md), [map coordinates](docs/map-coordinates.md), and [development](docs/development.md).
+See [architecture](docs/architecture.md), [account data](docs/account-data.md), [character stats](docs/character-stats.md), [protocol](docs/protocol.md), [map coordinates](docs/map-coordinates.md), and [development](docs/development.md).
 
 Guild Wars 2 and ArenaNet are trademarks of their respective owner. This project is unofficial and is not affiliated with or endorsed by ArenaNet.

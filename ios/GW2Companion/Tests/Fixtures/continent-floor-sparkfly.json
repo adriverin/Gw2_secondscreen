@@ -1,0 +1,18 @@
+{
+  "regions": {
+    "5": {
+      "maps": {
+        "53": {
+          "id": 53,
+          "points_of_interest": {
+            "700": {"name":"Ocean's Gullet Waypoint","type":"waypoint","floor":1,"coord":[49000.0,36500.0],"id":700,"chat_link":"[&BLIAAAA=]"},
+            "701": {"name":"Braggi's Stead","type":"landmark","floor":1,"coord":[49500.0,37000.0],"id":701,"chat_link":"[&BLMAAAA=]"},
+            "702": {"name":"","type":"vista","floor":1,"coord":[50000.0,38000.0],"id":702,"chat_link":"[&BLQAAAA=]"}
+          },
+          "tasks": {"88":{"objective":"Help the Priory investigate Risen activity","level":58,"coord":[49200.0,37400.0],"bounds":[],"id":88,"chat_link":"[&BFgBAAA=]"}},
+          "skill_challenges": [{"coord":[50300.0,36000.0],"id":"2-11"}]
+        }
+      }
+    }
+  }
+}

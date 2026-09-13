@@ -6,35 +6,80 @@ struct GW2CompanionApp: App {
     @StateObject private var telemetry = TelemetryStore()
     @StateObject private var gathering = GatheringStore()
     @StateObject private var overlays = MapOverlayStore()
-    private let api = GW2APIClient()
+    @StateObject private var objectives = MapObjectiveStore()
+    @StateObject private var account: AccountStore
+    @StateObject private var navigation = AppNavigation()
+    private let api: GW2APIClient
+
+    init() {
+        let api = GW2APIClient()
+        self.api = api
+        _account = StateObject(wrappedValue: AccountStore(api: api))
+    }
 
     var body: some Scene {
         WindowGroup {
-            RootTabView(api: api)
+            RootNavigationView(api: api)
                 .environmentObject(telemetry)
                 .environmentObject(gathering)
                 .environmentObject(overlays)
-                .preferredColorScheme(.dark)
-                .task { telemetry.connectSavedPairing() }
+                .environmentObject(objectives)
+                .environmentObject(account)
+                .environmentObject(navigation)
+                .tint(GWPalette.accent)
+                .task {
+                    telemetry.connectSavedPairing()
+                    await account.start()
+                }
+                .onChange(of: telemetry.latest?.character?.name, initial: true) { _, name in
+                    account.updateLiveCharacter(name: name)
+                }
         }
         .onChange(of: scenePhase) { _, phase in telemetry.setAppActive(phase == .active) }
     }
 }
 
-struct RootTabView: View {
+private struct RootNavigationView: View {
     let api: GW2APIClient
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @EnvironmentObject private var navigation: AppNavigation
 
     var body: some View {
-        TabView {
-            LiveMapView(api: api)
-                .tabItem { Label("Map", systemImage: "map.fill") }
-            CharactersView(api: api)
-                .tabItem { Label("Characters", systemImage: "person.2.fill") }
-            InventoryView(api: api)
-                .tabItem { Label("Inventory", systemImage: "shippingbox.fill") }
-            AccountView(api: api)
-                .tabItem { Label("Account", systemImage: "person.crop.circle") }
+        if horizontalSizeClass == .regular {
+            NavigationSplitView {
+                List {
+                    ForEach(AppTab.allCases) { tab in
+                        Button { navigation.selectedTab = tab } label: {
+                            Label(tab.title, systemImage: tab.symbol)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(navigation.selectedTab == tab ? GWPalette.accent.opacity(0.16) : Color.clear)
+                    }
+                }
+                .navigationTitle("GW2 Companion")
+            } detail: {
+                content(for: navigation.selectedTab)
+            }
+        } else {
+            TabView(selection: $navigation.selectedTab) {
+                ForEach(AppTab.allCases, id: \.self) { tab in
+                    content(for: tab)
+                        .tabItem { Label(tab.title, systemImage: tab.symbol) }
+                        .tag(tab)
+                }
+            }
         }
-        .tint(.orange)
+    }
+
+    @ViewBuilder
+    private func content(for tab: AppTab) -> some View {
+        switch tab {
+        case .map: LiveMapView(api: api)
+        case .characters: CharactersView()
+        case .inventory: InventoryView()
+        case .account: AccountView()
+        }
     }
 }

@@ -1,3 +1,6 @@
+import Combine
+import SwiftUI
+import UIKit
 import XCTest
 @testable import GW2Companion
 
@@ -49,7 +52,7 @@ final class CoordinateTransformerTests: XCTestCase {
     func testTileCoordinateAtMaximumZoom() {
         let metadata = GW2MapMetadata(id: 15, name: "Test", continentId: 1, defaultFloor: 1,
                                       mapRect: [[0, 0], [1, 1]], continentRect: [[0, 0], [1, 1]])
-        let tile = GW2CoordinateTransformer(metadata: metadata).tilePoint(from: ContinentPoint(x: 513, y: 770), zoom: 7)
+        let tile = GW2CoordinateTransformer(metadata: metadata).tilePoint(from: ContinentPoint(x: 513, y: 770), zoom: 8)
         XCTAssertEqual(tile.tileX, 2)
         XCTAssertEqual(tile.tileY, 3)
         XCTAssertEqual(tile.pixelX, 1)
@@ -76,6 +79,110 @@ final class GatheringTests: XCTestCase {
     func testFilteringByMapAndCategory() {
         let filtered = nodes.filter { $0.mapId == 15 && $0.category == .ore }
         XCTAssertEqual(filtered.map(\.id), ["near"])
+    }
+}
+
+final class MapMarkerSceneTests: XCTestCase {
+    private let transform = MapViewportTransform(
+        center: ContinentPoint(x: 1_000, y: 1_000), zoom: 7, magnification: 1.6,
+        dragOffset: CGSize(width: 31, height: -18), size: CGSize(width: 390, height: 844))
+
+    func testViewportTransformRoundTripsWithPanAndMagnification() {
+        let point = ContinentPoint(x: 1_127.5, y: 812.25)
+        let roundTrip = transform.continentPoint(for: transform.screenPosition(for: point))
+        XCTAssertEqual(roundTrip.x, point.x, accuracy: 0.0001)
+        XCTAssertEqual(roundTrip.y, point.y, accuracy: 0.0001)
+    }
+
+    func testViewportQueryIncludesOnlyVisibleMarkers() {
+        let visible = gathering(id: "visible", x: 1_000, y: 1_000)
+        let offscreen = gathering(id: "offscreen", x: 10_000, y: 10_000)
+        let scene = MapMarkerScene(gathering: [visible, offscreen])
+
+        XCTAssertEqual(scene.visibleMarkers(in: transform, marginPoints: 0).map(\.id), ["gathering:visible"])
+    }
+
+    func testHitTestingUsesGestureTransformAndFortyFourPointTarget() {
+        let node = gathering(id: "node", x: 1_100, y: 900)
+        let scene = MapMarkerScene(gathering: [node])
+        let position = transform.screenPosition(for: ContinentPoint(x: 1_100, y: 900))
+
+        XCTAssertEqual(scene.marker(at: CGPoint(x: position.x + 21, y: position.y), in: transform)?.id, "gathering:node")
+        XCTAssertNil(scene.marker(at: CGPoint(x: position.x + 23, y: position.y), in: transform))
+    }
+
+    func testClosestMarkerWinsAndGatheringBreaksOverlapTie() {
+        let landmark = MapLandmark(
+            id: "waypoint", kind: .waypoint, name: "Waypoint",
+            coordinate: ContinentPoint(x: 1_000, y: 1_000), chatLink: nil)
+        let gathering = gathering(id: "ore", x: 1_000, y: 1_000)
+        let nearby = self.gathering(id: "nearby", x: 1_006, y: 1_000)
+        let scene = MapMarkerScene(landmarks: [landmark], gathering: [gathering, nearby])
+        let position = transform.screenPosition(for: landmark.coordinate)
+
+        XCTAssertEqual(scene.marker(at: position, in: transform)?.id, "gathering:ore")
+    }
+
+    private func gathering(id: String, x: Double, y: Double, category: GatheringCategory = .ore) -> GatheringNode {
+        GatheringNode(
+            id: id, mapId: 73, continentX: x, continentY: y, category: category,
+            name: id, reliability: .possible, source: nil, notes: nil)
+    }
+}
+
+final class MapIconDataCacheTests: XCTestCase {
+    func testConcurrentRequestsAreDeduplicatedAndPersistedToDisk() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GW2CompanionIconTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let counter = AsyncCounter()
+        let expected = Data([1, 2, 3, 4])
+        let url = try XCTUnwrap(URL(string: "https://example.invalid/icon.png"))
+        let cache = MapIconDataCache(directory: directory) { _ in
+            await counter.increment()
+            try await Task.sleep(for: .milliseconds(30))
+            return expected
+        }
+
+        async let first = cache.data(for: url)
+        async let second = cache.data(for: url)
+        let values = try await (first, second)
+        XCTAssertEqual(values.0, expected)
+        XCTAssertEqual(values.1, expected)
+        let fetchCount = await counter.value
+        XCTAssertEqual(fetchCount, 1)
+
+        let diskOnly = MapIconDataCache(directory: directory) { _ in throw URLError(.notConnectedToInternet) }
+        let persisted = try await diskOnly.data(for: url)
+        XCTAssertEqual(persisted, expected)
+    }
+}
+
+private actor AsyncCounter {
+    private var count = 0
+    func increment() { count += 1 }
+    var value: Int { count }
+}
+
+final class TelemetryBufferTests: XCTestCase {
+    func testLatestValueBufferDropsObsoleteTelemetry() async throws {
+        let stream = TelemetryStreamBuffer.latest { continuation in
+            continuation.yield(Self.envelope(tick: 1))
+            continuation.yield(Self.envelope(tick: 2))
+            continuation.yield(Self.envelope(tick: 3))
+            continuation.finish()
+        }
+        var ticks: [UInt32] = []
+        for try await value in stream { ticks.append(value.uiTick) }
+        XCTAssertEqual(ticks, [3])
+    }
+
+    private static func envelope(tick: UInt32) -> TelemetryEnvelope {
+        TelemetryEnvelope(
+            protocolVersion: 1, timestampUnixMs: 0, connected: true, uiTick: tick,
+            positionAvailable: true, character: nil, map: nil, player: nil, camera: nil,
+            ui: UITelemetry(inCombat: false, mapOpen: false, gameHasFocus: true),
+            mount: MountTelemetry(index: 0), statusMessage: nil)
     }
 }
 
@@ -109,6 +216,108 @@ final class CoinAmountTests: XCTestCase {
         for (raw, expected) in cases {
             XCTAssertEqual(CoinAmount(copperValue: raw), expected)
         }
+    }
+}
+
+final class PhaseTwoAccountDomainTests: XCTestCase {
+    func testCurrentCharacterMatcherPrefersExactAndAllowsUniqueCaseInsensitiveMatch() throws {
+        let characters = try fixture([GW2Character].self, name: "characters")
+        XCTAssertEqual(CurrentCharacterMatcher.match(liveName: "Andrea", characters: characters)?.name, "Andrea")
+        XCTAssertEqual(CurrentCharacterMatcher.match(liveName: "  andrea  ", characters: characters)?.name, "Andrea")
+        XCTAssertNil(CurrentCharacterMatcher.match(liveName: "Unknown", characters: characters))
+    }
+
+    func testAccountSummaryAggregatesCharacters() throws {
+        let characters = try fixture([GW2Character].self, name: "characters")
+        let summary = AccountSummary(characters: characters, holdings: [])
+        XCTAssertEqual(summary.characterCount, 2)
+        XCTAssertEqual(summary.maxLevelCharacterCount, 1)
+        XCTAssertEqual(summary.totalPlaytime, 6_004_800)
+        XCTAssertEqual(summary.totalDeaths, 95)
+    }
+
+    func testGlobalHoldingsAggregateEveryAccountLocation() throws {
+        let character = try slots(#"[{"id":19697,"count":173},{"id":99,"count":1}]"#)
+        let bank = try slots(#"[{"id":19697,"count":211}]"#)
+        let shared = try slots(#"[{"id":19697,"count":100}]"#)
+        let materials = try slots(#"[{"id":19697,"count":250}]"#)
+        let holdings = AccountHoldingAggregator.aggregate([
+            (.character("Andrea"), character), (.bank, bank),
+            (.sharedInventory, shared), (.materialStorage, materials)
+        ])
+        let mithril = try XCTUnwrap(holdings.first { $0.itemID == 19697 })
+        XCTAssertEqual(mithril.totalQuantity, 734)
+        XCTAssertEqual(mithril.locations.count, 4)
+        XCTAssertEqual(mithril.locations.first { $0.location == .materialStorage }?.quantity, 250)
+    }
+
+    func testHoldingSearchIsCaseInsensitiveAndSortsLocally() throws {
+        let holdings = AccountHoldingAggregator.aggregate([
+            (.bank, try slots(#"[{"id":1,"count":4},{"id":2,"count":25}]"#))
+        ])
+        let items = try JSONDecoder().decode([ItemMetadata].self, from: Data(#"[{"id":1,"name":"Mithril Ore","icon":null,"rarity":"Basic"},{"id":2,"name":"Elder Wood Log","icon":null,"rarity":"Basic"}]"#.utf8))
+        let metadata = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        XCTAssertEqual(HoldingSearch.results(holdings: holdings, metadata: metadata, query: "mItHrIl", sort: .name).map(\.item.name), ["Mithril Ore"])
+        XCTAssertEqual(HoldingSearch.results(holdings: holdings, metadata: metadata, query: "", sort: .quantity).first?.item.name, "Elder Wood Log")
+    }
+
+    func testCharacterStatEngineAddsEquipmentUpgradeAndInfusionAttributes() throws {
+        let equipment = try JSONDecoder().decode([CharacterEquipment].self, from: Data(#"[{"id":101,"slot":"WeaponA1","stats":{"id":1,"attributes":{"Power":125}},"upgrades":[201],"infusions":[301]}]"#.utf8))
+        let items = try JSONDecoder().decode([ItemMetadata].self, from: Data(#"""
+        [
+          {"id":101,"name":"Sword","icon":null,"rarity":"Ascended","details":{"infix_upgrade":{"id":1,"attributes":[{"attribute":"Power","modifier":125}],"buff":null}}},
+          {"id":201,"name":"Rune","icon":null,"rarity":"Exotic","details":{"infix_upgrade":{"id":2,"attributes":[{"attribute":"Precision","modifier":20}],"buff":null}}},
+          {"id":301,"name":"Infusion","icon":null,"rarity":"Fine","details":{"infix_upgrade":{"id":3,"attributes":[{"attribute":"Power","modifier":5}],"buff":null}}}
+        ]
+        """#.utf8))
+        let metadata = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        let result = CharacterStatEngine.equipmentAttributes(equipment: equipment, items: metadata, upgrades: metadata)
+        XCTAssertEqual(result.attributes["Power"], 130)
+        XCTAssertEqual(result.attributes["Precision"], 20)
+    }
+
+    func testLimitedPermissionsRemainIndependent() throws {
+        let info = try fixture(TokenInfo.self, name: "tokeninfo-limited")
+        let permissions = PermissionSet(info.permissions)
+        XCTAssertTrue(permissions.contains(.account))
+        XCTAssertTrue(permissions.contains(.characters))
+        XCTAssertFalse(permissions.contains(.inventories))
+        XCTAssertFalse(permissions.contains(.wallet))
+    }
+
+    func testRealisticCharacterEquipmentBuildInventoryAndWalletFixturesDecode() throws {
+        XCTAssertEqual(try fixture([GW2Character].self, name: "characters").first?.crafting?.first?.rating, 500)
+        XCTAssertEqual(try fixture([EquipmentTab].self, name: "equipment-tabs").first?.equipment.first?.stats?.attributes?["Power"], 125)
+        XCTAssertEqual(try fixture([BuildTab].self, name: "build-tabs").first?.build.skills.pve?.utilities.count, 3)
+        XCTAssertEqual(try fixture(CharacterInventoryResponse.self, name: "inventory").bags.first??.size, 5)
+        XCTAssertEqual(try fixture([WalletEntry].self, name: "wallet").first?.value, 3_824_100)
+        XCTAssertEqual(try fixture(GW2Account.self, name: "account").world, 2203)
+        let itemRarities = Set(try fixture([ItemMetadata].self, name: "items").map(\.rarity))
+        XCTAssertEqual(itemRarities, ["Ascended", "Exotic", "Legendary", "Fine"])
+    }
+
+    private func fixture<Value: Decodable>(_ type: Value.Type, name: String) throws -> Value {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
+        return try JSONDecoder().decode(type, from: Data(contentsOf: url))
+    }
+
+    private func slots(_ json: String) throws -> [InventorySlot] {
+        try JSONDecoder().decode([InventorySlot].self, from: Data(json.utf8))
+    }
+}
+
+final class MetadataDiskCacheTests: XCTestCase {
+    func testCachedMetadataRemainsAvailableWithoutNetwork() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GW2MetadataTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = MetadataDiskCache(directory: directory)
+        let value = [42: "cached item"]
+        await first.save(value, named: "items")
+
+        let relaunched = MetadataDiskCache(directory: directory)
+        let restored = await relaunched.load([Int: String].self, named: "items")
+        XCTAssertEqual(restored, value)
     }
 }
 
@@ -176,6 +385,128 @@ final class MapStoreTests: XCTestCase {
         await olderTask.value
 
         XCTAssertEqual(store.landmarks.map(\.name), ["Map 2"])
+    }
+
+    func testGatheringFiltersAreCachedAndMovementDoesNotRebuildScene() async {
+        let suite = "GW2CompanionTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let nodes = [
+            GatheringNode(id: "ore", mapId: 73, continentX: 10, continentY: 10, category: .ore, name: "Ore", reliability: .fixed, source: nil, notes: nil),
+            GatheringNode(id: "wood", mapId: 73, continentX: 100, continentY: 100, category: .wood, name: "Wood", reliability: .fixed, source: nil, notes: nil)
+        ]
+        let provider = FixedGatheringProvider(nodes: nodes)
+        let store = GatheringStore(provider: provider, sampleProvider: provider, defaults: defaults)
+        let metadata = GW2MapMetadata(
+            id: 73, name: "Dense", continentId: 1, defaultFloor: 1,
+            mapRect: [[0, 0], [1, 1]], continentRect: [[0, 0], [1, 1]])
+        await store.load(mapId: 73, metadata: metadata, simulation: false)
+        XCTAssertEqual(store.visibleNodes.count, 2)
+
+        store.categories = []
+        XCTAssertTrue(store.visibleNodes.isEmpty)
+        let emptyRevision = store.sceneRevision
+        var visitedUpdates = 0
+        let observation = store.$visited.dropFirst().sink { _ in visitedUpdates += 1 }
+        store.updatePlayer(ContinentPoint(x: 10, y: 10))
+        store.updatePlayer(ContinentPoint(x: 10, y: 10))
+        XCTAssertEqual(store.sceneRevision, emptyRevision)
+        XCTAssertEqual(visitedUpdates, 1)
+        withExtendedLifetime(observation) {}
+    }
+}
+
+private struct FixedGatheringProvider: MarkerDataProvider {
+    let nodes: [GatheringNode]
+    func markers(for mapId: Int, metadata: GW2MapMetadata) async throws -> [GatheringNode] {
+        nodes.filter { $0.mapId == mapId }
+    }
+    func coveredMapIDs() async throws -> Set<Int> { Set(nodes.map(\.mapId)) }
+}
+
+final class MapScenePerformanceTests: XCTestCase {
+    private static let landmarks = (0..<80).map { index in
+        MapLandmark(
+            id: "landmark-\(index)", kind: MapLandmarkKind.allCases[index % MapLandmarkKind.allCases.count],
+            name: "Landmark \(index)",
+            coordinate: ContinentPoint(x: 10_000 + Double(index % 16) * 80, y: 10_000 + Double(index / 16) * 80),
+            chatLink: nil)
+    }
+    private static let gathering = (0..<321).map { index in
+        GatheringNode(
+            id: "gathering-\(index)", mapId: 73,
+            continentX: 9_500 + Double(index % 21) * 95,
+            continentY: 9_500 + Double(index / 21) * 95,
+            category: GatheringCategory.allCases[index % GatheringCategory.allCases.count],
+            name: "Node \(index)", reliability: .possible, source: nil, notes: nil)
+    }
+
+    func testBenchmarkGatheringDisabled() { benchmark(gathering: []) }
+    func testBenchmarkMiningOnly() { benchmark(gathering: Self.gathering.filter { $0.category == .ore }) }
+    func testBenchmarkAllGathering() { benchmark(gathering: Self.gathering) }
+
+    private func benchmark(gathering: [GatheringNode]) {
+        let scene = MapMarkerScene(landmarks: Self.landmarks, gathering: gathering)
+        measure(metrics: [XCTClockMetric(), XCTMemoryMetric()]) {
+            var visibleCount = 0
+            for frame in 0..<1_000 {
+                let transform = MapViewportTransform(
+                    center: ContinentPoint(x: 10_350 + Double(frame % 40), y: 10_250),
+                    zoom: 7, magnification: 1, dragOffset: .zero,
+                    size: CGSize(width: 390, height: 844))
+                visibleCount += scene.visibleMarkers(in: transform).count
+            }
+            XCTAssertGreaterThan(visibleCount, 0)
+        }
+    }
+}
+
+@MainActor
+final class MapCanvasPerformanceTests: XCTestCase {
+    private static let landmarks = (0..<80).map { index in
+        MapLandmark(
+            id: "canvas-landmark-\(index)", kind: MapLandmarkKind.allCases[index % MapLandmarkKind.allCases.count],
+            name: "Landmark \(index)",
+            coordinate: ContinentPoint(x: 10_000 + Double(index % 16) * 80, y: 10_000 + Double(index / 16) * 80),
+            chatLink: nil)
+    }
+    private static let gathering = (0..<321).map { index in
+        GatheringNode(
+            id: "canvas-gathering-\(index)", mapId: 73,
+            continentX: 9_500 + Double(index % 21) * 95,
+            continentY: 9_500 + Double(index / 21) * 95,
+            category: GatheringCategory.allCases[index % GatheringCategory.allCases.count],
+            name: "Node \(index)", reliability: .possible, source: nil, notes: nil)
+    }
+
+    func testCanvasBenchmarkGatheringDisabled() { benchmark(gathering: []) }
+    func testCanvasBenchmarkMiningOnly() { benchmark(gathering: Self.gathering.filter { $0.category == .ore }) }
+    func testCanvasBenchmarkAllGathering() { benchmark(gathering: Self.gathering) }
+
+    private func benchmark(gathering: [GatheringNode]) {
+        let scene = MapMarkerScene(landmarks: Self.landmarks, gathering: gathering)
+        let icon = Image(uiImage: UIGraphicsImageRenderer(size: CGSize(width: 31, height: 31)).image { context in
+            UIColor.orange.setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 0, y: 0, width: 31, height: 31))
+        })
+        let images = Dictionary(uniqueKeysWithValues: scene.iconURLs.map { ($0, icon) })
+
+        measure(metrics: [XCTClockMetric(), XCTMemoryMetric()]) {
+            var renderedWidth = 0.0
+            for frame in 0..<8 {
+                let transform = MapViewportTransform(
+                    center: ContinentPoint(x: 10_350 + Double(frame) * 10, y: 10_250),
+                    zoom: 3, magnification: 1, dragOffset: .zero,
+                    size: CGSize(width: 390, height: 844))
+                let visible = scene.visibleMarkers(in: transform)
+                let renderer = ImageRenderer(content: MapMarkerCanvas(
+                    markers: visible, transform: transform, visited: [], harvested: [],
+                    images: images, onActivate: { _ in }).frame(width: 390, height: 844))
+                renderer.scale = 1
+                renderedWidth += Double(renderer.uiImage?.size.width ?? 0)
+            }
+            XCTAssertEqual(renderedWidth, 3_120)
+        }
     }
 }
 

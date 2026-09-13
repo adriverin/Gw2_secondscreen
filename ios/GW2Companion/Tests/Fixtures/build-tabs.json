@@ -1,0 +1,4 @@
+[
+  {"tab":2,"name":"Power Virtuoso","is_active":true,"build":{"name":"Power Virtuoso","profession":"Mesmer","specializations":[{"id":1,"traits":[11,12,13]},{"id":2,"traits":[21,22,23]},{"id":66,"traits":[31,32,33]}],"skills":{"pve":{"heal":5503,"utilities":[5519,5570,10234],"elite":29519},"pvp":{"heal":5503,"utilities":[5519,null,10234],"elite":29519},"wvw":null}}},
+  {"tab":3,"name":"WvW Roamer","is_active":false,"build":{"name":"WvW Roamer","profession":"Mesmer","specializations":[],"skills":{"pve":null,"pvp":null,"wvw":{"heal":5503,"utilities":[],"elite":29519}}}}
+]

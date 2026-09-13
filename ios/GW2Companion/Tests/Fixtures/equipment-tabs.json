@@ -1,0 +1,7 @@
+[
+  {"tab":1,"name":"Raid DPS","is_active":true,"equipment":[
+    {"id":101,"slot":"WeaponA1","skin":501,"stats":{"id":161,"attributes":{"Power":125,"Precision":90,"Ferocity":90}},"upgrades":[201],"infusions":[301],"binding":"Account"},
+    {"id":102,"slot":"Helm","binding":"Character","bound_to":"Andrea"}
+  ]},
+  {"tab":2,"name":"Open World","is_active":false,"equipment":[]}
+]

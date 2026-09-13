@@ -48,11 +48,11 @@ protocol MarkerDataProvider: Sendable {
 }
 
 struct BundledGatheringProvider: MarkerDataProvider {
-    let bundle: Bundle
-    init(bundle: Bundle = .main) { self.bundle = bundle }
+    private let cache: BundledGatheringDatasetCache
+    init(bundle: Bundle = .main) { cache = BundledGatheringDatasetCache(bundle: bundle) }
 
     func markers(for mapId: Int, metadata: GW2MapMetadata) async throws -> [GatheringNode] {
-        let dataset = try load()
+        let dataset = try await cache.load()
         let transformer = GW2CoordinateTransformer(metadata: metadata)
         return try dataset.markers.filter { $0.mapId == mapId }.map { marker in
             let coordinate = try transformer.continentPoint(worldX: marker.worldX, worldZ: marker.worldZ)
@@ -63,13 +63,23 @@ struct BundledGatheringProvider: MarkerDataProvider {
         }
     }
 
-    func coveredMapIDs() async throws -> Set<Int> { Set(try load().coveredMapIds) }
+    func coveredMapIDs() async throws -> Set<Int> { Set(try await cache.load().coveredMapIds) }
+}
 
-    private func load() throws -> BundledGatheringDataset {
+private actor BundledGatheringDatasetCache {
+    private let bundle: Bundle
+    private var cached: BundledGatheringDataset?
+
+    init(bundle: Bundle) { self.bundle = bundle }
+
+    func load() throws -> BundledGatheringDataset {
+        if let cached { return cached }
         guard let url = bundle.url(forResource: "tyrian-gathering-v1", withExtension: "json") else {
             throw CocoaError(.fileNoSuchFile)
         }
-        return try JSONDecoder().decode(BundledGatheringDataset.self, from: Data(contentsOf: url))
+        let decoded = try JSONDecoder().decode(BundledGatheringDataset.self, from: Data(contentsOf: url))
+        cached = decoded
+        return decoded
     }
 }
 

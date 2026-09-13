@@ -13,6 +13,13 @@ flowchart LR
     Mock[iOS mock provider] --> Store
     Store --> Map[Native tile map]
     Store --> Gathering[Gathering proximity/nearest]
+    Store --> Proximity[Objective proximity engine]
+    API[ArenaNet API] --> Official[Official objective provider/cache]
+    Official --> ObjectiveStore[MapObjectiveStore]
+    Gathering --> ObjectiveStore
+    ObjectiveStore --> Proximity
+    Proximity --> Navigator[Target / Nearby / Route]
+    ObjectiveStore --> Map
 ```
 
 `ITelemetrySource` separates real MumbleLink from deterministic bridge simulation. `LiveTelemetryProvider` does the same for the iOS WebSocket and in-app mock source. Both paths produce the same version-1 envelope.
@@ -20,6 +27,8 @@ flowchart LR
 The bridge pairing token is stable across launches and stored under the current Windows user's local application data using DPAPI protection. The iPhone validates its saved token before opening the WebSocket, distinguishes an invalid pairing from an offline bridge, and retries lost or stalled connections with bounded exponential backoff.
 
 Static map landmarks come from the public `/v2/continents/{continent}/floors/{floor}` hierarchy and are cached per floor. Possible gathering locations are bundled from a versioned CC0 marker snapshot and converted from TacO/Mumble world meters to the same continent-coordinate space used by map tiles and live telemetry.
+
+Phase 3 promotes both sources into a shared `MapObjective` presentation model. `MapObjectiveStore` owns map-transition replacement, layer preferences, locally scoped visit/manual state, target and route state. `ObjectiveProximityEngine` is the single distance/arrival/nearby calculator. The marker scene remains the existing spatially bucketed renderer; it now consumes stable unified objective IDs.
 
 The bridge reads shared memory at 25 Hz and transmits the latest sample at ~20 Hz. The iOS map follows each newly received position directly, while the free-moving player marker uses only a sub-frame interpolation to avoid accumulating animation lag.
 
@@ -39,6 +48,7 @@ The API actor owns request serialization, item batching, and in-memory caches ba
 
 - `MapTileProvider`: `ArenaNetTileProvider` now; alternative/offline providers later.
 - `MarkerDataProvider`: bundled, versioned CC0 gathering snapshot in normal mode and synthetic markers only in simulation.
+- `MapObjectiveDataProvider`: official ArenaNet continent/floor data with versioned persistent fallback.
 - `LiveTelemetryProvider`: authenticated bridge and mock implementations.
 - `GW2APIClient`: isolated service suitable for a fake implementation in previews/integration tests.
 

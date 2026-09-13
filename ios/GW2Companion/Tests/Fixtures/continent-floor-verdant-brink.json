@@ -1,0 +1,20 @@
+{
+  "regions": {
+    "10": {
+      "maps": {
+        "1052": {
+          "id": 1052,
+          "points_of_interest": {
+            "1900": {"name":"Shipwreck Peak Waypoint","type":"waypoint","floor":1,"coord":[34100.0,31300.0],"id":1900,"chat_link":"[&BAgIAAA=]"},
+            "1901": {"name":"Pact Encampment","type":"landmark","floor":1,"coord":[34800.0,31900.0],"id":1901,"chat_link":"[&BAkIAAA=]"},
+            "1902": {"name":"","type":"vista","floor":1,"coord":[36000.0,32300.0],"id":1902,"chat_link":"[&BAoIAAA=]"}
+          },
+          "tasks": {},
+          "skill_challenges": [{"coord":[35500.0,32000.0],"id":"5-22"}],
+          "mastery_points": [{"coord":[35206.7,31628.7],"id":75,"region":"Maguuma"}],
+          "adventures": [{"coord":[36433.6,32107.2],"id":"1E9B3362-99C4-4B82-A550-67B364C60054","name":"Tendril Torchers","description":"Burn tendrils and avoid unexploded shot before time runs out!"}]
+        }
+      }
+    }
+  }
+}

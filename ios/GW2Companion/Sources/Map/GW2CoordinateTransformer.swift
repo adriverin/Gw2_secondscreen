@@ -20,7 +20,7 @@ struct TilePoint: Equatable, Sendable {
 enum CoordinateTransformError: Error { case invalidRectangle }
 
 struct GW2CoordinateTransformer: Sendable {
-    static let maximumTileZoom = 7
+    static let maximumTileZoom = 8
     let metadata: GW2MapMetadata
 
     func mapPoint(from continent: ContinentPoint) throws -> MapPoint {

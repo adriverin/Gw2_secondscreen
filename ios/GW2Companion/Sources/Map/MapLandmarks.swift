@@ -51,6 +51,10 @@ protocol MapLandmarkDataProvider: Sendable {
     func landmarks(continentId: Int, floor: Int, mapId: Int) async throws -> [MapLandmark]
 }
 
+protocol MapObjectiveDataProvider: Sendable {
+    func objectives(continentId: Int, floor: Int, mapId: Int, language: String) async throws -> [MapObjective]
+}
+
 struct GW2FloorMetadata: Codable, Sendable {
     let regions: [String: GW2FloorRegion]
 }
@@ -64,11 +68,15 @@ struct GW2FloorMap: Codable, Sendable {
     let pointsOfInterest: [String: GW2FloorPointOfInterest]?
     let tasks: [String: GW2FloorTask]?
     let skillChallenges: [GW2FloorSkillChallenge]?
+    let masteryPoints: [GW2FloorMasteryPoint]?
+    let adventures: [GW2FloorAdventure]?
 
     enum CodingKeys: String, CodingKey {
         case id, tasks
         case pointsOfInterest = "points_of_interest"
         case skillChallenges = "skill_challenges"
+        case masteryPoints = "mastery_points"
+        case adventures
     }
 
     func landmarks() -> [MapLandmark] {
@@ -99,6 +107,54 @@ struct GW2FloorMap: Codable, Sendable {
         }
         return result.sorted { ($0.kind.rawValue, $0.name) < ($1.kind.rawValue, $1.name) }
     }
+
+    func objectives() -> [MapObjective] {
+        var result: [MapObjective] = []
+        for point in pointsOfInterest?.values ?? Dictionary<String, GW2FloorPointOfInterest>().values {
+            guard point.coord.count == 2 else { continue }
+            let type: MapObjectiveType = switch point.type {
+            case "waypoint": .waypoint
+            case "vista": .vista
+            default: .landmark
+            }
+            let fallback = type == .vista ? "Vista" : type.title
+            result.append(MapObjective(
+                id: MapObjectiveID("arenanet:\(id):poi:\(point.id)"), mapId: id,
+                name: point.name?.nonEmpty ?? fallback, type: type,
+                continentX: point.coord[0], continentY: point.coord[1], source: .arenaNet,
+                chatLink: point.chatLink, level: nil, description: nil, state: .unknown))
+        }
+        for task in tasks?.values ?? Dictionary<String, GW2FloorTask>().values where task.coord.count == 2 {
+            result.append(MapObjective(
+                id: MapObjectiveID("arenanet:\(id):task:\(task.id)"), mapId: id,
+                name: task.objective, type: .renownHeart,
+                continentX: task.coord[0], continentY: task.coord[1], source: .arenaNet,
+                chatLink: task.chatLink, level: task.level, description: task.objective, state: .unknown))
+        }
+        for challenge in skillChallenges ?? [] where challenge.coord.count == 2 {
+            let identifier = challenge.id ?? "\(challenge.coord[0])-\(challenge.coord[1])"
+            result.append(MapObjective(
+                id: MapObjectiveID("arenanet:\(id):hero:\(identifier)"), mapId: id,
+                name: "Hero Challenge", type: .heroChallenge,
+                continentX: challenge.coord[0], continentY: challenge.coord[1], source: .arenaNet,
+                chatLink: nil, level: nil, description: nil, state: .unknown))
+        }
+        for mastery in masteryPoints ?? [] where mastery.coord.count == 2 {
+            result.append(MapObjective(
+                id: MapObjectiveID("arenanet:\(id):mastery:\(mastery.id)"), mapId: id,
+                name: "Mastery Insight", type: .masteryInsight,
+                continentX: mastery.coord[0], continentY: mastery.coord[1], source: .arenaNet,
+                chatLink: nil, level: nil, description: mastery.region, state: .unknown))
+        }
+        for adventure in adventures ?? [] where adventure.coord.count == 2 {
+            result.append(MapObjective(
+                id: MapObjectiveID("arenanet:\(id):adventure:\(adventure.id)"), mapId: id,
+                name: adventure.name.nonEmpty ?? "Adventure", type: .adventure,
+                continentX: adventure.coord[0], continentY: adventure.coord[1], source: .arenaNet,
+                chatLink: nil, level: nil, description: adventure.description, state: .unknown))
+        }
+        return result.sorted { ($0.type.rawValue, $0.name, $0.id.rawValue) < ($1.type.rawValue, $1.name, $1.id.rawValue) }
+    }
 }
 
 struct GW2FloorPointOfInterest: Codable, Sendable {
@@ -116,12 +172,13 @@ struct GW2FloorPointOfInterest: Codable, Sendable {
 
 struct GW2FloorTask: Codable, Sendable {
     let objective: String
+    let level: Int?
     let coord: [Double]
     let id: Int
     let chatLink: String?
 
     enum CodingKeys: String, CodingKey {
-        case objective, coord, id
+        case objective, level, coord, id
         case chatLink = "chat_link"
     }
 }
@@ -129,6 +186,30 @@ struct GW2FloorTask: Codable, Sendable {
 struct GW2FloorSkillChallenge: Codable, Sendable {
     let coord: [Double]
     let id: String?
+}
+
+struct GW2FloorMasteryPoint: Codable, Sendable {
+    let coord: [Double]
+    let id: Int
+    let region: String?
+}
+
+struct GW2FloorAdventure: Codable, Sendable {
+    let coord: [Double]
+    let id: String
+    let name: String
+    let description: String?
+}
+
+struct MapObjectiveCacheEnvelope: Codable, Sendable {
+    static let currentSchemaVersion = 3
+    let schemaVersion: Int
+    let fetchedAt: Date
+    let objectives: [MapObjective]
+
+    var isCurrent: Bool {
+        schemaVersion == Self.currentSchemaVersion && Date().timeIntervalSince(fetchedAt) < 30 * 24 * 60 * 60
+    }
 }
 
 private extension String {
@@ -145,8 +226,10 @@ enum MapOverlayLoadState: Equatable {
 @MainActor
 final class MapOverlayStore: ObservableObject {
     @Published private(set) var landmarks: [MapLandmark] = []
+    @Published private(set) var visibleLandmarks: [MapLandmark] = []
+    @Published private(set) var sceneRevision = 0
     @Published private(set) var state: MapOverlayLoadState = .idle
-    @Published var visibleKinds: Set<MapLandmarkKind> { didSet { persistKinds() } }
+    @Published var visibleKinds: Set<MapLandmarkKind> { didSet { persistKinds(); refreshVisibleLandmarks() } }
 
     private let defaults: UserDefaults
     private var requestedMapId: Int?
@@ -160,8 +243,6 @@ final class MapOverlayStore: ObservableObject {
         }
     }
 
-    var visibleLandmarks: [MapLandmark] { landmarks.filter { visibleKinds.contains($0.kind) } }
-
     func load(provider: any MapLandmarkDataProvider, metadata: GW2MapMetadata) async {
         requestedMapId = metadata.id
         state = .loading
@@ -170,12 +251,14 @@ final class MapOverlayStore: ObservableObject {
                 continentId: metadata.continentId, floor: metadata.defaultFloor, mapId: metadata.id)
             guard requestedMapId == metadata.id else { return }
             landmarks = loaded
+            refreshVisibleLandmarks()
             state = .loaded
         } catch is CancellationError {
             return
         } catch {
             guard requestedMapId == metadata.id else { return }
             landmarks = []
+            refreshVisibleLandmarks()
             state = .unavailable(error.localizedDescription)
         }
     }
@@ -183,10 +266,19 @@ final class MapOverlayStore: ObservableObject {
     func clear() {
         requestedMapId = nil
         landmarks = []
+        refreshVisibleLandmarks()
         state = .idle
     }
 
     private func persistKinds() {
         defaults.set(visibleKinds.map(\.rawValue).sorted(), forKey: "visibleMapLandmarkKinds")
+    }
+
+    private func refreshVisibleLandmarks() {
+        let filtered = landmarks.filter { visibleKinds.contains($0.kind) }
+        if filtered != visibleLandmarks {
+            visibleLandmarks = filtered
+            sceneRevision &+= 1
+        }
     }
 }

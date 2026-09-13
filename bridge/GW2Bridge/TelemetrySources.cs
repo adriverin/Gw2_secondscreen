@@ -146,8 +146,9 @@ public sealed class SimulatedTelemetrySource : ITelemetrySource
     {
         cancellationToken.ThrowIfCancellationRequested();
         var seconds = (DateTimeOffset.UtcNow - _started).TotalSeconds;
-        const double centerX = 11710;
-        const double centerY = 13370;
+        // The east point of this ellipse crosses Queensdale hero challenge 0-7.
+        const double centerX = 44615.5;
+        const double centerY = 29863.7;
         const double radiusX = 520;
         const double radiusY = 330;
         var angle = seconds * 0.14;

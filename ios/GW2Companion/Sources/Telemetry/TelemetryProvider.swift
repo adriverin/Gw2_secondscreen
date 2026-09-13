@@ -4,6 +4,14 @@ protocol LiveTelemetryProvider: Sendable {
     func telemetryStream() -> AsyncThrowingStream<TelemetryEnvelope, Error>
 }
 
+enum TelemetryStreamBuffer {
+    static func latest(
+        _ build: (AsyncThrowingStream<TelemetryEnvelope, Error>.Continuation) -> Void
+    ) -> AsyncThrowingStream<TelemetryEnvelope, Error> {
+        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1), build)
+    }
+}
+
 protocol BridgeWebSocket: Sendable {
     func resume()
     func receive() async throws -> URLSessionWebSocketTask.Message
@@ -46,7 +54,7 @@ final class BridgeConnection: LiveTelemetryProvider, @unchecked Sendable {
     }
 
     func telemetryStream() -> AsyncThrowingStream<TelemetryEnvelope, Error> {
-        AsyncThrowingStream { continuation in
+        TelemetryStreamBuffer.latest { continuation in
             let connectionTask = Task {
                 do {
                     try await validatePairing()
@@ -131,7 +139,7 @@ final class BridgeConnection: LiveTelemetryProvider, @unchecked Sendable {
 
 struct MockTelemetryProvider: LiveTelemetryProvider {
     func telemetryStream() -> AsyncThrowingStream<TelemetryEnvelope, Error> {
-        AsyncThrowingStream { continuation in
+        TelemetryStreamBuffer.latest { continuation in
             let task = Task {
                 let clock = ContinuousClock()
                 let start = clock.now
@@ -150,8 +158,8 @@ struct MockTelemetryProvider: LiveTelemetryProvider {
                         character: CharacterTelemetry(name: "Test Mesmer", profession: 8, specialization: 0, race: 0),
                         map: MapTelemetry(id: 15, type: 5, shardId: 1, instanceId: 1),
                         player: PlayerTelemetry(
-                            continentX: 11_710 + cos(angle) * 520,
-                            continentY: 13_370 + sin(angle) * 330,
+                            continentX: 44_615.5 + cos(angle) * 520,
+                            continentY: 29_863.7 + sin(angle) * 330,
                             avatarX: 0, avatarY: 0, avatarZ: 0,
                             headingX: -sin(angle), headingY: cos(angle)),
                         camera: CameraTelemetry(frontX: -sin(angle), frontY: 0, frontZ: -cos(angle)),

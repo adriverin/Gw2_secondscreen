@@ -36,10 +36,10 @@ Rectangle shape and zero extents are validated before division. Coordinates are 
 
 ## Continent ↔ tiles
 
-The official maximum zoom is modeled as `7`; at that zoom one continent unit maps to one tile pixel. At zoom `z`:
+Tyria's current public continent metadata reports maximum zoom `8`; at that zoom one continent unit maps to one tile pixel. At zoom `z`:
 
 ```text
-scale  = 2^(7 - clamp(z, 0, 7))
+scale  = 2^(8 - clamp(z, 0, 8))
 pixelX = continentX / scale
 pixelY = continentY / scale
 tileX  = floor(pixelX / 256)
@@ -55,5 +55,5 @@ The renderer uses the same `scale` to position the player and gathering markers 
 - Wrong map artwork: verify `continent_id` and `default_floor` from map metadata.
 - Constant offset: inspect the raw context `playerX/playerY`; do not patch the view.
 - Mirrored north/south: ensure inversion occurs only for map-local conversions.
-- Correct at zoom 7 but wrong elsewhere: verify `2^(7-z)` and 256-pixel tiles.
+- Correct at zoom 8 but wrong elsewhere: verify `2^(8-z)` and 256-pixel tiles.
 - Correct overlay but blank art: the provider may legitimately return 404 for newer content.

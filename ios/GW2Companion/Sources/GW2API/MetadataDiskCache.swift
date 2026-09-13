@@ -3,9 +3,9 @@ import Foundation
 actor MetadataDiskCache {
     private let directory: URL
 
-    init(fileManager: FileManager = .default) {
+    init(fileManager: FileManager = .default, directory: URL? = nil) {
         let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first ?? fileManager.temporaryDirectory
-        directory = base.appending(path: "GW2CompanionMetadata", directoryHint: .isDirectory)
+        self.directory = directory ?? base.appending(path: "GW2CompanionMetadata", directoryHint: .isDirectory)
     }
 
     func load<Value: Decodable & Sendable>(_ type: Value.Type, named name: String) -> Value? {

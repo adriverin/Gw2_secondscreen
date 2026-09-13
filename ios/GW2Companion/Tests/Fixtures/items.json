@@ -1,0 +1,61 @@
+[
+  {
+    "id": 101,
+    "name": "Zojja's Sword",
+    "description": "A finely crafted ascended weapon.",
+    "type": "Weapon",
+    "level": 80,
+    "rarity": "Ascended",
+    "flags": ["AccountBound"],
+    "restrictions": [],
+    "details": {
+      "type": "Sword",
+      "damage_type": "Physical",
+      "min_power": 950,
+      "max_power": 1050,
+      "infusion_slots": [{"flags": ["Agony"], "item_id": 301}],
+      "infix_upgrade": {"id": 161, "attributes": [{"attribute": "Power", "modifier": 125}, {"attribute": "Precision", "modifier": 90}, {"attribute": "CritDamage", "modifier": 90}]},
+      "suffix_item_id": 201
+    }
+  },
+  {
+    "id": 102,
+    "name": "Berserker's Draconic Helm",
+    "type": "Armor",
+    "level": 80,
+    "rarity": "Exotic",
+    "flags": ["AccountBound"],
+    "restrictions": [],
+    "details": {"type": "Helm", "weight_class": "Heavy", "defense": 127}
+  },
+  {
+    "id": 103,
+    "name": "Sunrise",
+    "type": "Weapon",
+    "level": 80,
+    "rarity": "Legendary",
+    "flags": ["AccountBound"],
+    "restrictions": [],
+    "details": {"type": "Greatsword", "damage_type": "Physical", "min_power": 1045, "max_power": 1155}
+  },
+  {
+    "id": 201,
+    "name": "Superior Sigil of Force",
+    "type": "UpgradeComponent",
+    "level": 60,
+    "rarity": "Exotic",
+    "flags": [],
+    "restrictions": [],
+    "details": {"type": "Sigil"}
+  },
+  {
+    "id": 301,
+    "name": "+9 Agony Infusion",
+    "type": "UpgradeComponent",
+    "level": 0,
+    "rarity": "Fine",
+    "flags": [],
+    "restrictions": [],
+    "details": {"type": "Default", "infix_upgrade": {"attributes": [{"attribute": "AgonyResistance", "modifier": 9}]}}
+  }
+]
