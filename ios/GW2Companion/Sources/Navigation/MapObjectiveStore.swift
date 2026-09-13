@@ -75,6 +75,7 @@ final class MapObjectiveStore: ObservableObject {
     private let proximity: ObjectiveProximityEngine
     private var officialObjectives: [MapObjective] = []
     private var gatheringObjectives: [MapObjective] = []
+    private var goalObjectives: [MapObjective] = []
     private var requestedMapId: Int?
     private var currentMapId: Int?
     private var player: ContinentPoint?
@@ -159,6 +160,10 @@ final class MapObjectiveStore: ObservableObject {
         proximity.reset()
         if currentTarget.map({ $0.mapId != mapId }) == true { currentTargetID = nil }
         rebuildObjectives()
+        if let routeID = route?.currentObjectiveID,
+           let goalTarget = goalObjectives.first(where: { $0.id == routeID && $0.mapId == mapId }) {
+            currentTargetID = goalTarget.id
+        }
         state = mapId == nil ? .idle : .loading
     }
 
@@ -184,8 +189,28 @@ final class MapObjectiveStore: ObservableObject {
     }
 
     func setTarget(_ objective: MapObjective) {
+        if objective.mapId == currentMapId, self.objective(objective.id) == nil {
+            goalObjectives.removeAll { $0.id == objective.id }
+            goalObjectives.append(objective)
+            rebuildObjectives()
+        }
         currentTargetID = objective.id
         refreshNearby(force: true)
+    }
+
+    /// Adapts goal actions into the existing Phase 3 route/navigator state.
+    func startGoalRoute(name: String, objectives values: [MapObjective]) {
+        guard !values.isEmpty else { return }
+        goalObjectives = values
+        rebuildObjectives()
+        let ids = values.map(\.id)
+        var currentIndex = 0
+        if let index = values.firstIndex(where: { $0.mapId == currentMapId }) { currentIndex = index }
+        route = NavigationRoute(
+            name: name, objectives: ids, currentIndex: currentIndex, startedAt: Date())
+        currentTargetID = values.indices.contains(currentIndex) && values[currentIndex].mapId == currentMapId
+            ? values[currentIndex].id : nil
+        persistRoute()
     }
 
     func clearTarget() { currentTargetID = nil }
@@ -335,8 +360,10 @@ final class MapObjectiveStore: ObservableObject {
     }
 
     private func rebuildObjectives() {
-        let combined = (officialObjectives + gatheringObjectives).filter { $0.mapId == currentMapId }
-        objectives = combined.map { $0.withState(state(for: $0.id)) }
+        let combined = (officialObjectives + gatheringObjectives + goalObjectives).filter { $0.mapId == currentMapId }
+        var unique: [MapObjectiveID: MapObjective] = [:]
+        combined.forEach { unique[$0.id] = $0 }
+        objectives = unique.values.map { $0.withState(state(for: $0.id)) }
             .sorted { ($0.type.rawValue, $0.name, $0.id.rawValue) < ($1.type.rawValue, $1.name, $1.id.rawValue) }
         refreshVisible()
     }

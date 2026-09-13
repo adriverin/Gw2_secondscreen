@@ -191,6 +191,13 @@ struct CoinAmount: Equatable, Sendable {
         self.init(gold: value / 10_000, silver: value % 10_000 / 100, copper: value % 100)
     }
 
+    init(copperValue: Int64) {
+        self.init(copperValue: Int(clamping: copperValue))
+    }
+
+    var totalCopper: Int64 { Int64(gold) * 10_000 + Int64(silver) * 100 + Int64(copper) }
+    var formatted: String { "\(gold)g \(silver)s \(copper)c" }
+
     var accessibilityLabel: String { "\(gold) gold, \(silver) silver, \(copper) copper" }
 }
 
@@ -326,6 +333,261 @@ struct SkinMetadata: Codable, Sendable, Identifiable, Equatable {
     let icon: URL?
     let rarity: String?
     let description: String?
+}
+
+struct MiniMetadata: Codable, Sendable, Identifiable, Equatable {
+    let id: Int
+    let name: String
+    let icon: URL?
+    let order: Int?
+    let itemID: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, icon, order
+        case itemID = "item_id"
+    }
+}
+
+struct AchievementGroup: Codable, Sendable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let description: String
+    let order: Int
+    let categories: [Int]
+}
+
+struct AchievementCategory: Codable, Sendable, Identifiable, Equatable {
+    let id: Int
+    let name: String
+    let description: String
+    let order: Int
+    let icon: URL?
+    let achievements: [Int]
+}
+
+enum AchievementBit: Codable, Hashable, Sendable {
+    case text(String)
+    case item(Int)
+    case minipet(Int)
+    case skin(Int)
+    case unknown(type: String, id: Int?, text: String?)
+
+    private enum CodingKeys: String, CodingKey { case type, id, text }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try values.decode(String.self, forKey: .type)
+        let id = try values.decodeIfPresent(Int.self, forKey: .id)
+        let text = try values.decodeIfPresent(String.self, forKey: .text)
+        switch type.lowercased() {
+        case "text": self = .text(text ?? "")
+        case "item": self = id.map(AchievementBit.item) ?? .unknown(type: type, id: nil, text: text)
+        case "minipet": self = id.map(AchievementBit.minipet) ?? .unknown(type: type, id: nil, text: text)
+        case "skin": self = id.map(AchievementBit.skin) ?? .unknown(type: type, id: nil, text: text)
+        default: self = .unknown(type: type, id: id, text: text)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .text(text):
+            try values.encode("Text", forKey: .type); try values.encode(text, forKey: .text)
+        case let .item(id):
+            try values.encode("Item", forKey: .type); try values.encode(id, forKey: .id)
+        case let .minipet(id):
+            try values.encode("Minipet", forKey: .type); try values.encode(id, forKey: .id)
+        case let .skin(id):
+            try values.encode("Skin", forKey: .type); try values.encode(id, forKey: .id)
+        case let .unknown(type, id, text):
+            try values.encode(type, forKey: .type)
+            try values.encodeIfPresent(id, forKey: .id)
+            try values.encodeIfPresent(text, forKey: .text)
+        }
+    }
+
+    var referencedItemID: Int? { if case let .item(id) = self { id } else { nil } }
+    var referencedSkinID: Int? { if case let .skin(id) = self { id } else { nil } }
+    var referencedMiniID: Int? { if case let .minipet(id) = self { id } else { nil } }
+}
+
+struct AchievementTier: Codable, Hashable, Sendable {
+    let count: Int
+    let points: Int
+}
+
+struct AchievementDefinition: Codable, Sendable, Identifiable, Equatable {
+    let id: Int
+    let icon: URL?
+    let name: String
+    let description: String
+    let requirement: String
+    let lockedText: String?
+    let type: String?
+    let flags: [String]
+    let tiers: [AchievementTier]
+    let prerequisites: [Int]?
+    let bits: [AchievementBit]?
+    let pointCap: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id, icon, name, description, requirement, type, flags, tiers, prerequisites, bits
+        case lockedText = "locked_text"
+        case pointCap = "point_cap"
+    }
+
+    var totalPoints: Int { tiers.reduce(0) { $0 + $1.points } }
+}
+
+struct AccountAchievementProgress: Codable, Sendable, Identifiable, Equatable {
+    let id: Int
+    let current: Int?
+    let max: Int?
+    let done: Bool
+    let repeated: Int?
+    let bits: [Int]?
+}
+
+enum RecipeIngredientType: String, Codable, Sendable {
+    case item = "Item"
+    case currency = "Currency"
+    case guildUpgrade = "GuildUpgrade"
+}
+
+struct RecipeIngredient: Codable, Hashable, Sendable {
+    let type: String
+    let id: Int
+    let count: Int
+
+    var knownType: RecipeIngredientType? { RecipeIngredientType(rawValue: type) }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, id, count
+        case itemID = "item_id"
+        case upgradeID = "upgrade_id"
+    }
+
+    init(type: String, id: Int, count: Int) {
+        self.type = type
+        self.id = id
+        self.count = count
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        count = try values.decode(Int.self, forKey: .count)
+        if let itemID = try values.decodeIfPresent(Int.self, forKey: .itemID) {
+            type = RecipeIngredientType.item.rawValue
+            id = itemID
+        } else if let upgradeID = try values.decodeIfPresent(Int.self, forKey: .upgradeID) {
+            type = RecipeIngredientType.guildUpgrade.rawValue
+            id = upgradeID
+        } else {
+            type = try values.decode(String.self, forKey: .type)
+            id = try values.decode(Int.self, forKey: .id)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(type, forKey: .type)
+        try values.encode(id, forKey: .id)
+        try values.encode(count, forKey: .count)
+    }
+}
+
+struct RecipeDefinition: Codable, Sendable, Identifiable, Equatable {
+    let id: Int
+    let type: String
+    let outputItemID: Int?
+    let outputItemCount: Int
+    let timeToCraftMS: Int?
+    let disciplines: [String]
+    let minRating: Int
+    let flags: [String]
+    let ingredients: [RecipeIngredient]
+    let chatLink: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, disciplines, flags, ingredients
+        case outputItemID = "output_item_id"
+        case outputItemCount = "output_item_count"
+        case timeToCraftMS = "time_to_craft_ms"
+        case minRating = "min_rating"
+        case chatLink = "chat_link"
+        case guildIngredients = "guild_ingredients"
+    }
+
+    var isAutomaticallyLearned: Bool { flags.contains("AutoLearned") }
+
+    init(
+        id: Int, type: String, outputItemID: Int?, outputItemCount: Int,
+        timeToCraftMS: Int?, disciplines: [String], minRating: Int,
+        flags: [String], ingredients: [RecipeIngredient], chatLink: String?
+    ) {
+        self.id = id
+        self.type = type
+        self.outputItemID = outputItemID
+        self.outputItemCount = outputItemCount
+        self.timeToCraftMS = timeToCraftMS
+        self.disciplines = disciplines
+        self.minRating = minRating
+        self.flags = flags
+        self.ingredients = ingredients
+        self.chatLink = chatLink
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        type = try values.decode(String.self, forKey: .type)
+        outputItemID = try values.decodeIfPresent(Int.self, forKey: .outputItemID)
+        outputItemCount = try values.decodeIfPresent(Int.self, forKey: .outputItemCount) ?? 1
+        timeToCraftMS = try values.decodeIfPresent(Int.self, forKey: .timeToCraftMS)
+        disciplines = try values.decodeIfPresent([String].self, forKey: .disciplines) ?? []
+        minRating = try values.decodeIfPresent(Int.self, forKey: .minRating) ?? 0
+        flags = try values.decodeIfPresent([String].self, forKey: .flags) ?? []
+        let regular = try values.decodeIfPresent([RecipeIngredient].self, forKey: .ingredients) ?? []
+        let guild = try values.decodeIfPresent([RecipeIngredient].self, forKey: .guildIngredients) ?? []
+        ingredients = regular + guild
+        chatLink = try values.decodeIfPresent(String.self, forKey: .chatLink)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(type, forKey: .type)
+        try values.encodeIfPresent(outputItemID, forKey: .outputItemID)
+        try values.encode(outputItemCount, forKey: .outputItemCount)
+        try values.encodeIfPresent(timeToCraftMS, forKey: .timeToCraftMS)
+        try values.encode(disciplines, forKey: .disciplines)
+        try values.encode(minRating, forKey: .minRating)
+        try values.encode(flags, forKey: .flags)
+        try values.encode(ingredients, forKey: .ingredients)
+        try values.encodeIfPresent(chatLink, forKey: .chatLink)
+    }
+}
+
+struct CommerceListingSummary: Codable, Hashable, Sendable {
+    let quantity: Int
+    let unitPrice: Int
+
+    enum CodingKeys: String, CodingKey {
+        case quantity
+        case unitPrice = "unit_price"
+    }
+}
+
+struct CommercePrice: Codable, Sendable, Identifiable, Equatable {
+    let id: Int
+    let whitelisted: Bool?
+    let buys: CommerceListingSummary
+    let sells: CommerceListingSummary
+}
+
+struct TimedCommercePrice: Codable, Sendable, Equatable {
+    let price: CommercePrice
+    let fetchedAt: Date
 }
 
 struct MaterialCategoryMetadata: Codable, Sendable, Identifiable, Equatable {

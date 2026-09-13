@@ -1,0 +1,6 @@
+{
+  "materialStorage":[{"id":3000,"count":8}],
+  "bank":[{"id":3000,"count":4}],
+  "sharedInventory":[{"id":3000,"count":3}],
+  "characters":{"Andrea":[{"id":3000,"count":2}],"Ranger":[{"id":3000,"count":1}]}
+}

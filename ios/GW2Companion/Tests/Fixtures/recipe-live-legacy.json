@@ -1,0 +1,13 @@
+{
+  "id": 1,
+  "type": "Refinement",
+  "output_item_id": 19713,
+  "output_item_count": 1,
+  "time_to_craft_ms": 1000,
+  "disciplines": ["Artificer", "Weaponsmith", "Scribe", "Huntsman"],
+  "min_rating": 75,
+  "flags": ["AutoLearned"],
+  "ingredients": [{"item_id": 19726, "count": 2}],
+  "chat_link": "[&CQEAAAA=]",
+  "guild_ingredients": [{"upgrade_id": 88, "count": 1}]
+}

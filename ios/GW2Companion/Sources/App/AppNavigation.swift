@@ -1,13 +1,13 @@
 import SwiftUI
 
 enum AppTab: Hashable, CaseIterable, Identifiable {
-    case map, characters, inventory, account
+    case map, goals, characters, inventory, account
     var id: Self { self }
     var title: String {
-        switch self { case .map: "Map"; case .characters: "Characters"; case .inventory: "Inventory"; case .account: "Account" }
+        switch self { case .map: "Map"; case .goals: "Goals"; case .characters: "Characters"; case .inventory: "Inventory"; case .account: "Account" }
     }
     var symbol: String {
-        switch self { case .map: "map.fill"; case .characters: "person.2.fill"; case .inventory: "shippingbox.fill"; case .account: "person.crop.circle" }
+        switch self { case .map: "map.fill"; case .goals: "target"; case .characters: "person.2.fill"; case .inventory: "shippingbox.fill"; case .account: "person.crop.circle" }
     }
 }
 enum CharacterSection: String, CaseIterable, Hashable { case equipment, build, inventory }

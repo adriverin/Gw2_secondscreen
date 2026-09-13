@@ -1,0 +1,13 @@
+[
+  {"id":1,"type":"Refinement","output_item_id":2000,"output_item_count":1,"time_to_craft_ms":1000,"disciplines":["Weaponsmith"],"min_rating":100,"flags":[],"ingredients":[{"type":"Item","id":3000,"count":2}],"chat_link":"[&CQEAAAA=]"},
+  {"id":2,"type":"Component","output_item_id":4100,"output_item_count":2,"disciplines":["Weaponsmith"],"min_rating":200,"flags":["AutoLearned"],"ingredients":[{"type":"Item","id":3000,"count":3}]},
+  {"id":3,"type":"Weapon","output_item_id":4000,"output_item_count":1,"disciplines":["Weaponsmith"],"min_rating":300,"flags":[],"ingredients":[{"type":"Item","id":4100,"count":2},{"type":"Item","id":3000,"count":1}]},
+  {"id":4,"type":"Component","output_item_id":5100,"output_item_count":1,"disciplines":["Artificer"],"min_rating":400,"flags":[],"ingredients":[{"type":"Item","id":3000,"count":10}]},
+  {"id":5,"type":"Component","output_item_id":5200,"output_item_count":1,"disciplines":["Artificer"],"min_rating":400,"flags":[],"ingredients":[{"type":"Item","id":3000,"count":20}]},
+  {"id":6,"type":"Weapon","output_item_id":5000,"output_item_count":1,"disciplines":["Artificer"],"min_rating":500,"flags":[],"ingredients":[{"type":"Item","id":5100,"count":1},{"type":"Item","id":5200,"count":1}]},
+  {"id":7,"type":"Refinement","output_item_id":6000,"output_item_count":1,"disciplines":["Chef"],"min_rating":25,"flags":[],"ingredients":[{"type":"Item","id":3000,"count":2}]},
+  {"id":8,"type":"Refinement","output_item_id":6000,"output_item_count":2,"disciplines":["Chef"],"min_rating":50,"flags":[],"ingredients":[{"type":"Item","id":3001,"count":3}]},
+  {"id":9,"type":"Guild","output_item_id":7000,"output_item_count":1,"disciplines":["Scribe"],"min_rating":100,"flags":[],"ingredients":[{"type":"Currency","id":23,"count":5},{"type":"GuildUpgrade","id":88,"count":1},{"type":"FutureType","id":99,"count":2}]},
+  {"id":10,"type":"Synthetic","output_item_id":8000,"output_item_count":1,"disciplines":[],"min_rating":0,"flags":[],"ingredients":[{"type":"Item","id":8100,"count":1}]},
+  {"id":11,"type":"Synthetic","output_item_id":8100,"output_item_count":1,"disciplines":[],"min_rating":0,"flags":[],"ingredients":[{"type":"Item","id":8000,"count":1}]}
+]

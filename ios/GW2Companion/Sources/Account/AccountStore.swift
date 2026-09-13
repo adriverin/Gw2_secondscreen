@@ -23,6 +23,12 @@ final class AccountStore: ObservableObject {
     @Published private(set) var currencies: [Int: CurrencyMetadata] = [:]
     @Published private(set) var itemMetadata: [Int: ItemMetadata] = [:]
     @Published private(set) var holdings: [AccountHolding] = []
+    @Published private(set) var achievementProgress: [Int: AccountAchievementProgress] = [:]
+    @Published private(set) var unlockedRecipeIDs: Set<Int> = []
+    @Published private(set) var unlockedSkinIDs: Set<Int> = []
+    @Published private(set) var unlockedMiniIDs: Set<Int> = []
+    @Published private(set) var accountLastRefreshedAt: Date?
+    @Published private(set) var goalsAccountLastRefreshedAt: Date?
     @Published private(set) var characterDetails: [String: CharacterDetailData] = [:]
     @Published private(set) var loadingCharacterNames: Set<String> = []
     @Published private(set) var isRefreshing = false
@@ -81,6 +87,12 @@ final class AccountStore: ObservableObject {
         currencies = [:]
         itemMetadata = [:]
         holdings = []
+        achievementProgress = [:]
+        unlockedRecipeIDs = []
+        unlockedSkinIDs = []
+        unlockedMiniIDs = []
+        accountLastRefreshedAt = nil
+        goalsAccountLastRefreshedAt = nil
         characterDetails = [:]
         errorMessage = nil
         isStale = false
@@ -133,8 +145,11 @@ final class AccountStore: ObservableObject {
                 currencies = [:]
             }
 
+            await loadGoalAccountData(permissions: allowed)
+
             errorMessage = nil
             isStale = false
+            accountLastRefreshedAt = Date()
             await saveSnapshot()
         } catch is CancellationError {
             return
@@ -143,6 +158,14 @@ final class AccountStore: ObservableObject {
             isStale = !characters.isEmpty || account != nil || !holdings.isEmpty
             if tokenInfo == nil { connectionState = .disconnected }
         }
+    }
+
+    /// Refreshes the authenticated goal endpoints without polling every inventory endpoint.
+    /// Goals calls this on entry and on explicit refresh; it never runs at telemetry frequency.
+    func refreshGoalAccountData() async {
+        guard connectionState == .connected else { return }
+        await loadGoalAccountData(permissions: permissions)
+        await saveSnapshot()
     }
 
     func loadCharacterDetails(_ character: GW2Character, force: Bool = false) async {
@@ -274,6 +297,31 @@ final class AccountStore: ObservableObject {
         isStale = false
     }
 
+    private func loadGoalAccountData(permissions: PermissionSet) async {
+        if permissions.contains(.progression) {
+            if let values = try? await api.accountAchievements() {
+                achievementProgress = Dictionary(uniqueKeysWithValues: values.map { ($0.id, $0) })
+            }
+        } else {
+            achievementProgress = [:]
+        }
+
+        if permissions.contains(.unlocks) {
+            async let recipes = try? api.accountRecipeIDs()
+            async let skins = try? api.accountSkinIDs()
+            async let minis = try? api.accountMiniIDs()
+            let resolved = await (recipes, skins, minis)
+            if let values = resolved.0 { unlockedRecipeIDs = Set(values) }
+            if let values = resolved.1 { unlockedSkinIDs = Set(values) }
+            if let values = resolved.2 { unlockedMiniIDs = Set(values) }
+        } else {
+            unlockedRecipeIDs = []
+            unlockedSkinIDs = []
+            unlockedMiniIDs = []
+        }
+        goalsAccountLastRefreshedAt = Date()
+    }
+
     private static let fixtureCharacters = #"""
     [{"name":"Andrea","race":"Human","gender":"Female","profession":"Mesmer","level":80,"age":4467600,"created":"2018-05-18T17:42:00Z","deaths":83,"crafting":[{"discipline":"Tailor","rating":500,"active":true}]},{"name":"Test Mesmer","race":"Human","gender":"Female","profession":"Mesmer","level":80,"age":1241000,"created":"2025-01-01T12:00:00Z","deaths":14,"crafting":[]},{"name":"Sylvari Ranger","race":"Sylvari","gender":"Male","profession":"Ranger","level":35,"age":1537200,"created":"2024-01-04T12:00:00Z","deaths":12,"crafting":[]}]
     """#
@@ -337,6 +385,12 @@ final class AccountStore: ObservableObject {
         currencies = snapshot.currencies
         itemMetadata = snapshot.itemMetadata
         holdings = snapshot.holdings
+        achievementProgress = snapshot.achievementProgress ?? [:]
+        unlockedRecipeIDs = Set(snapshot.unlockedRecipeIDs ?? [])
+        unlockedSkinIDs = Set(snapshot.unlockedSkinIDs ?? [])
+        unlockedMiniIDs = Set(snapshot.unlockedMiniIDs ?? [])
+        accountLastRefreshedAt = snapshot.accountLastRefreshedAt
+        goalsAccountLastRefreshedAt = snapshot.goalsAccountLastRefreshedAt
         isStale = true
         connectionState = snapshot.tokenInfo == nil ? .disconnected : .connected
     }
@@ -346,7 +400,11 @@ final class AccountStore: ObservableObject {
             tokenInfo: tokenInfo, account: account, world: world, characters: characters,
             professions: professions, characterInventories: characterInventories, bank: bank,
             sharedInventory: sharedInventory, materials: materials, materialCategories: materialCategories,
-            wallet: wallet, currencies: currencies, itemMetadata: itemMetadata, holdings: holdings)
+            wallet: wallet, currencies: currencies, itemMetadata: itemMetadata, holdings: holdings,
+            achievementProgress: achievementProgress, unlockedRecipeIDs: Array(unlockedRecipeIDs),
+            unlockedSkinIDs: Array(unlockedSkinIDs), unlockedMiniIDs: Array(unlockedMiniIDs),
+            accountLastRefreshedAt: accountLastRefreshedAt,
+            goalsAccountLastRefreshedAt: goalsAccountLastRefreshedAt)
         await cache.save(snapshot, named: "account-snapshot")
     }
 }
@@ -366,4 +424,10 @@ private struct AccountSnapshot: Codable, Sendable {
     let currencies: [Int: CurrencyMetadata]
     let itemMetadata: [Int: ItemMetadata]
     let holdings: [AccountHolding]
+    let achievementProgress: [Int: AccountAchievementProgress]?
+    let unlockedRecipeIDs: [Int]?
+    let unlockedSkinIDs: [Int]?
+    let unlockedMiniIDs: [Int]?
+    let accountLastRefreshedAt: Date?
+    let goalsAccountLastRefreshedAt: Date?
 }

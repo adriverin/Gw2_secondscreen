@@ -8,6 +8,7 @@ struct GW2CompanionApp: App {
     @StateObject private var overlays = MapOverlayStore()
     @StateObject private var objectives = MapObjectiveStore()
     @StateObject private var account: AccountStore
+    @StateObject private var goals: GoalStore
     @StateObject private var navigation = AppNavigation()
     private let api: GW2APIClient
 
@@ -15,6 +16,7 @@ struct GW2CompanionApp: App {
         let api = GW2APIClient()
         self.api = api
         _account = StateObject(wrappedValue: AccountStore(api: api))
+        _goals = StateObject(wrappedValue: GoalStore(api: api))
     }
 
     var body: some Scene {
@@ -25,17 +27,23 @@ struct GW2CompanionApp: App {
                 .environmentObject(overlays)
                 .environmentObject(objectives)
                 .environmentObject(account)
+                .environmentObject(goals)
                 .environmentObject(navigation)
                 .tint(GWPalette.accent)
                 .task {
                     telemetry.connectSavedPairing()
                     await account.start()
+                    goals.setAccountScope(account.account?.id)
                 }
                 .onChange(of: telemetry.latest?.character?.name, initial: true) { _, name in
                     account.updateLiveCharacter(name: name)
                 }
+                .onChange(of: account.account?.id) { _, id in goals.setAccountScope(id) }
         }
-        .onChange(of: scenePhase) { _, phase in telemetry.setAppActive(phase == .active) }
+        .onChange(of: scenePhase) { _, phase in
+            telemetry.setAppActive(phase == .active)
+            if phase == .active { Task { await account.refreshGoalAccountData() } }
+        }
     }
 }
 
@@ -82,6 +90,7 @@ private struct RootNavigationView: View {
     private func content(for tab: AppTab) -> some View {
         switch tab {
         case .map: LiveMapView(api: api)
+        case .goals: GoalsView()
         case .characters: CharactersView()
         case .inventory: InventoryView()
         case .account: AccountView()

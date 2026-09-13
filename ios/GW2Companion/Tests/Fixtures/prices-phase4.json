@@ -1,0 +1,5 @@
+[
+  {"id":3000,"whitelisted":true,"buys":{"quantity":100,"unit_price":123},"sells":{"quantity":80,"unit_price":150}},
+  {"id":3001,"whitelisted":true,"buys":{"quantity":0,"unit_price":0},"sells":{"quantity":20,"unit_price":250}},
+  {"id":3002,"whitelisted":true,"buys":{"quantity":12,"unit_price":99},"sells":{"quantity":0,"unit_price":0}}
+]

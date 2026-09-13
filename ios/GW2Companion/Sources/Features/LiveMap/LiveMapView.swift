@@ -7,6 +7,7 @@ struct LiveMapView: View {
     @EnvironmentObject private var objectives: MapObjectiveStore
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var navigation: AppNavigation
+    @EnvironmentObject private var goals: GoalStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var metadata: GW2MapMetadata?
     @State private var metadataFailed = false
@@ -17,6 +18,7 @@ struct LiveMapView: View {
     @State private var selectedObjectiveID: MapObjectiveID?
     @State private var characterPanelExpanded = false
     @State private var focusRequest: MapFocusRequest?
+    @State private var goalAction: SuggestedAction?
 
     private var playerPoint: ContinentPoint? {
         guard telemetry.latest?.positionAvailable == true, let player = telemetry.latest?.player else { return nil }
@@ -35,9 +37,15 @@ struct LiveMapView: View {
                     HStack(spacing: 0) {
                         mapSurface
                         Divider()
-                        NavigatorPanelView(player: playerPoint, onSelect: select)
-                            .frame(minWidth: 280, idealWidth: 310, maxWidth: 340)
-                            .background(.regularMaterial)
+                        VStack(spacing: 0) {
+                            if let goal = goals.activeGoals.first {
+                                mapGoalPanel(goal)
+                                Divider()
+                            }
+                            NavigatorPanelView(player: playerPoint, onSelect: select)
+                        }
+                        .frame(minWidth: 280, idealWidth: 310, maxWidth: 340)
+                        .background(.regularMaterial)
                     }
                 } else {
                     mapSurface
@@ -83,6 +91,7 @@ struct LiveMapView: View {
                 try? await Task.sleep(for: .seconds(4))
                 objectives.clearArrivalNotice()
             }
+            .task(id: goalContextID) { refreshGoalAction() }
         }
     }
 
@@ -103,6 +112,7 @@ struct LiveMapView: View {
                 if metadataFailed { unavailableArtworkBanner }
                 objectiveStatusBanner
                 Spacer()
+                if horizontalSizeClass != .regular, let goal = goals.activeGoals.first { mapGoalPanel(goal) }
                 if let target = objectives.currentTarget { targetCard(target) }
                 currentCharacterPanel
                 controls
@@ -110,6 +120,56 @@ struct LiveMapView: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 8)
         }
+    }
+
+    private func mapGoalPanel(_ goal: PlayerGoal) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ACTIVE GOAL").font(.caption2.bold()).foregroundStyle(.secondary)
+                    Text(goal.title).font(.subheadline.bold()).lineLimit(1)
+                }
+                Spacer()
+                Button("Open") { goals.selectedGoalID = goal.id; navigation.selectedTab = .goals }
+                    .font(.caption.bold())
+            }
+            if let action = goalAction {
+                Text("Next useful: \(action.title)").font(.caption).lineLimit(2)
+                if [.navigate, .gather].contains(action.type), !action.objectiveIDs.isEmpty {
+                    Button("Show") { navigate(action, goal: goal) }
+                        .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                }
+            }
+        }
+        .padding(12)
+        .background(horizontalSizeClass == .regular ? AnyShapeStyle(.clear) : AnyShapeStyle(.regularMaterial),
+                    in: RoundedRectangle(cornerRadius: 15))
+    }
+
+    private var goalContextID: String {
+        "\(goals.activeGoals.first?.id.uuidString ?? "none")-\(account.accountLastRefreshedAt?.timeIntervalSince1970 ?? 0)-\(objectives.sceneRevision)-\(telemetry.latest?.map?.id ?? -1)-\(goals.recipeIndex?.builtAt.timeIntervalSince1970 ?? 0)"
+    }
+
+    private func refreshGoalAction() {
+        guard let goal = goals.activeGoals.first else { goalAction = nil; return }
+        var names = goals.craftableItems.mapValues(\.name)
+        account.itemMetadata.forEach { names[$0.key] = $0.value.name }
+        let actions = SuggestedActionEngine.actions(
+            for: goal, craftingPlan: goals.craftingPlan(for: goal, account: account),
+            achievement: goals.achievementTracking(for: goal, account: account),
+            context: SuggestedActionContext(
+                currentMapID: telemetry.latest?.map?.id, playerPosition: playerPoint,
+                mapObjectives: objectives.objectives, prices: goals.marketPrices, itemNames: names,
+                craftableItemIDs: Set(goals.recipeIndex?.recipeIDsByOutputItem.keys.map { $0 } ?? [])))
+        goalAction = actions.first
+    }
+
+    private func navigate(_ action: SuggestedAction, goal: PlayerGoal) {
+        let all = objectives.objectives + goal.mapLinks.map(\.objective)
+        let values = action.objectiveIDs.compactMap { id in all.first { $0.id == id } }
+        if action.type == .gather { objectives.applyPreset(.gather) }
+        objectives.startGoalRoute(name: goal.title, objectives: values)
+        focusRequest = MapFocusRequest(mode: .both)
     }
 
     private func select(_ objective: MapObjective) {

@@ -1,0 +1,8 @@
+[
+  {"id":1,"name":"Complete Achievement","description":"Done","requirement":"Finish it","type":"Default","flags":[],"tiers":[{"count":1,"points":5}]},
+  {"id":2,"name":"Count Achievement","description":"Make progress","requirement":"Do twelve things","type":"Default","flags":["Repeatable"],"tiers":[{"count":12,"points":10}]},
+  {"id":3,"name":"Text Bits","description":"Hints","requirement":"Follow hints","type":"Default","flags":[],"tiers":[{"count":2,"points":2}],"bits":[{"type":"Text","text":"Visit the ancient ruins"},{"type":"Text","text":"Open the chest"}]},
+  {"id":4,"name":"Item Bits","description":"Items","requirement":"Collect items","type":"ItemSet","flags":[],"tiers":[{"count":1,"points":3}],"bits":[{"type":"Item","id":19697}]},
+  {"id":5,"name":"Skin Bits","description":"Skins","requirement":"Unlock skins","type":"ItemSet","flags":[],"tiers":[{"count":1,"points":3}],"bits":[{"type":"Skin","id":101}]},
+  {"id":6,"name":"Mini Bits","description":"Minis","requirement":"Unlock minis","type":"ItemSet","flags":[],"tiers":[{"count":1,"points":3}],"bits":[{"type":"Minipet","id":202}]}
+]

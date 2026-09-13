@@ -29,6 +29,10 @@ actor GW2APIClient {
     private var traitCache: [Int: TraitMetadata] = [:]
     private var skillCache: [Int: SkillMetadata] = [:]
     private var skinCache: [Int: SkinMetadata] = [:]
+    private var miniCache: [Int: MiniMetadata] = [:]
+    private var achievementCache: [Int: AchievementDefinition] = [:]
+    private var recipeCache: [Int: RecipeDefinition] = [:]
+    private var commercePriceCache: [Int: TimedCommercePrice] = [:]
     private var materialCategoryCache: [Int: MaterialCategoryMetadata] = [:]
     private var mapCache: [Int: GW2MapMetadata] = [:]
     private var floorCache: [String: GW2FloorMetadata] = [:]
@@ -179,6 +183,85 @@ actor GW2APIClient {
         skinCache = await loadedIntCache(skinCache, name: "skins")
         skinCache = try await filledIntCache(skinCache, ids: ids, endpoint: "skins", name: "skins")
         return skinCache.filter { Set(ids).contains($0.key) }
+    }
+
+    func minis(ids: [Int]) async throws -> [Int: MiniMetadata] {
+        miniCache = await loadedIntCache(miniCache, name: "minis")
+        miniCache = try await filledIntCache(miniCache, ids: ids, endpoint: "minis", name: "minis")
+        return miniCache.filter { Set(ids).contains($0.key) }
+    }
+
+    func achievementGroups() async throws -> [AchievementGroup] {
+        if let cached = await diskCache.load([AchievementGroup].self, named: "achievement-groups-v1"), !cached.isEmpty {
+            return cached.sorted { $0.order < $1.order }
+        }
+        let loaded: [AchievementGroup] = try await request("achievements/groups?ids=all")
+        await diskCache.save(loaded, named: "achievement-groups-v1")
+        return loaded.sorted { $0.order < $1.order }
+    }
+
+    func achievementCategories() async throws -> [AchievementCategory] {
+        if let cached = await diskCache.load([AchievementCategory].self, named: "achievement-categories-v1"), !cached.isEmpty {
+            return cached.sorted { $0.order < $1.order }
+        }
+        let loaded: [AchievementCategory] = try await request("achievements/categories?ids=all")
+        await diskCache.save(loaded, named: "achievement-categories-v1")
+        return loaded.sorted { $0.order < $1.order }
+    }
+
+    func achievements(ids: [Int]) async throws -> [Int: AchievementDefinition] {
+        achievementCache = await loadedIntCache(achievementCache, name: "achievements-v1")
+        achievementCache = try await filledIntCache(
+            achievementCache, ids: ids, endpoint: "achievements", name: "achievements-v1")
+        return achievementCache.filter { Set(ids).contains($0.key) }
+    }
+
+    func accountAchievements() async throws -> [AccountAchievementProgress] {
+        try await authenticatedRequest("account/achievements")
+    }
+
+    func recipeIDs() async throws -> [Int] { try await request("recipes") }
+
+    func recipes(ids: [Int]) async throws -> [Int: RecipeDefinition] {
+        recipeCache = await loadedIntCache(recipeCache, name: "recipes-v1")
+        recipeCache = try await filledIntCache(recipeCache, ids: ids, endpoint: "recipes", name: "recipes-v1")
+        return recipeCache.filter { Set(ids).contains($0.key) }
+    }
+
+    func cachedRecipes() async -> [Int: RecipeDefinition] {
+        recipeCache = await loadedIntCache(recipeCache, name: "recipes-v1")
+        return recipeCache
+    }
+
+    func accountRecipeIDs() async throws -> [Int] { try await authenticatedRequest("account/recipes") }
+    func accountSkinIDs() async throws -> [Int] { try await authenticatedRequest("account/skins") }
+    func accountMiniIDs() async throws -> [Int] { try await authenticatedRequest("account/minis") }
+
+    /// Trading Post data is intentionally short-lived. Stale records remain usable as explicitly
+    /// stale fallback data when the network is unavailable.
+    func commercePrices(
+        ids: [Int], force: Bool = false, now: Date = Date(), ttl: TimeInterval = 300
+    ) async throws -> [Int: TimedCommercePrice] {
+        commercePriceCache = await loadedIntCache(commercePriceCache, name: "commerce-prices-v1")
+        let wanted = Array(Set(ids)).sorted()
+        let staleOrMissing = wanted.filter { id in
+            guard !force, let cached = commercePriceCache[id] else { return true }
+            return now.timeIntervalSince(cached.fetchedAt) > ttl
+        }
+        do {
+            for batch in Self.chunks(of: staleOrMissing, size: 200) {
+                let query = batch.map(String.init).joined(separator: ",")
+                let values: [CommercePrice] = try await request("commerce/prices?ids=\(query)")
+                values.forEach { commercePriceCache[$0.id] = TimedCommercePrice(price: $0, fetchedAt: now) }
+            }
+            if !staleOrMissing.isEmpty {
+                await diskCache.save(commercePriceCache, named: "commerce-prices-v1")
+            }
+        } catch {
+            let fallback = commercePriceCache.filter { Set(wanted).contains($0.key) }
+            if fallback.isEmpty { throw error }
+        }
+        return commercePriceCache.filter { Set(wanted).contains($0.key) }
     }
 
     func materialCategories(ids: [Int]) async throws -> [Int: MaterialCategoryMetadata] {
