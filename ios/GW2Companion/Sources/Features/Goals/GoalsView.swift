@@ -294,6 +294,11 @@ struct GoalDetailView: View {
 
             recipeOptions(goal, plan: plan)
 
+            GWSectionHeader(title: "Dependency Tree", subtitle: "Recipe expansion with account supply allocated at each node")
+            GWCard {
+                CraftRequirementTree(node: plan.root)
+            }
+
             GWSectionHeader(title: "Missing Materials", subtitle: "Consolidated globally; account supply is allocated once")
             let missing = plan.flattenedRequirements.filter { $0.missingQuantity > 0 }
             if missing.isEmpty {
@@ -543,6 +548,65 @@ struct GoalDetailView: View {
             ? "Can craft: \(discipline) \(capability.highestRating) • \(capability.characterName ?? "account")"
             : "Requires \(discipline) \(capability.requiredRating); highest \(capability.highestRating)"
         return "\(skill) • recipe \(capability.recipeAvailability.rawValue)"
+    }
+}
+
+private struct CraftRequirementTree: View {
+    let node: CraftRequirementNode
+    @EnvironmentObject private var store: GoalStore
+    @EnvironmentObject private var account: AccountStore
+
+    var body: some View {
+        if node.children.isEmpty {
+            row
+        } else {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(node.children) { child in
+                        CraftRequirementTree(node: child)
+                            .padding(.leading, 8)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                row
+            }
+        }
+    }
+
+    private var row: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(displayName).font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(node.ownedQuantity) owned • \(node.missingQuantity) missing")
+                    .font(.caption)
+                    .foregroundStyle(node.missingQuantity == 0 ? .green : .secondary)
+            }
+            HStack(spacing: 5) {
+                Text("\(node.requiredQuantity) required")
+                if let recipeID = node.recipeID {
+                    Text("• Recipe \(recipeID)")
+                }
+                if !node.issues.isEmpty {
+                    Text("• \(node.issues.count) notice\(node.issues.count == 1 ? "" : "s")")
+                        .foregroundStyle(.orange)
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var displayName: String {
+        switch node.requirement {
+        case let .item(id):
+            store.craftableItems[id]?.name ?? account.itemMetadata[id]?.name ?? store.achievementItems[id]?.name ?? "Item \(id)"
+        case let .currency(id): account.currencies[id]?.name ?? "Currency \(id)"
+        case let .guildUpgrade(id): "Guild Upgrade \(id)"
+        case let .unknown(type, id): "\(type) \(id)"
+        }
     }
 }
 

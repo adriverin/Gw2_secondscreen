@@ -150,7 +150,7 @@
 		DFC16DAE75FC39EE4D34A83A /* MetadataDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataDiskCache.swift; sourceTree = "<group>"; };
 		E3614751CB5BEEFECCA3C97D /* CharacterPortraitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterPortraitStore.swift; sourceTree = "<group>"; };
 		ED30358E8898943C2A040207 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
-		EE59F1F0127AAB88631A307D /* GW2Companion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GW2Companion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EE59F1F0127AAB88631A307D /* GW2Companion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GW2Companion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0557C9CF9C9322538E0C4D7 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		F1093BA2E21721B07BA3FD49 /* account-achievements-phase4.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "account-achievements-phase4.json"; sourceTree = "<group>"; };
 		F380C84FC6A0DB82D7E38403 /* NavigatorPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigatorPanelView.swift; sourceTree = "<group>"; };
@@ -476,7 +476,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					088CC8461AA405A2F04326F4 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					9760848F6C87A7088A9457A0 = {
@@ -760,6 +759,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = CA4ZH8R7Y7;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -794,6 +794,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = CA4ZH8R7Y7;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
