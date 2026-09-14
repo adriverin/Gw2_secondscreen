@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "2026.09.14.1",
+  "lastReviewedAt": "2026-09-14T00:00:00Z",
+  "coverage": "exampleOnly",
+  "methods": [
+    {
+      "id": "curated:gather:copper-ore",
+      "target": { "kind": "item", "numericID": 19697, "quantity": 1 },
+      "type": "gathering", "title": "Gather Copper Ore",
+      "description": "Known ore markers can indicate possible copper-node locations; spawn and yield are not guaranteed.",
+      "requirements": [],
+      "source": { "type": "companionCurated", "sourceID": "phase5-material-mapping", "reviewedAt": "2026-09-14T00:00:00Z", "notes": "Item-to-marker mapping maintained by the Companion project." },
+      "confidence": "strong", "coverage": "partial", "gatheringCategory": "ore", "markerSubtype": "Copper"
+    },
+    {
+      "id": "curated:gather:iron-ore",
+      "target": { "kind": "item", "numericID": 19699, "quantity": 1 },
+      "type": "gathering", "title": "Gather Iron Ore",
+      "description": "Known ore markers can indicate possible iron-node locations; spawn and yield are not guaranteed.",
+      "requirements": [],
+      "source": { "type": "companionCurated", "sourceID": "phase5-material-mapping", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "strong", "coverage": "partial", "gatheringCategory": "ore", "markerSubtype": "Iron"
+    },
+    {
+      "id": "curated:gather:mithril-ore",
+      "target": { "kind": "item", "numericID": 19700, "quantity": 1 },
+      "type": "gathering", "title": "Gather Mithril Ore",
+      "description": "Known ore markers can indicate possible mithril-node locations; spawn and yield are not guaranteed.",
+      "requirements": [],
+      "source": { "type": "companionCurated", "sourceID": "phase5-material-mapping", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "strong", "coverage": "partial", "gatheringCategory": "ore", "markerSubtype": "Mithril"
+    },
+    {
+      "id": "curated:gather:orichalcum-ore",
+      "target": { "kind": "item", "numericID": 19701, "quantity": 1 },
+      "type": "gathering", "title": "Gather Orichalcum Ore",
+      "description": "Known ore markers can indicate possible orichalcum-node locations; spawn and yield are not guaranteed.",
+      "requirements": [],
+      "source": { "type": "companionCurated", "sourceID": "phase5-material-mapping", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "strong", "coverage": "partial", "gatheringCategory": "ore", "markerSubtype": "Orichalcum"
+    },
+    {
+      "id": "curated:gather:green-wood-log",
+      "target": { "kind": "item", "numericID": 19723, "quantity": 1 },
+      "type": "gathering", "title": "Gather Green Wood Logs",
+      "description": "Known wood markers can indicate possible green-wood locations; spawn and yield are not guaranteed.",
+      "requirements": [],
+      "source": { "type": "companionCurated", "sourceID": "phase5-material-mapping", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "strong", "coverage": "partial", "gatheringCategory": "wood", "markerSubtype": "Green Wood"
+    },
+    {
+      "id": "curated:gather:soft-wood-log",
+      "target": { "kind": "item", "numericID": 19726, "quantity": 1 },
+      "type": "gathering", "title": "Gather Soft Wood Logs",
+      "description": "Known wood markers can indicate possible soft-wood locations; spawn and yield are not guaranteed.",
+      "requirements": [],
+      "source": { "type": "companionCurated", "sourceID": "phase5-material-mapping", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "strong", "coverage": "partial", "gatheringCategory": "wood", "markerSubtype": "Soft Wood"
+    },
+    {
+      "id": "curated:gather:elder-wood-log",
+      "target": { "kind": "item", "numericID": 19722, "quantity": 1 },
+      "type": "gathering", "title": "Gather Elder Wood Logs",
+      "description": "Known wood markers can indicate possible elder-wood locations; spawn and yield are not guaranteed.",
+      "requirements": [],
+      "source": { "type": "companionCurated", "sourceID": "phase5-material-mapping", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "strong", "coverage": "partial", "gatheringCategory": "wood", "markerSubtype": "Elder Wood"
+    },
+    {
+      "id": "curated:gather:ancient-wood-log",
+      "target": { "kind": "item", "numericID": 19725, "quantity": 1 },
+      "type": "gathering", "title": "Gather Ancient Wood Logs",
+      "description": "Known wood markers can indicate possible ancient-wood locations; spawn and yield are not guaranteed.",
+      "requirements": [],
+      "source": { "type": "companionCurated", "sourceID": "phase5-material-mapping", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "strong", "coverage": "partial", "gatheringCategory": "wood", "markerSubtype": "Ancient Wood"
+    },
+    {
+      "id": "curated:vendor:basic-salvage-kit",
+      "target": { "kind": "custom", "quantity": 1, "customID": "basic-salvage-kit-purchase" },
+      "type": "vendor", "title": "Buy a Basic Salvage Kit",
+      "description": "Common merchants sell basic salvage kits for coin.",
+      "requirements": [{ "kind": "vendorInteraction", "value": "Interact with a common merchant" }],
+      "cost": { "coinCopper": 88, "currencies": [], "items": [] },
+      "source": { "type": "companionCurated", "sourceID": "phase5-vendor-examples", "reviewedAt": "2026-09-14T00:00:00Z", "notes": "Example-only vendor coverage; availability and price should be confirmed in game." },
+      "confidence": "limited", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:vendor:obsidian-shard-spirit-shard",
+      "target": { "kind": "item", "numericID": 19925, "quantity": 1 },
+      "type": "vendor", "title": "Exchange for an Obsidian Shard",
+      "description": "A curated example of an item acquired with account currency rather than coin.",
+      "requirements": [{ "kind": "vendorInteraction", "value": "Use a supported Obsidian Shard vendor" }],
+      "cost": { "currencies": [{ "currencyID": 23, "quantity": 1 }], "items": [] },
+      "source": { "type": "companionCurated", "sourceID": "phase5-vendor-examples", "reviewedAt": "2026-09-14T00:00:00Z", "notes": "Example-only vendor coverage; alternate vendors and costs are not represented." },
+      "confidence": "limited", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:vendor:laurel-purchase-pattern",
+      "target": { "kind": "custom", "quantity": 1, "customID": "laurel-vendor-purchase" },
+      "type": "vendor", "title": "Use a Laurel Merchant",
+      "description": "Laurel merchants demonstrate currency-based vendor acquisition; the desired item and exact cost must be selected in game.",
+      "requirements": [{ "kind": "vendorInteraction", "value": "Interact with a Laurel Merchant" }],
+      "source": { "type": "companionCurated", "sourceID": "phase5-vendor-examples", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "limited", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:mystic-forge:mystic-salvage-kit",
+      "target": { "kind": "custom", "quantity": 1, "customID": "mystic-salvage-kit" },
+      "type": "mysticForge", "title": "Create a Mystic Salvage Kit",
+      "description": "A manually curated Mystic Forge transformation. Confirm the current inputs in game before spending resources.",
+      "requirements": [{ "kind": "manual", "value": "Assemble the four current Mystic Salvage Kit inputs" }],
+      "source": { "type": "companionCurated", "sourceID": "phase5-mystic-forge-examples", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "limited", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:mystic-forge:mystic-clover",
+      "target": { "kind": "item", "numericID": 19675, "quantity": 1 },
+      "type": "mysticForge", "title": "Use a Mystic Clover Forge Recipe",
+      "description": "Mystic Clover recipes are represented as a manual choice because outcomes and supported recipes require more modeling.",
+      "requirements": [{ "kind": "manual", "value": "Choose and verify a current Mystic Clover recipe in game" }],
+      "source": { "type": "companionCurated", "sourceID": "phase5-mystic-forge-examples", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "limited", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:achievement:reward-pattern",
+      "target": { "kind": "custom", "quantity": 1, "customID": "achievement-reward-item" },
+      "type": "achievement", "title": "Complete the linked achievement",
+      "description": "Achievement rewards are supported structurally; exact rewards should come from loaded ArenaNet definitions.",
+      "requirements": [{ "kind": "manual", "value": "Select a tracked achievement with an ArenaNet reward definition" }],
+      "source": { "type": "companionCurated", "sourceID": "phase5-achievement-examples", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "limited", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:achievement:unlock-pattern",
+      "target": { "kind": "custom", "quantity": 1, "customID": "achievement-reward-unlock" },
+      "type": "achievement", "title": "Earn a linked achievement unlock",
+      "description": "Achievement unlock rewards are supported structurally; the exact unlock must come from a loaded ArenaNet definition.",
+      "requirements": [{ "kind": "manual", "value": "Select a tracked achievement with an ArenaNet unlock reward" }],
+      "source": { "type": "companionCurated", "sourceID": "phase5-achievement-examples", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "limited", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:achievement:objective-pattern",
+      "target": { "kind": "custom", "quantity": 1, "customID": "achievement-world-objective" },
+      "type": "worldObjective", "title": "Visit a user-linked achievement objective",
+      "description": "A map objective linked by the player can be routed without claiming official achievement completion.",
+      "requirements": [{ "kind": "manual", "value": "Link a trustworthy map objective to the tracked achievement" }],
+      "source": { "type": "companionCurated", "sourceID": "phase5-achievement-examples", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "strong", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:manual:unknown-source",
+      "target": { "kind": "custom", "quantity": 1, "customID": "unknown-acquisition" },
+      "type": "manual", "title": "Resolve acquisition manually",
+      "description": "Record a note without implying that Companion knows the source.",
+      "requirements": [{ "kind": "manual", "value": "User verifies the acquisition method" }],
+      "source": { "type": "companionCurated", "sourceID": "phase5-manual-examples", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "unknown", "coverage": "exampleOnly"
+    },
+    {
+      "id": "curated:manual:unsupported-condition",
+      "target": { "kind": "custom", "quantity": 1, "customID": "unsupported-manual-condition" },
+      "type": "manual", "title": "Verify an unsupported condition",
+      "description": "Keeps an unknown step visible instead of inventing an automated acquisition rule.",
+      "requirements": [{ "kind": "manual", "value": "Player verifies the condition in game" }],
+      "source": { "type": "companionCurated", "sourceID": "phase5-manual-examples", "reviewedAt": "2026-09-14T00:00:00Z" },
+      "confidence": "unknown", "coverage": "exampleOnly"
+    }
+  ]
+}

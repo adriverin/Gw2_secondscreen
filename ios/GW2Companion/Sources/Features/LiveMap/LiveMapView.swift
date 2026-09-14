@@ -8,6 +8,7 @@ struct LiveMapView: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var navigation: AppNavigation
     @EnvironmentObject private var goals: GoalStore
+    @EnvironmentObject private var sessions: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var metadata: GW2MapMetadata?
     @State private var metadataFailed = false
@@ -38,7 +39,10 @@ struct LiveMapView: View {
                         mapSurface
                         Divider()
                         VStack(spacing: 0) {
-                            if let goal = goals.activeGoals.first {
+                            if sessions.activeSession != nil {
+                                ActiveSessionCompactView()
+                                Divider()
+                            } else if let goal = goals.activeGoals.first {
                                 mapGoalPanel(goal)
                                 Divider()
                             }
@@ -112,7 +116,10 @@ struct LiveMapView: View {
                 if metadataFailed { unavailableArtworkBanner }
                 objectiveStatusBanner
                 Spacer()
-                if horizontalSizeClass != .regular, let goal = goals.activeGoals.first { mapGoalPanel(goal) }
+                if horizontalSizeClass != .regular, sessions.activeSession != nil {
+                    ActiveSessionCompactView()
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+                } else if horizontalSizeClass != .regular, let goal = goals.activeGoals.first { mapGoalPanel(goal) }
                 if let target = objectives.currentTarget { targetCard(target) }
                 currentCharacterPanel
                 controls

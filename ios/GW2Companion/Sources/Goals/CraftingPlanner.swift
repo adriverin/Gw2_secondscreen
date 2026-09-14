@@ -427,10 +427,32 @@ struct GatheringMaterialMapping: Codable, Hashable, Sendable {
 }
 
 enum ValidatedGatheringMappings {
-    /// Deliberately small. A marker is a possible location, never a yield guarantee.
+    /// Deliberately partial. These mirror the versioned acquisition catalog; a marker is a
+    /// possible location, never proof of a spawn, interaction, or yield.
     static let values = [
         GatheringMaterialMapping(
+            itemID: 19_697, gatheringCategory: .ore, markerSubtype: "Copper",
+            provenance: .companionObserved),
+        GatheringMaterialMapping(
+            itemID: 19_699, gatheringCategory: .ore, markerSubtype: "Iron",
+            provenance: .companionObserved),
+        GatheringMaterialMapping(
             itemID: 19_700, gatheringCategory: .ore, markerSubtype: "Mithril",
+            provenance: .companionObserved),
+        GatheringMaterialMapping(
+            itemID: 19_701, gatheringCategory: .ore, markerSubtype: "Orichalcum",
+            provenance: .companionObserved),
+        GatheringMaterialMapping(
+            itemID: 19_723, gatheringCategory: .wood, markerSubtype: "Green Wood",
+            provenance: .companionObserved),
+        GatheringMaterialMapping(
+            itemID: 19_726, gatheringCategory: .wood, markerSubtype: "Soft Wood",
+            provenance: .companionObserved),
+        GatheringMaterialMapping(
+            itemID: 19_722, gatheringCategory: .wood, markerSubtype: "Elder Wood",
+            provenance: .companionObserved),
+        GatheringMaterialMapping(
+            itemID: 19_725, gatheringCategory: .wood, markerSubtype: "Ancient Wood",
             provenance: .companionObserved)
     ]
 
@@ -496,5 +518,19 @@ enum AcquisitionOptionEngine {
         var result: [AcquisitionOption] = []
         for provider in providers { result.append(contentsOf: await provider.options(for: requirement)) }
         return result
+    }
+
+    /// Phase 5 adapter: views and planners consume the same typed knowledge records while the
+    /// established dependency graph can keep its compact Phase 4 presentation model.
+    static func options(
+        for requirement: Requirement, methods: [AcquisitionMethod]
+    ) -> [AcquisitionOption] {
+        let key: String = switch requirement {
+        case let .item(id): AcquisitionTarget.item(id: id).key
+        case let .currency(id): AcquisitionTarget.currency(id: id).key
+        case let .guildUpgrade(id): AcquisitionTarget.custom("guild-upgrade:\(id)").key
+        case let .unknown(type, id): AcquisitionTarget.custom("unknown:\(type):\(id)").key
+        }
+        return methods.filter { $0.target.key == key }.map(\.phaseFourOption)
     }
 }

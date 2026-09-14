@@ -1,6 +1,6 @@
 import Foundation
 
-struct ContinentPoint: Equatable, Sendable {
+struct ContinentPoint: Codable, Hashable, Sendable {
     let x: Double
     let y: Double
 }

@@ -9,6 +9,7 @@ struct GW2CompanionApp: App {
     @StateObject private var objectives = MapObjectiveStore()
     @StateObject private var account: AccountStore
     @StateObject private var goals: GoalStore
+    @StateObject private var sessions = SessionStore()
     @StateObject private var navigation = AppNavigation()
     private let api: GW2APIClient
 
@@ -28,17 +29,31 @@ struct GW2CompanionApp: App {
                 .environmentObject(objectives)
                 .environmentObject(account)
                 .environmentObject(goals)
+                .environmentObject(sessions)
                 .environmentObject(navigation)
                 .tint(GWPalette.accent)
                 .task {
+#if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--simulate-telemetry") {
+                        telemetry.startSimulation()
+                    } else {
+                        telemetry.connectSavedPairing()
+                    }
+#else
                     telemetry.connectSavedPairing()
+#endif
                     await account.start()
                     goals.setAccountScope(account.account?.id)
+                    sessions.setAccountScope(account.account?.id)
+                    await sessions.prepare(recipes: goals.recipes, prices: goals.marketPrices)
                 }
                 .onChange(of: telemetry.latest?.character?.name, initial: true) { _, name in
                     account.updateLiveCharacter(name: name)
                 }
-                .onChange(of: account.account?.id) { _, id in goals.setAccountScope(id) }
+                .onChange(of: account.account?.id) { _, id in
+                    goals.setAccountScope(id)
+                    sessions.setAccountScope(id)
+                }
         }
         .onChange(of: scenePhase) { _, phase in
             telemetry.setAppActive(phase == .active)
@@ -91,6 +106,7 @@ private struct RootNavigationView: View {
         switch tab {
         case .map: LiveMapView(api: api)
         case .goals: GoalsView()
+        case .session: SessionPlannerView()
         case .characters: CharactersView()
         case .inventory: InventoryView()
         case .account: AccountView()

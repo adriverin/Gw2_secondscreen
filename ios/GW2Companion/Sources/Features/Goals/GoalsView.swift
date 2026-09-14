@@ -5,6 +5,8 @@ struct GoalsView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @EnvironmentObject private var store: GoalStore
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var sessions: SessionStore
+    @EnvironmentObject private var navigation: AppNavigation
     @State private var showingAddGoal = false
     @State private var showingArchive = false
 
@@ -34,6 +36,7 @@ struct GoalsView: View {
             async let recipes: Void = store.prepareRecipes()
             async let progress: Void = account.refreshGoalAccountData()
             _ = await (achievements, recipes, progress)
+            await sessions.refreshAPIDerived(recipes: store.recipes, prices: store.marketPrices)
             for goal in store.activeGoals {
                 if case let .achievement(id) = goal.type { await store.loadAchievement(id: id) }
             }
@@ -86,6 +89,11 @@ struct GoalsView: View {
         }
         .navigationTitle("Goals")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { navigation.selectedTab = .session } label: {
+                    Label("Plan Session", systemImage: "checklist")
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { showingAddGoal = true } label: { Label("Add Goal", systemImage: "plus") }
             }
@@ -141,6 +149,7 @@ struct GoalDetailView: View {
     @EnvironmentObject private var objectives: MapObjectiveStore
     @EnvironmentObject private var navigation: AppNavigation
     @EnvironmentObject private var telemetry: TelemetryStore
+    @EnvironmentObject private var sessions: SessionStore
     @State private var selectedRequirement: FlattenedRequirement?
     @State private var linkBitIndex: Int?
     @State private var showingLinkPicker = false
@@ -166,7 +175,7 @@ struct GoalDetailView: View {
                 .navigationTitle(goal.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { statusMenu(goal) }
-                .sheet(item: $selectedRequirement) { RequirementDetailView(requirement: $0) }
+                .sheet(item: $selectedRequirement) { RequirementDetailView(requirement: $0, goalID: goal.id) }
                 .sheet(isPresented: $showingLinkPicker) {
                     ObjectiveLinkPicker(goalID: goal.id, achievementBitIndex: linkBitIndex)
                 }
@@ -180,6 +189,7 @@ struct GoalDetailView: View {
                     if let plan = store.craftingPlan(for: goal, account: account) {
                         await store.refreshPrices(for: plan)
                     }
+                    await sessions.refreshAPIDerived(recipes: store.recipes, prices: store.marketPrices)
                 }
             } else {
                 GWEmptyState(title: "Goal unavailable", message: "This goal is no longer in the active account scope.", symbol: "target")
@@ -612,9 +622,13 @@ private struct CraftRequirementTree: View {
 
 struct RequirementDetailView: View {
     let requirement: FlattenedRequirement
+    let goalID: UUID
     @EnvironmentObject private var store: GoalStore
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var sessions: SessionStore
+    @EnvironmentObject private var telemetry: TelemetryStore
     @Environment(\.dismiss) private var dismiss
+    @State private var showingAddMethod = false
 
     var body: some View {
         NavigationStack {
@@ -649,9 +663,48 @@ struct RequirementDetailView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                Section("Ways To Get It") {
+                    let values = sessions.methods(for: target)
+                    if values.isEmpty {
+                        Text("No known acquisition methods. Add a local note or resolve this requirement manually.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(values) { method in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(method.title).font(.headline)
+                                    Text(method.type.title).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("Use for this goal") {
+                                    sessions.chooseMethod(method.type, goalID: goalID, requirementID: requirement.id)
+                                }.font(.caption)
+                            }
+                            if let description = method.description {
+                                Text(description).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Text("\(method.source.displayTitle) • \(method.coverage.rawValue) coverage")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                    Button("Add acquisition method") { showingAddMethod = true }
+                }
             }
             .navigationTitle(displayName)
             .toolbar { Button("Done") { dismiss() } }
+            .sheet(isPresented: $showingAddMethod) {
+                AddAcquisitionMethodView(target: target)
+            }
+        }
+    }
+
+    private var target: AcquisitionTarget {
+        switch requirement.requirement {
+        case let .item(id): .item(id: id, quantity: max(1, requirement.missingQuantity))
+        case let .currency(id): .currency(id: id, quantity: max(1, requirement.missingQuantity))
+        case let .guildUpgrade(id): .custom("guild-upgrade:\(id)", quantity: max(1, requirement.missingQuantity))
+        case let .unknown(type, id): .custom("unknown:\(type):\(id)", quantity: max(1, requirement.missingQuantity))
         }
     }
 
@@ -663,6 +716,57 @@ struct RequirementDetailView: View {
         case let .guildUpgrade(id): "Guild Upgrade \(id)"
         case let .unknown(type, id): "\(type) \(id)"
         }
+    }
+}
+
+private struct AddAcquisitionMethodView: View {
+    let target: AcquisitionTarget
+    @EnvironmentObject private var sessions: SessionStore
+    @EnvironmentObject private var telemetry: TelemetryStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var notes = ""
+    @State private var includeCurrentMap = false
+    @State private var includeCurrentPosition = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Method") {
+                    TextField("Title", text: $title)
+                    TextField("Notes", text: $notes, axis: .vertical)
+                }
+                if telemetry.latest?.map?.id != nil {
+                    Section("Location") {
+                        Toggle("Save current map", isOn: $includeCurrentMap)
+                        Toggle("Save exact current position", isOn: $includeCurrentPosition)
+                            .disabled(playerPoint == nil)
+                        Text("Exact coordinates are saved only when live telemetry provides them.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Add Acquisition Method")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            await sessions.addUserMethod(
+                                target: target, title: title, notes: notes,
+                                mapID: includeCurrentMap || includeCurrentPosition ? telemetry.latest?.map?.id : nil,
+                                currentPosition: includeCurrentPosition ? playerPoint : nil)
+                            dismiss()
+                        }
+                    }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private var playerPoint: ContinentPoint? {
+        guard telemetry.latest?.positionAvailable == true, let player = telemetry.latest?.player else { return nil }
+        return ContinentPoint(x: player.continentX, y: player.continentY)
     }
 }
 
