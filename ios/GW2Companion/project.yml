@@ -17,7 +17,7 @@ targets:
       properties:
         CFBundleDisplayName: GW2 Companion
         NSCameraUsageDescription: Scan the pairing QR code shown by GW2 Companion Bridge.
-        NSLocalNetworkUsageDescription: Connect to GW2 Companion Bridge on your local network to show your in-game position.
+        NSLocalNetworkUsageDescription: GW2 Companion uses your local network to receive live Guild Wars 2 position data from GW2 Companion Bridge on your PC.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UILaunchScreen: {}
@@ -44,6 +44,17 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.GW2CompanionTests
         GENERATE_INFOPLIST_FILE: YES
+  GW2CompanionUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: GW2Companion
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.GW2CompanionUITests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   GW2Companion:
     build:
@@ -53,3 +64,4 @@ schemes:
     test:
       targets:
         - GW2CompanionTests
+        - GW2CompanionUITests

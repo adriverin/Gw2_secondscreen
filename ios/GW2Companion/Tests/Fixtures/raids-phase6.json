@@ -1,0 +1,14 @@
+[
+  {"id":"forsaken_thicket","wings":[
+    {"id":"spirit_vale","events":[
+      {"id":"vale_guardian","type":"Boss"},
+      {"id":"spirit_woods","type":"Checkpoint"},
+      {"id":"gorseval","type":"Boss"},
+      {"id":"sabetha","type":"Boss"}
+    ]},
+    {"id":"salvation_pass","events":[
+      {"id":"slothasor","type":"Boss"},
+      {"id":"future_event","type":"FutureType"}
+    ]}
+  ]}
+]

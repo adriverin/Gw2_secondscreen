@@ -9,6 +9,7 @@ struct LiveMapView: View {
     @EnvironmentObject private var navigation: AppNavigation
     @EnvironmentObject private var goals: GoalStore
     @EnvironmentObject private var sessions: SessionStore
+    @EnvironmentObject private var today: TodayStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var metadata: GW2MapMetadata?
     @State private var metadataFailed = false
@@ -41,6 +42,9 @@ struct LiveMapView: View {
                         VStack(spacing: 0) {
                             if sessions.activeSession != nil {
                                 ActiveSessionCompactView()
+                                Divider()
+                            } else if today.snapshot != nil {
+                                TodayCompactView()
                                 Divider()
                             } else if let goal = goals.activeGoals.first {
                                 mapGoalPanel(goal)
@@ -331,17 +335,19 @@ struct LiveMapView: View {
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Button("Connect to PC") { showingPairing = true }.buttonStyle(.borderedProminent).tint(.orange)
             }.padding(14).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
-        case .gameNotRunning: statusBanner("Guild Wars 2 is not running.", symbol: "gamecontroller")
+        case .connectedNoGW2: statusBanner("Connected to your PC. Launch Guild Wars 2 and enter the game.", symbol: "gamecontroller")
         case let .positionUnavailable(message): statusBanner(message, symbol: "location.slash")
-        case .bridgeOffline: statusBanner("Can't reach your PC. Make sure both devices are on the same network.", symbol: "wifi.slash")
+        case .stale: statusBanner("Guild Wars 2 telemetry is temporarily stale. Waiting for fresh data…", symbol: "clock.arrow.circlepath")
+        case .disconnected: statusBanner("Can't reach your PC. Check the network, bridge, and Private-network firewall access.", symbol: "wifi.slash")
         case .connecting: statusBanner("Connecting to GW2 Companion Bridge…", symbol: "arrow.triangle.2.circlepath")
         case .reconnecting: statusBanner("Connection lost. Reconnecting automatically…", symbol: "arrow.triangle.2.circlepath")
-        case .pairAgain:
+        case .pairingInvalid:
             VStack(spacing: 8) {
                 statusBanner("The bridge pairing changed. Scan its QR code again.", symbol: "qrcode")
                 Button("Pair again") { showingPairing = true }.buttonStyle(.borderedProminent).tint(.orange)
             }
-        case .live: EmptyView()
+        case let .protocolMismatch(message): statusBanner(message, symbol: "exclamationmark.arrow.triangle.2.circlepath")
+        case .connectedLive: EmptyView()
         }
     }
 
@@ -372,7 +378,7 @@ struct LiveMapView: View {
 
     private var statusColor: Color {
         switch telemetry.state {
-        case .live: .green
+        case .connectedLive: .green
         case .connecting, .reconnecting: .yellow
         default: .orange
         }

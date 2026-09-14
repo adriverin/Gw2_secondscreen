@@ -1,6 +1,6 @@
 import Foundation
 
-private struct SessionPersistenceSnapshot: Codable {
+struct SessionPersistenceSnapshot: Codable {
     static let schemaVersion = 1
     let schemaVersion: Int
     var preferences: PlanningPreferences
@@ -40,6 +40,15 @@ final class SessionStore: ObservableObject {
         Task { await mergeKnowledge() }
     }
 
+    func deleteAllLocalSessionsAndHistory() {
+        activeSession = nil
+        draftPlan = nil
+        history = []
+        userMethods = []
+        mapChangePending = nil
+        persist()
+    }
+
     func prepare(
         provider: any AcquisitionCatalogProvider = BundledCatalogProvider(),
         recipes: [Int: RecipeDefinition] = [:], prices: [Int: TimedCommercePrice] = [:]
@@ -53,7 +62,7 @@ final class SessionStore: ObservableObject {
             knowledgeError = nil
         } catch {
             // User data and an existing plan remain usable offline even if the bundle is damaged.
-            knowledgeError = error.localizedDescription
+            knowledgeError = error.userFacingMessage(fallback: "Acquisition data couldn’t be loaded. Your saved plans are still available.")
             await knowledgeStore.replaceUserDeclared(with: userMethods)
             await knowledgeStore.replaceAPIDerived(with: AcquisitionMethodFactory.apiDerived(recipes: recipes, prices: prices))
             knowledgeMethods = await knowledgeStore.allMethods()
@@ -112,13 +121,17 @@ final class SessionStore: ObservableObject {
         draftPlan = SessionPlanner.plan(context: context)
     }
 
-    func startDraft(snapshot: SessionAccountSnapshot, playerPosition: ContinentPoint?) {
+    func startDraft(
+        snapshot: SessionAccountSnapshot, todaySnapshot: TodayProgressSnapshot? = nil,
+        playerPosition: ContinentPoint?
+    ) {
         guard let draftPlan, !draftPlan.tasks.isEmpty else { return }
         activeSession = ActiveSession(
             id: UUID(), createdAt: Date(), endedAt: nil,
             planningHorizon: draftPlan.parameters.duration,
             initialMapID: draftPlan.currentMapID, initialPlayerPosition: playerPosition,
             initialAccountSnapshot: snapshot, latestAccountSnapshot: snapshot,
+            initialTodaySnapshot: todaySnapshot, latestTodaySnapshot: todaySnapshot,
             tasks: draftPlan.tasks)
         mapChangePending = nil
         persist()
@@ -133,6 +146,12 @@ final class SessionStore: ObservableObject {
 
     func updateAccountSnapshot(_ snapshot: SessionAccountSnapshot) {
         activeSession?.latestAccountSnapshot = snapshot
+        persist()
+    }
+
+    func updateTodaySnapshot(_ snapshot: TodayProgressSnapshot?) {
+        guard let snapshot else { return }
+        activeSession?.latestTodaySnapshot = snapshot
         persist()
     }
 
@@ -161,6 +180,12 @@ final class SessionStore: ObservableObject {
         let maps = Set(session.tasks.compactMap { task in
             [.visited, .completed].contains(task.state) ? task.mapID : nil
         }).sorted()
+        let todayChanges: [TodayProgressChange]?
+        if let before = session.initialTodaySnapshot, let after = session.latestTodaySnapshot {
+            todayChanges = TodayProgressDiff.changes(from: before, to: after)
+        } else {
+            todayChanges = nil
+        }
         let entry = SessionHistoryEntry(
             id: session.id, startedAt: session.createdAt, endedAt: date,
             planningHorizon: session.planningHorizon,
@@ -168,7 +193,8 @@ final class SessionStore: ObservableObject {
             goalCount: session.helpedGoalIDs.count, mapsVisited: maps,
             objectiveVisits: session.tasks.filter { $0.state == .visited }.count,
             accountChanges: SessionAccountDiff.changes(
-                from: session.initialAccountSnapshot, to: session.latestAccountSnapshot))
+                from: session.initialAccountSnapshot, to: session.latestAccountSnapshot),
+            todayChanges: todayChanges)
         history.insert(entry, at: 0)
         if history.count > 30 { history = Array(history.prefix(30)) }
         activeSession = nil
@@ -263,14 +289,16 @@ enum SessionPlanningAdapter {
         goals: [PlayerGoal], goalStore: GoalStore, account: AccountStore,
         objectives: [MapObjective], currentMapID: Int?, playerPosition: ContinentPoint?,
         methods: [AcquisitionMethod], preferences: PlanningPreferences,
-        parameters: SessionParameters
+        parameters: SessionParameters, opportunities: [AccountOpportunity] = [],
+        opportunityLinks: [OpportunityID: TodayOpportunityLink] = [:]
     ) -> SessionPlanningContext {
         SessionPlanningContext(
             goals: self.goals(from: goals, goalStore: goalStore, account: account),
             holdings: Dictionary(uniqueKeysWithValues: account.holdings.map { ($0.itemID, $0.totalQuantity) }),
             currencies: Dictionary(uniqueKeysWithValues: account.wallet.map { ($0.id, $0.value) }),
             acquisitionMethods: methods, preferences: preferences, parameters: parameters,
-            currentMapID: currentMapID, playerPosition: playerPosition, mapObjectives: objectives)
+            currentMapID: currentMapID, playerPosition: playerPosition, mapObjectives: objectives,
+            opportunities: opportunities, opportunityLinks: opportunityLinks)
     }
 
     @MainActor

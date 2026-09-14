@@ -137,7 +137,7 @@ final class MapObjectiveStore: ObservableObject {
             guard requestedMapId == metadata.id else { return }
             officialObjectives = []
             rebuildObjectives()
-            state = .unavailable(error.localizedDescription)
+            state = .unavailable(error.userFacingMessage(fallback: "Map objectives couldn’t be loaded. Try again later."))
         }
     }
 

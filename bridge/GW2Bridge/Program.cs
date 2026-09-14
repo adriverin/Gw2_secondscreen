@@ -9,10 +9,16 @@ using GW2Bridge;
 using QRCoder;
 
 var options = BridgeOptions.Parse(args);
+if (options.ValidateMumble)
+{
+    await RunMumbleValidationAsync(options.MumbleName);
+    return;
+}
 string pairingToken;
+var pairingStore = PairingTokenStore.CreateDefault();
 try
 {
-    pairingToken = PairingTokenStore.CreateDefault().LoadOrCreate(options.ResetPairing);
+    pairingToken = pairingStore.LoadOrCreate(options.ResetPairing);
 }
 catch (InvalidOperationException error)
 {
@@ -20,6 +26,7 @@ catch (InvalidOperationException error)
     Console.Error.WriteLine("Fix access to the folder above or run once with --reset-pairing.");
     return;
 }
+var bridgeId = BridgeIdentityStore.CreateDefault().LoadOrCreate();
 using ITelemetrySource source = options.Simulate
     ? new SimulatedTelemetrySource()
     : new MumbleLinkTelemetrySource(options.MumbleName);
@@ -43,14 +50,18 @@ var app = builder.Build();
 var telemetryHub = app.Services.GetRequiredService<TelemetryHub>();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", protocolVersion = 1 }));
+app.MapGet("/health", () => Results.Ok(new {
+    status = "ok", protocolVersion = 1, bridgeVersion = BridgeVersion(), bridgeId
+}));
 app.MapGet("/pairing/validate", (HttpContext context) =>
 {
     var authorization = context.Request.Headers.Authorization.ToString();
     var suppliedToken = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
         ? authorization[7..]
         : string.Empty;
-    return IsValidToken(suppliedToken, pairingToken) ? Results.NoContent() : Results.Unauthorized();
+    return IsValidToken(suppliedToken, pairingToken)
+        ? Results.Ok(new { protocolVersion = 1, bridgeVersion = BridgeVersion(), bridgeId })
+        : Results.Unauthorized();
 });
 app.Map("/telemetry", async context =>
 {
@@ -88,25 +99,110 @@ app.Map("/telemetry", async context =>
 });
 
 var host = GetLanAddress();
-var payload = JsonSerializer.Serialize(new { version = 1, host, port = options.Port, token = pairingToken }, BridgeJson.Options);
-Console.WriteLine("GW2 Companion Bridge");
-Console.WriteLine(options.Simulate ? "SIMULATION MODE" : "MumbleLink mode");
-if (!options.Simulate)
-    Console.WriteLine($"MumbleLink mapping: {options.MumbleName}");
-Console.WriteLine($"Listening: {host}:{options.Port}");
-Console.WriteLine("Pairing payload (scan with the iPhone app or enter manually):");
-Console.WriteLine(payload);
-using (var qrData = QRCodeGenerator.GenerateQrCode(payload, QRCodeGenerator.ECCLevel.Q))
-using (var qrCode = new AsciiQRCode(qrData))
+PrintPairing(host, options.Port, pairingToken, bridgeId, options);
+var runTask = app.RunAsync();
+if (!Console.IsInputRedirected)
 {
-    Console.WriteLine(qrCode.GetGraphic(1, "██", "  "));
+    while (!runTask.IsCompleted)
+    {
+        if (!Console.KeyAvailable)
+        {
+            await Task.Delay(100);
+            continue;
+        }
+        switch (Console.ReadKey(intercept: true).Key)
+        {
+            case ConsoleKey.R:
+                pairingToken = pairingStore.LoadOrCreate(true);
+                Console.WriteLine();
+                Console.WriteLine("Pairing code regenerated. Previously paired devices must scan again.");
+                PrintPairing(host, options.Port, pairingToken, bridgeId, options);
+                break;
+            case ConsoleKey.D:
+                PrintDiagnostics(telemetryHub.Latest);
+                break;
+            case ConsoleKey.Q:
+                app.Lifetime.StopApplication();
+                break;
+        }
+    }
 }
-Console.WriteLine("The pairing token is intentionally shown only for local pairing and is never logged again.");
-Console.WriteLine(options.ResetPairing
-    ? "Pairing was reset. Scan this QR code once on the iPhone."
-    : "The same pairing will be reused after bridge restarts.");
+await runTask;
 
-await app.RunAsync();
+static void PrintPairing(string host, int port, string token, string bridgeId, BridgeOptions options)
+{
+    var payload = JsonSerializer.Serialize(new { version = 1, host, port, token, bridgeId }, BridgeJson.Options);
+    Console.WriteLine("GW2 Companion Bridge");
+    Console.WriteLine();
+    Console.WriteLine("Status:");
+    Console.WriteLine(options.Simulate ? "Simulating Guild Wars 2 telemetry" : "Waiting for Guild Wars 2");
+    Console.WriteLine();
+    Console.WriteLine("Network:");
+    Console.WriteLine($"{host}:{port}");
+    Console.WriteLine($"Bridge ID: {bridgeId[..8].ToUpperInvariant()}…");
+    Console.WriteLine();
+    Console.WriteLine("Pair your phone:");
+    Console.WriteLine(payload);
+    using var qrData = QRCodeGenerator.GenerateQrCode(payload, QRCodeGenerator.ECCLevel.Q);
+    using var qrCode = new AsciiQRCode(qrData);
+    Console.WriteLine(qrCode.GetGraphic(1, "██", "  "));
+    Console.WriteLine("Allow GW2 Companion Bridge on Private networks in Windows Firewall.");
+    Console.WriteLine("The API key is never sent to this bridge. Pairing is reused after restarts.");
+    Console.WriteLine("Press R to regenerate pairing code   Press D for diagnostics   Press Q to quit");
+}
+
+static void PrintDiagnostics(TelemetryEnvelope value)
+{
+    Console.WriteLine();
+    Console.WriteLine("Diagnostics:");
+    Console.WriteLine($"Guild Wars 2: {(value.Connected ? "connected" : "not providing telemetry")}");
+    Console.WriteLine($"Telemetry: {(value.PositionAvailable ? "live" : value.StatusMessage ?? "unavailable")}");
+    Console.WriteLine($"Character: {(string.IsNullOrWhiteSpace(value.Character?.Name) ? "unavailable" : value.Character.Name)}");
+    Console.WriteLine($"Map ID: {value.Map?.Id.ToString() ?? "unavailable"}");
+    Console.WriteLine($"Tick: {value.UiTick}   Mount: {value.Mount.Index}   Combat: {value.Ui.InCombat}");
+}
+
+static string BridgeVersion() => typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown";
+
+static async Task RunMumbleValidationAsync(string mappingName)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("--validate-mumble requires Windows and a running Guild Wars 2 client.");
+        return;
+    }
+    Console.WriteLine("GW2 Companion Bridge — MumbleLink validation (Ctrl+C to stop)");
+    using var reader = new MumbleLinkValidationReader(mappingName);
+    while (true)
+    {
+        try
+        {
+            var value = reader.Read();
+            Console.WriteLine();
+            Console.WriteLine($"{DateTimeOffset.Now:T}");
+            if (value?.Context is null)
+            {
+                Console.WriteLine("MumbleLink data appears invalid or Guild Wars 2 is not in the world.");
+            }
+            else
+            {
+                var context = value.Context;
+                Console.WriteLine($"uiVersion {value.UiVersion}   uiTick {value.UiTick}");
+                Console.WriteLine($"Character {value.Identity?.Name ?? "(unavailable)"}   Profession {value.Identity?.Profession?.ToString() ?? "?"}   Map ID {context.MapId}");
+                Console.WriteLine($"playerX {context.PlayerX:F3}   playerY {context.PlayerY:F3}");
+                Console.WriteLine($"avatar XYZ [{string.Join(", ", value.AvatarPosition.Select(number => number.ToString("F3")))}]");
+                Console.WriteLine($"avatar front [{string.Join(", ", value.AvatarFront.Select(number => number.ToString("F3")))}]");
+                Console.WriteLine($"camera front [{string.Join(", ", value.CameraFront.Select(number => number.ToString("F3")))}]");
+                Console.WriteLine($"uiState 0x{context.UiState:X}   mountIndex {context.MountIndex}");
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Console.WriteLine($"MumbleLink unavailable: {error.Message}");
+        }
+        await Task.Delay(TimeSpan.FromSeconds(1));
+    }
+}
 
 static bool IsValidToken(string supplied, string expected)
 {
@@ -131,12 +227,13 @@ static string GetLanAddress()
     return "127.0.0.1";
 }
 
-public sealed record BridgeOptions(int Port, bool Simulate, string MumbleName, bool ResetPairing)
+public sealed record BridgeOptions(int Port, bool Simulate, string MumbleName, bool ResetPairing, bool ValidateMumble)
 {
     public static BridgeOptions Parse(string[] args)
     {
         var simulate = args.Contains("--simulate", StringComparer.OrdinalIgnoreCase);
         var resetPairing = args.Contains("--reset-pairing", StringComparer.OrdinalIgnoreCase);
+        var validateMumble = args.Contains("--validate-mumble", StringComparer.OrdinalIgnoreCase);
         var port = 38291;
         var portIndex = Array.IndexOf(args, "--port");
         if (portIndex >= 0 && portIndex + 1 < args.Length && int.TryParse(args[portIndex + 1], out var parsed) && parsed is > 0 and <= 65535)
@@ -145,7 +242,7 @@ public sealed record BridgeOptions(int Port, bool Simulate, string MumbleName, b
         var mumbleIndex = Array.IndexOf(args, "--mumble-name");
         if (mumbleIndex >= 0 && mumbleIndex + 1 < args.Length && !string.IsNullOrWhiteSpace(args[mumbleIndex + 1]))
             mumbleName = args[mumbleIndex + 1];
-        return new BridgeOptions(port, simulate, mumbleName, resetPairing);
+        return new BridgeOptions(port, simulate, mumbleName, resetPairing, validateMumble);
     }
 }
 

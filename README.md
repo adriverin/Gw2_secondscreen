@@ -2,6 +2,16 @@
 
 GW2 Companion is an unofficial, local-first iPhone and iPad second screen for Guild Wars 2. Its home screen follows the character on a pan/zoom map, overlays official world objectives and gathering locations, and provides live Nearby, target direction/distance, local visit history and geometric route playback. A native Character & Account Hub uses the official Guild Wars 2 API to show the character roster, equipment and build templates, bag contents, wallet, account summary, and fast account-wide item search.
 
+## Early tester setup
+
+1. Install and launch the signed iOS app; its first-run guide allows account-only, PC-only, or offline map setup.
+2. Run `GW2Bridge.exe` on the Windows gaming PC and allow it on **Private networks** when Windows Firewall asks.
+3. Create an ArenaNet key with `account`, `characters`, `inventories`, `builds`, `progression`, `unlocks`, and `wallet` permissions. Trading Post permission is not needed.
+4. Scan the bridge QR code, or enter its LAN address, port, and pairing token manually.
+5. Launch Guild Wars 2 and enter a character. Map should change to **LIVE** without restarting either app.
+
+Account setup and PC pairing are independently skippable. Settings contains connection diagnostics, bundled help, privacy details, redacted diagnostics export, cache controls, and app reset.
+
 Live position does **not** come from the GW2 web API:
 
 ```text
@@ -17,7 +27,7 @@ The bridge never receives the ArenaNet API key. The iPhone stores API and bridge
 - An iPhone/iPad on the same LAN as the Windows PC (the simulator also supports in-app mock mode)
 - Windows 10/11 (the packaged bridge is self-contained; the .NET SDK is needed only when building from source)
 - Guild Wars 2 for real telemetry
-- Optional ArenaNet API key with `account`, `characters`, `inventories`, `builds`, and `wallet` permissions
+- Optional ArenaNet API key with `account`, `characters`, `inventories`, `builds`, `progression`, `unlocks`, and `wallet` permissions
 
 ## Repository
 
@@ -61,6 +71,8 @@ dotnet run --project bridge/GW2Bridge/GW2Bridge.csproj -- --mumble-name NAME
 Remove `-mumble 0`, which disables MumbleLink. Run the bridge and the game as the same Windows user and at the same elevation level (normally, neither should be run as administrator).
 
 Use another port with `--port 40000`.
+
+For readable real-layout diagnostics on Windows, run `GW2Bridge.exe --validate-mumble`. It prints one snapshot per second, including version/tick, character/profession, map, player coordinates, avatar/camera vectors, UI flags, and mount. In normal bridge mode press `R` to regenerate pairing, `D` for a status snapshot, or `Q` to quit.
 
 ## Map layers and gathering data
 
@@ -157,6 +169,6 @@ This environment was macOS and could not perform real MumbleLink validation. On 
 - MVP WebSocket transport is authenticated but not TLS-encrypted.
 - Automatic discovery after a PC address change and character-specific official map completion remain unavailable. Cross-map route pathfinding is intentionally deferred.
 
-See [architecture](docs/architecture.md), [account data](docs/account-data.md), [character stats](docs/character-stats.md), [protocol](docs/protocol.md), [map coordinates](docs/map-coordinates.md), and [development](docs/development.md).
+See [onboarding](docs/onboarding.md), [physical-device QA](docs/physical-device-qa.md), [Windows/GW2 QA](docs/windows-gw2-qa.md), [network troubleshooting](docs/networking-troubleshooting.md), [security and privacy](docs/security-and-privacy.md), [content sources](docs/content-sources.md), [persistence](docs/persistence-and-migrations.md), [architecture](docs/architecture.md), and [protocol](docs/protocol.md).
 
 Guild Wars 2 and ArenaNet are trademarks of their respective owner. This project is unofficial and is not affiliated with or endorsed by ArenaNet.

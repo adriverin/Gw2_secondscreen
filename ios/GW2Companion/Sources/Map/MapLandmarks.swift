@@ -259,7 +259,7 @@ final class MapOverlayStore: ObservableObject {
             guard requestedMapId == metadata.id else { return }
             landmarks = []
             refreshVisibleLandmarks()
-            state = .unavailable(error.localizedDescription)
+            state = .unavailable(error.userFacingMessage(fallback: "Map objectives couldn’t be loaded. Try again later."))
         }
     }
 

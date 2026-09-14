@@ -53,32 +53,72 @@ struct UITelemetry: Codable, Sendable, Equatable {
 
 struct MountTelemetry: Codable, Sendable, Equatable { let index: UInt8 }
 
-struct BridgePairing: Codable, Sendable, Equatable {
+struct BridgePairing: Codable, Sendable, Equatable, CustomStringConvertible {
     let version: Int
     let host: String
     let port: Int
     let token: String
+    let bridgeId: String?
 
-    init(version: Int = 1, host: String, port: Int, token: String) {
+    init(version: Int = 1, host: String, port: Int, token: String, bridgeId: String? = nil) {
         self.version = version
         self.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
         self.port = port
         self.token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.bridgeId = bridgeId?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var isValid: Bool {
-        version == 1 && !host.isEmpty && (1...65_535).contains(port) && token.count >= 16
+        version == BridgeProtocol.current && Self.isValidHost(host) &&
+            (1...65_535).contains(port) && token.count >= 32 &&
+            token.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
+    }
+
+    var description: String {
+        "BridgePairing(version: \(version), host: \(host), port: \(port), bridgeId: \(bridgeId ?? "legacy"), token: [REDACTED])"
     }
 
     static func decodeQR(_ string: String) throws -> BridgePairing {
-        guard let data = string.data(using: .utf8) else { throw PairingError.invalidPayload }
-        let pairing = try JSONDecoder().decode(BridgePairing.self, from: data)
-        guard pairing.isValid else { throw PairingError.invalidPayload }
+        guard let data = string.data(using: .utf8), data.count <= 4_096 else { throw PairingError.invalidPayload }
+        let pairing: BridgePairing
+        do { pairing = try JSONDecoder().decode(BridgePairing.self, from: data) }
+        catch { throw PairingError.invalidPayload }
+        guard pairing.version == BridgeProtocol.current else {
+            throw PairingError.unsupportedVersion(pairing.version)
+        }
+        guard Self.isValidHost(pairing.host) else { throw PairingError.invalidHost }
+        guard (1...65_535).contains(pairing.port) else { throw PairingError.invalidPort }
+        guard pairing.token.count >= 32 else { throw PairingError.invalidToken }
         return pairing
+    }
+
+    private static func isValidHost(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 253, !value.contains("://"), !value.contains("/"),
+              !value.contains("?"), !value.contains("#"), !value.contains(" ") else { return false }
+        return value.unicodeScalars.allSatisfy {
+            CharacterSet.alphanumerics.contains($0) || ".:-_".unicodeScalars.contains($0)
+        }
     }
 }
 
-enum PairingError: LocalizedError {
+enum BridgeProtocol {
+    static let current = 1
+}
+
+enum PairingError: LocalizedError, Equatable {
     case invalidPayload
-    var errorDescription: String? { "That QR code is not a valid GW2 Companion pairing code." }
+    case unsupportedVersion(Int)
+    case invalidHost
+    case invalidPort
+    case invalidToken
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPayload: "That QR code is not a GW2 Companion Bridge pairing code."
+        case .unsupportedVersion: "This QR code uses an unsupported bridge version. Update the bridge and try again."
+        case .invalidHost: "The pairing code does not contain a valid PC address."
+        case .invalidPort: "The pairing code does not contain a valid network port."
+        case .invalidToken: "This pairing code is incomplete or expired. Regenerate it on the PC and try again."
+        }
+    }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @main
 struct GW2CompanionApp: App {
@@ -10,14 +11,20 @@ struct GW2CompanionApp: App {
     @StateObject private var account: AccountStore
     @StateObject private var goals: GoalStore
     @StateObject private var sessions = SessionStore()
+    @StateObject private var today: TodayStore
     @StateObject private var navigation = AppNavigation()
     private let api: GW2APIClient
 
     init() {
+        if ProcessInfo.processInfo.arguments.contains("--ui-smoke") {
+            UserDefaults.standard.set(true, forKey: "onboarding.completed.v1")
+            UserDefaults.standard.set(false, forKey: "developer.mode.enabled")
+        }
         let api = GW2APIClient()
         self.api = api
         _account = StateObject(wrappedValue: AccountStore(api: api))
         _goals = StateObject(wrappedValue: GoalStore(api: api))
+        _today = StateObject(wrappedValue: TodayStore(provider: api))
     }
 
     var body: some Scene {
@@ -30,6 +37,7 @@ struct GW2CompanionApp: App {
                 .environmentObject(account)
                 .environmentObject(goals)
                 .environmentObject(sessions)
+                .environmentObject(today)
                 .environmentObject(navigation)
                 .tint(GWPalette.accent)
                 .task {
@@ -45,6 +53,7 @@ struct GW2CompanionApp: App {
                     await account.start()
                     goals.setAccountScope(account.account?.id)
                     sessions.setAccountScope(account.account?.id)
+                    await today.setAccountScope(account.account?.id, permissions: account.permissions)
                     await sessions.prepare(recipes: goals.recipes, prices: goals.marketPrices)
                 }
                 .onChange(of: telemetry.latest?.character?.name, initial: true) { _, name in
@@ -53,11 +62,23 @@ struct GW2CompanionApp: App {
                 .onChange(of: account.account?.id) { _, id in
                     goals.setAccountScope(id)
                     sessions.setAccountScope(id)
+                    Task { await today.setAccountScope(id, permissions: account.permissions) }
+                }
+                .onChange(of: account.tokenInfo?.permissions) { _, _ in
+                    Task { await today.setAccountScope(account.account?.id, permissions: account.permissions) }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                    MapIconStore.shared.handleMemoryPressure()
                 }
         }
         .onChange(of: scenePhase) { _, phase in
             telemetry.setAppActive(phase == .active)
-            if phase == .active { Task { await account.refreshGoalAccountData() } }
+            if phase == .active {
+                Task {
+                    await account.refreshGoalAccountData()
+                    await today.refreshIfNeeded()
+                }
+            }
         }
     }
 }
@@ -67,8 +88,10 @@ private struct RootNavigationView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var navigation: AppNavigation
     @State private var splitVisibility: NavigationSplitViewVisibility = .detailOnly
+    @AppStorage("onboarding.completed.v1") private var onboardingCompleted = false
 
     var body: some View {
+        Group {
         if horizontalSizeClass == .regular {
             NavigationSplitView(columnVisibility: $splitVisibility) {
                 List {
@@ -99,6 +122,11 @@ private struct RootNavigationView: View {
                 }
             }
         }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { !onboardingCompleted },
+            set: { if !$0 { onboardingCompleted = true } }
+        )) { OnboardingFlow() }
     }
 
     @ViewBuilder
@@ -106,10 +134,11 @@ private struct RootNavigationView: View {
         switch tab {
         case .map: LiveMapView(api: api)
         case .goals: GoalsView()
-        case .session: SessionPlannerView()
+        case .session: TodayDashboardView()
         case .characters: CharactersView()
         case .inventory: InventoryView()
         case .account: AccountView()
+        case .settings: SettingsView()
         }
     }
 }

@@ -29,6 +29,9 @@ enum BridgeConnectionError: LocalizedError, Equatable {
     case closed
     case pairAgain
     case stalled
+    case bridgeTooOld
+    case appTooOld
+    case differentBridge
 
     var errorDescription: String? {
         switch self {
@@ -36,8 +39,16 @@ enum BridgeConnectionError: LocalizedError, Equatable {
         case .closed: "Bridge connection lost. Reconnecting…"
         case .pairAgain: "The bridge pairing changed. Scan its QR code again."
         case .stalled: "The bridge stopped sending telemetry. Reconnecting…"
+        case .bridgeTooOld: "Your PC bridge is too old. Update GW2 Companion Bridge."
+        case .appTooOld: "This PC bridge requires a newer version of the iPhone app."
+        case .differentBridge: "This address belongs to a different PC bridge. Scan its QR code to connect."
         }
     }
+}
+
+private struct BridgeHello: Decodable {
+    let protocolVersion: Int
+    let bridgeId: String?
 }
 
 final class BridgeConnection: LiveTelemetryProvider, @unchecked Sendable {
@@ -70,7 +81,10 @@ final class BridgeConnection: LiveTelemetryProvider, @unchecked Sendable {
                         @unknown default: continue
                         }
                         let envelope = try JSONDecoder().decode(TelemetryEnvelope.self, from: data)
-                        guard envelope.protocolVersion == 1 else { continue }
+                        guard envelope.protocolVersion == BridgeProtocol.current else {
+                            throw envelope.protocolVersion < BridgeProtocol.current
+                                ? BridgeConnectionError.bridgeTooOld : BridgeConnectionError.appTooOld
+                        }
                         continuation.yield(envelope)
                     }
                     continuation.finish()
@@ -95,10 +109,19 @@ final class BridgeConnection: LiveTelemetryProvider, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
         request.setValue("Bearer \(pairing.token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw BridgeConnectionError.closed }
         if http.statusCode == 401 { throw BridgeConnectionError.pairAgain }
-        guard http.statusCode == 204 else { throw BridgeConnectionError.closed }
+        guard (200..<300).contains(http.statusCode) else { throw BridgeConnectionError.closed }
+        // A 204 response is accepted for compatibility with the original v1 bridge.
+        guard !data.isEmpty else { return }
+        let hello = try JSONDecoder().decode(BridgeHello.self, from: data)
+        guard hello.protocolVersion == BridgeProtocol.current else {
+            throw hello.protocolVersion < BridgeProtocol.current ? BridgeConnectionError.bridgeTooOld : BridgeConnectionError.appTooOld
+        }
+        if let expected = pairing.bridgeId, let actual = hello.bridgeId, expected != actual {
+            throw BridgeConnectionError.differentBridge
+        }
     }
 
     private func makeSocket() throws -> any BridgeWebSocket {

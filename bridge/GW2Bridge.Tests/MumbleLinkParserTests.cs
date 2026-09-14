@@ -32,6 +32,7 @@ public sealed class MumbleLinkParserTests
 
         Assert.True(success);
         Assert.NotNull(result);
+        Assert.Equal(0u, result.UiVersion);
         Assert.Equal(182930u, result.UiTick);
         Assert.Equal("Example Character", result.Identity?.Name);
         Assert.Equal(15u, result.Context?.MapId);
@@ -41,6 +42,19 @@ public sealed class MumbleLinkParserTests
         Assert.True(result.Context?.InCombat);
         Assert.True(result.Context?.IsMapOpen);
         Assert.True(result.Context?.GameHasFocus);
+    }
+
+    [Fact]
+    public void RejectsImpossibleContextAndNonFiniteVectors()
+    {
+        var bytes = new byte[MumbleLinkLayout.TotalBytes];
+        WriteUInt32(bytes, MumbleLinkLayout.ContextLength, 48);
+        WriteUInt32(bytes, MumbleLinkLayout.Context + MumbleLinkLayout.ContextOffset.MapId, 2_000_000);
+        Assert.False(new MumbleLinkParser().TryParse(bytes, out _));
+
+        bytes = new byte[MumbleLinkLayout.TotalBytes];
+        WriteSingle(bytes, MumbleLinkLayout.AvatarPosition, float.NaN);
+        Assert.False(new MumbleLinkParser().TryParse(bytes, out _));
     }
 
     [Fact]
@@ -148,5 +162,26 @@ public sealed class PairingTokenStoreTests
     {
         public byte[] Protect(byte[] data) => data.Reverse().ToArray();
         public byte[] Unprotect(byte[] data) => data.Reverse().ToArray();
+    }
+}
+
+public sealed class BridgeIdentityStoreTests
+{
+    [Fact]
+    public void PersistsRandomIdentityWithoutHardwareIdentifiers()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"gw2-identity-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "bridge-id.txt");
+        try
+        {
+            var store = new BridgeIdentityStore(path);
+            var first = store.LoadOrCreate();
+            Assert.Equal(first, store.LoadOrCreate());
+            Assert.True(Guid.TryParse(first, out _));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
     }
 }

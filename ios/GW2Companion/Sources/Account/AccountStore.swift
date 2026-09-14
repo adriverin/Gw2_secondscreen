@@ -154,7 +154,7 @@ final class AccountStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage(fallback: "Account data couldn’t be refreshed. Showing saved data where possible.")
             isStale = !characters.isEmpty || account != nil || !holdings.isEmpty
             if tokenInfo == nil { connectionState = .disconnected }
         }
@@ -222,7 +222,7 @@ final class AccountStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
-            detail.errorMessage = error.localizedDescription
+            detail.errorMessage = error.userFacingMessage(fallback: "This character’s details couldn’t be refreshed. Showing saved data where possible.")
         }
         characterDetails[character.name] = detail
     }
@@ -296,6 +296,7 @@ final class AccountStore: ObservableObject {
         errorMessage = nil
         isStale = false
     }
+#endif
 
     private func loadGoalAccountData(permissions: PermissionSet) async {
         if permissions.contains(.progression) {
@@ -322,6 +323,7 @@ final class AccountStore: ObservableObject {
         goalsAccountLastRefreshedAt = Date()
     }
 
+#if DEBUG
     private static let fixtureCharacters = #"""
     [{"name":"Andrea","race":"Human","gender":"Female","profession":"Mesmer","level":80,"age":4467600,"created":"2018-05-18T17:42:00Z","deaths":83,"crafting":[{"discipline":"Tailor","rating":500,"active":true}]},{"name":"Test Mesmer","race":"Human","gender":"Female","profession":"Mesmer","level":80,"age":1241000,"created":"2025-01-01T12:00:00Z","deaths":14,"crafting":[]},{"name":"Sylvari Ranger","race":"Sylvari","gender":"Male","profession":"Ranger","level":35,"age":1537200,"created":"2024-01-04T12:00:00Z","deaths":12,"crafting":[]}]
     """#

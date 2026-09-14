@@ -61,6 +61,10 @@ public sealed class MumbleLinkParser
             return false;
         }
 
+        var uiVersion = UInt32(bytes, MumbleLinkLayout.UiVersion);
+        if (uiVersion > 100 || !VectorsAreFinite(bytes))
+            return false;
+
         var tick = UInt32(bytes, MumbleLinkLayout.UiTick);
         var avatarPosition = Vector3(bytes, MumbleLinkLayout.AvatarPosition);
         var avatarFront = Vector3(bytes, MumbleLinkLayout.AvatarFront);
@@ -81,15 +85,32 @@ public sealed class MumbleLinkParser
         }
 
         var advertisedLength = UInt32(bytes, MumbleLinkLayout.ContextLength);
+        if (advertisedLength > 256) return false;
         var allocatedLength = Math.Min(256, bytes.Length - MumbleLinkLayout.Context);
         MumbleContext? context = advertisedLength >= MumbleLinkLayout.ContextOffset.MinimumAdvertisedBytes &&
                                  allocatedLength >= MumbleLinkLayout.ContextOffset.RequiredBytes
             ? ParseContext(bytes.Slice(MumbleLinkLayout.Context, allocatedLength))
             : null;
+        if (context is not null && !ContextIsSane(context)) return false;
 
         snapshot = new MumbleSnapshot(
-            tick, avatarPosition, avatarFront, cameraPosition, cameraFront,
+            uiVersion, tick, avatarPosition, avatarFront, cameraPosition, cameraFront,
             identityJson, identity, context);
+        return true;
+    }
+
+    private static bool ContextIsSane(MumbleContext value) =>
+        value.MapId <= 1_000_000 &&
+        float.IsFinite(value.PlayerX) && float.IsFinite(value.PlayerY) &&
+        float.IsFinite(value.MapCenterX) && float.IsFinite(value.MapCenterY) &&
+        float.IsFinite(value.MapScale) && float.IsFinite(value.CompassRotation);
+
+    private static bool VectorsAreFinite(ReadOnlySpan<byte> bytes)
+    {
+        foreach (var offset in new[] { MumbleLinkLayout.AvatarPosition, MumbleLinkLayout.AvatarFront,
+                                      MumbleLinkLayout.CameraPosition, MumbleLinkLayout.CameraFront })
+            for (var component = 0; component < 3; component++)
+                if (!float.IsFinite(Single(bytes, offset + component * 4))) return false;
         return true;
     }
 

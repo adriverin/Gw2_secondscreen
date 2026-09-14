@@ -1,0 +1,7 @@
+{
+  "objectives": [
+    {"id": 301, "title": "Special Objective A", "track": "PvE", "acclaim": 250, "progress_current": 4, "progress_complete": 10, "claimed": false},
+    {"id": 302, "title": "Special Objective B", "track": "PvE", "acclaim": 250, "progress_current": 1, "progress_complete": 1, "claimed": false},
+    {"id": 303, "title": "Special Objective C", "track": "PvE", "acclaim": 250, "progress_current": 1, "progress_complete": 1, "claimed": true}
+  ]
+}

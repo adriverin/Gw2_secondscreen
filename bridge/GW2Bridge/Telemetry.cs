@@ -38,6 +38,7 @@ public sealed record UiTelemetry(bool InCombat, bool MapOpen, bool GameHasFocus)
 public sealed record MountTelemetry(byte Index);
 
 public sealed record MumbleSnapshot(
+    uint UiVersion,
     uint UiTick,
     float[] AvatarPosition,
     float[] AvatarFront,

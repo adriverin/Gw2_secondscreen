@@ -10,6 +10,8 @@ struct SessionPlanningContext: Sendable {
     let currentMapID: Int?
     let playerPosition: ContinentPoint?
     let mapObjectives: [MapObjective]
+    var opportunities: [AccountOpportunity] = []
+    var opportunityLinks: [OpportunityID: TodayOpportunityLink] = [:]
 }
 
 enum SessionScoring {
@@ -27,6 +29,14 @@ enum SessionScoring {
     static let manualMethod = -10
     static let avoidedMethod = -30
     static let nearbyDistance = 1_500.0
+    static let dailyOpportunity = 40
+    static let weeklyOpportunity = 20
+    static let seasonalOpportunity = 5
+    static let claimableReward = 70
+    static let nearCompletion = 15
+    static let preferredActivity = 20
+    static let avoidedActivity = -25
+    static let goalOpportunityCrossBenefit = 60
 }
 
 enum SessionPlanner {
@@ -87,6 +97,7 @@ enum SessionPlanner {
                     deduplicationKey: "acquire|\(method.type.rawValue)|\(key)|\(mapID ?? -1)",
                     title: title, type: taskType, relatedGoalIDs: goalIDs,
                     relatedGoalTitles: goalTitles, acquisitionMethodID: method.id,
+                    source: goalIDs.count == 1 ? .goal(goalIDs[0]) : .multipleGoals(goalIDs),
                     target: target, quantity: shortage, mapObjectiveIDs: matchingObjectives.map(\.id),
                     mapID: mapID, reason: reason, scoreBreakdown: score,
                     provenance: Array(need.provenance.union([method.source.provenance, .derived])).sorted { $0.rawValue < $1.rawValue },
@@ -108,7 +119,9 @@ enum SessionPlanner {
                 deduplicationKey: "objective|\(objective.id.rawValue)",
                 title: "Visit \(objective.name)", type: .navigate,
                 relatedGoalIDs: goals.map(\.id).sorted { $0.uuidString < $1.uuidString },
-                relatedGoalTitles: goals.map(\.title).sorted(), mapObjectiveIDs: [objective.id],
+                relatedGoalTitles: goals.map(\.title).sorted(),
+                source: goals.count == 1 ? .goal(goals[0].id) : .multipleGoals(goals.map(\.id)),
+                mapObjectiveIDs: [objective.id],
                 mapID: objective.mapId,
                 reason: "This user-linked map objective helps \(goals.count == 1 ? goals[0].title : "\(goals.count) active goals").",
                 scoreBreakdown: ScoreBreakdown(contributions: contributions),
@@ -122,9 +135,23 @@ enum SessionPlanner {
                 goals: [goal], mapID: nil, coordinate: nil, method: .manual, context: context)
             candidates.append(SessionTask(
                 deduplicationKey: "manual|\(goal.id.uuidString)", title: "Review \(goal.title)", type: .manual,
-                relatedGoalIDs: [goal.id], relatedGoalTitles: [goal.title], reason: reason,
+                relatedGoalIDs: [goal.id], relatedGoalTitles: [goal.title], source: .goal(goal.id), reason: reason,
                 scoreBreakdown: ScoreBreakdown(contributions: contributions),
                 provenance: [.userDeclared, .derived], coverage: .exampleOnly))
+        }
+
+
+        var todayCandidateCount = 0
+        for opportunity in context.opportunities where [.incomplete, .completeUnclaimed].contains(opportunity.state) {
+            if opportunity.type == .dailyCrafting,
+               let itemID = opportunity.relatedItemIDs.first,
+               let index = candidates.firstIndex(where: { $0.type == .craft && $0.target?.numericID == itemID }) {
+                candidates[index] = enrich(candidates[index], with: opportunity, context: context)
+                todayCandidateCount += 1
+            } else {
+                candidates.append(opportunityCandidate(opportunity, context: context))
+                todayCandidateCount += 1
+            }
         }
 
         let candidateCount = candidates.count
@@ -152,7 +179,8 @@ enum SessionPlanner {
             diagnostics: SessionPlanDiagnostics(
                 candidateCount: candidateCount, deduplicatedCount: deduplicated.count,
                 filteredCount: deduplicated.count - filtered.count, selectedCount: selected.count,
-                planningDurationMilliseconds: milliseconds))
+                planningDurationMilliseconds: milliseconds,
+                todayDerivedCandidateCount: todayCandidateCount))
     }
 
     static func replan(_ session: ActiveSession, context: SessionPlanningContext, now: Date = Date()) -> ActiveSession {
@@ -274,6 +302,125 @@ enum SessionPlanner {
             guard let subtype = method.markerSubtype?.lowercased() else { return true }
             return objective.name.lowercased().contains(subtype.lowercased())
         }.sorted { $0.id.rawValue < $1.id.rawValue }
+    }
+
+    private static func opportunityCandidate(
+        _ opportunity: AccountOpportunity, context: SessionPlanningContext
+    ) -> SessionTask {
+        let isClaim = opportunity.state == .completeUnclaimed
+        let taskType: SessionTaskType = if isClaim {
+            opportunity.resetScope == .weekly ? .weekly : .daily
+        } else {
+            switch opportunity.type {
+            case .dailyCrafting: .craft
+            case .wizardVaultWeekly, .raidEncounter: .weekly
+            case .wizardVaultSpecial: .seasonal
+            case .wizardVaultDaily, .worldBoss, .mapChest, .dungeonPath: .daily
+            }
+        }
+        let title: String = if isClaim {
+            "Claim \(opportunity.title) reward in game"
+        } else {
+            switch opportunity.type {
+            case .dailyCrafting: "Craft \(opportunity.title)"
+            case .worldBoss: "Defeat \(opportunity.title)"
+            case .mapChest: "Complete \(opportunity.title) map activity"
+            case .raidEncounter, .dungeonPath: "Complete \(opportunity.title)"
+            default: opportunity.title
+            }
+        }
+        let target = opportunity.relatedItemIDs.first.map { AcquisitionTarget.item(id: $0, quantity: 1) }
+        let userLink = context.opportunityLinks[opportunity.id]
+        let mapID = userLink?.mapID ?? opportunity.mapID
+        let objectiveIDs = userLink?.objective.map { [$0.id] } ?? []
+        return SessionTask(
+            deduplicationKey: "opportunity|\(opportunity.id.rawValue)", title: title, type: taskType,
+            relatedGoalIDs: [], relatedGoalTitles: [], source: .opportunity(opportunity.id),
+            relatedOpportunityIDs: [opportunity.id], relatedOpportunityTitles: [opportunity.type.title],
+            target: target, quantity: nil, mapObjectiveIDs: objectiveIDs, mapID: mapID,
+            reason: opportunityReason(opportunity),
+            scoreBreakdown: ScoreBreakdown(contributions: opportunityScore(opportunity, context: context)),
+            provenance: Array(Set(opportunity.provenance + [.derived])).sorted { $0.rawValue < $1.rawValue },
+            coverage: opportunity.mapID == nil ? .partial : .exampleOnly)
+    }
+
+    private static func enrich(
+        _ task: SessionTask, with opportunity: AccountOpportunity, context: SessionPlanningContext
+    ) -> SessionTask {
+        var contributions = task.scoreBreakdown.contributions
+        contributions += opportunityScore(opportunity, context: context)
+        contributions.append(ScoreContribution(
+            factor: "goalOpportunityCrossBenefit", value: SessionScoring.goalOpportunityCrossBenefit,
+            explanation: "One structured action helps both an active goal and today's account opportunity."))
+        let opportunityIDs = Array(Set((task.relatedOpportunityIDs ?? []) + [opportunity.id])).sorted()
+        let opportunityTitles = Array(Set((task.relatedOpportunityTitles ?? []) + [opportunity.type.title])).sorted()
+        return SessionTask(
+            id: task.id, deduplicationKey: task.deduplicationKey, title: task.title, type: task.type,
+            relatedGoalIDs: task.relatedGoalIDs, relatedGoalTitles: task.relatedGoalTitles,
+            acquisitionMethodID: task.acquisitionMethodID,
+            source: .mixed(goals: task.relatedGoalIDs, opportunities: opportunityIDs),
+            relatedOpportunityIDs: opportunityIDs, relatedOpportunityTitles: opportunityTitles,
+            target: task.target, quantity: task.quantity, mapObjectiveIDs: task.mapObjectiveIDs,
+            mapID: task.mapID,
+            reason: task.reason + " Also available as \(opportunity.resetScope.title.lowercased()): \(opportunity.title).",
+            scoreBreakdown: ScoreBreakdown(contributions: contributions),
+            provenance: Array(Set(task.provenance + opportunity.provenance + [.derived])).sorted { $0.rawValue < $1.rawValue },
+            knowledgeSources: task.knowledgeSources, coverage: task.coverage,
+            state: task.state, isLocked: task.isLocked)
+    }
+
+    private static func opportunityScore(
+        _ opportunity: AccountOpportunity, context: SessionPlanningContext
+    ) -> [ScoreContribution] {
+        var values: [ScoreContribution] = []
+        let urgencyValue: Int
+        switch opportunity.urgency {
+        case .daily: urgencyValue = SessionScoring.dailyOpportunity
+        case .weekly: urgencyValue = SessionScoring.weeklyOpportunity
+        case .seasonal: urgencyValue = SessionScoring.seasonalOpportunity
+        case .none: urgencyValue = 0
+        }
+        if urgencyValue != 0 {
+            values.append(ScoreContribution(
+                factor: "opportunityUrgency", value: urgencyValue,
+                explanation: "This is a \(opportunity.resetScope.title.lowercased()) opportunity."))
+        }
+        if opportunity.state == .completeUnclaimed {
+            values.append(ScoreContribution(
+                factor: "readyToClaim", value: SessionScoring.claimableReward,
+                explanation: "ArenaNet reports this reward complete but not claimed."))
+        } else if let progress = opportunity.progress, progress.fraction >= 0.75, !progress.isComplete {
+            values.append(ScoreContribution(
+                factor: "nearCompletion", value: SessionScoring.nearCompletion,
+                explanation: "The API-reported progress is at least three quarters complete."))
+        }
+        let preference = context.preferences.activities[opportunity.type, default: .neutral]
+        if preference == .prefer {
+            values.append(ScoreContribution(
+                factor: "activityPreference", value: SessionScoring.preferredActivity,
+                explanation: "\(opportunity.type.title) is preferred for Today planning."))
+        } else if preference == .avoid {
+            values.append(ScoreContribution(
+                factor: "activityPreference", value: SessionScoring.avoidedActivity,
+                explanation: "\(opportunity.type.title) is avoided but remains visible."))
+        }
+        let mapID = context.opportunityLinks[opportunity.id]?.mapID ?? opportunity.mapID
+        if let currentMapID = context.currentMapID, currentMapID == mapID {
+            values.append(ScoreContribution(
+                factor: "sameCurrentMap", value: SessionScoring.sameCurrentMap,
+                explanation: "The validated opportunity map is the current map."))
+        }
+        return values
+    }
+
+    private static func opportunityReason(_ opportunity: AccountOpportunity) -> String {
+        if opportunity.state == .completeUnclaimed {
+            return "ArenaNet account data reports complete progress and an unclaimed reward. Claiming is only available inside Guild Wars 2."
+        }
+        var parts = ["Incomplete \(opportunity.resetScope.title.lowercased()) opportunity from ArenaNet account data."]
+        if let progress = opportunity.progress { parts.append("Progress: \(progress.current) of \(progress.complete).") }
+        if let map = opportunity.mapName { parts.append("Validated map: \(map).") }
+        return parts.joined(separator: " ")
     }
 
     private static func taskType(for method: AcquisitionMethodType) -> SessionTaskType {

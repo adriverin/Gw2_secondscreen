@@ -22,7 +22,7 @@ final class TelemetryDecodingTests: XCTestCase {
             ui: UITelemetry(inCombat: false, mapOpen: false, gameHasFocus: true),
             mount: MountTelemetry(index: 0), statusMessage: nil)
 
-        XCTAssertEqual(TelemetryStore.state(for: telemetry), .live)
+        XCTAssertEqual(TelemetryStore.state(for: telemetry), .connectedLive)
     }
 }
 

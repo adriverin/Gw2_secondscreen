@@ -7,6 +7,7 @@ struct SessionPlannerView: View {
     @EnvironmentObject private var telemetry: TelemetryStore
     @EnvironmentObject private var objectives: MapObjectiveStore
     @EnvironmentObject private var navigation: AppNavigation
+    @EnvironmentObject private var today: TodayStore
     @State private var selectedTask: SessionTask?
     @State private var showingPreferences = false
     @State private var showingHistory = false
@@ -77,9 +78,9 @@ struct SessionPlannerView: View {
             Section {
                 Button("Create Plan") { createPlan() }
                     .buttonStyle(.borderedProminent).tint(GWPalette.accent)
-                    .disabled(goals.activeGoals.isEmpty)
-                if goals.activeGoals.isEmpty {
-                    Text("Activate at least one goal before planning.").font(.caption).foregroundStyle(.secondary)
+                    .disabled(goals.activeGoals.isEmpty && today.opportunities.allSatisfy { $0.state.isComplete || $0.state == .unknown })
+                if goals.activeGoals.isEmpty && today.opportunities.isEmpty {
+                    Text("Activate a goal or refresh Today opportunities before planning.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             if let error = sessions.knowledgeError {
@@ -101,7 +102,9 @@ struct SessionPlannerView: View {
                         }
                         Button("Start Session") {
                             let snapshot = SessionPlanningAdapter.snapshot(account: account, tasks: plan.tasks)
-                            sessions.startDraft(snapshot: snapshot, playerPosition: playerPoint)
+                            sessions.startDraft(
+                                snapshot: snapshot, todaySnapshot: today.progressSnapshot,
+                                playerPosition: playerPoint)
                         }
                         .buttonStyle(.borderedProminent).tint(GWPalette.accent)
                     }
@@ -163,8 +166,10 @@ struct SessionPlannerView: View {
                 Button("Refresh Progress") {
                     Task {
                         await account.refresh()
+                        await today.refresh()
                         if let tasks = sessions.activeSession?.tasks {
                             sessions.updateAccountSnapshot(SessionPlanningAdapter.snapshot(account: account, tasks: tasks))
+                            sessions.updateTodaySnapshot(today.progressSnapshot)
                             sessions.replan(context: context())
                         }
                     }
@@ -189,7 +194,7 @@ struct SessionPlannerView: View {
                         if task.isLocked { Image(systemName: "lock.fill").foregroundStyle(.secondary) }
                     }
                     if let quantity = task.quantity { Text("\(quantity) missing").font(.caption).foregroundStyle(.secondary) }
-                    Text("Helps: \(task.relatedGoalTitles.joined(separator: ", "))")
+                    Text("Helps: \(task.benefitTitles.isEmpty ? "Today" : task.benefitTitles.joined(separator: ", "))")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     Text(active ? task.state.rawValue.capitalized : "Score \(task.scoreBreakdown.total) • Why this?")
                         .font(.caption2).foregroundStyle(.tertiary)
@@ -240,12 +245,13 @@ struct SessionPlannerView: View {
             objectives: objectives.objectives + goals.activeGoals.flatMap { $0.mapLinks.map(\.objective) },
             currentMapID: telemetry.latest?.map?.id, playerPosition: playerPoint,
             methods: sessions.knowledgeMethods, preferences: sessions.preferences,
-            parameters: sessions.parameters)
+            parameters: sessions.parameters, opportunities: today.opportunities,
+            opportunityLinks: today.opportunityLinks)
     }
 
     private func startMapTask(_ task: SessionTask) {
         let linked = goals.activeGoals.flatMap { $0.mapLinks.map(\.objective) }
-        let all = objectives.objectives + linked
+        let all = objectives.objectives + linked + today.userLinkedObjectives
         var route = task.mapObjectiveIDs.compactMap { id in all.first { $0.id == id } }
         if route.isEmpty, let methodID = task.acquisitionMethodID,
            let method = sessions.knowledgeMethods.first(where: { $0.id == methodID }),
@@ -292,7 +298,13 @@ struct SessionTaskDetailView: View {
                     }
                 }
                 Section("Goals") {
-                    ForEach(task.relatedGoalTitles, id: \.self) { Text($0) }
+                    if task.relatedGoalTitles.isEmpty { Text("No goal source") }
+                    else { ForEach(task.relatedGoalTitles, id: \.self) { Text($0) } }
+                }
+                if let opportunities = task.relatedOpportunityTitles, !opportunities.isEmpty {
+                    Section("Today Opportunities") {
+                        ForEach(opportunities, id: \.self) { Text($0) }
+                    }
                 }
                 Section("Sources") {
                     ForEach(Array(task.knowledgeSources.enumerated()), id: \.offset) { _, source in
@@ -343,6 +355,18 @@ private struct PlanningPreferencesView: View {
                 } footer: {
                     Text("Preferences affect ranking, not availability. Requirement override > goal override > global preference > default.")
                 }
+                Section("Today Preferences") {
+                    ForEach([
+                        OpportunityType.wizardVaultDaily, .wizardVaultWeekly, .worldBoss,
+                        .mapChest, .dailyCrafting, .raidEncounter, .dungeonPath
+                    ], id: \.self) { type in
+                        Picker(type.title, selection: Binding(
+                            get: { sessions.preferences.activities[type, default: .neutral] },
+                            set: { sessions.preferences.activities[type] = $0 })) {
+                            ForEach(AcquisitionPreferenceLevel.allCases, id: \.self) { Text($0.title).tag($0) }
+                        }
+                    }
+                }
             }
             .navigationTitle("Preferences")
             .toolbar { Button("Done") { dismiss() } }
@@ -367,6 +391,10 @@ private struct SessionHistoryView: View {
                             .font(.caption).foregroundStyle(.secondary)
                         ForEach(entry.accountChanges) { change in
                             Text("\(change.kind.rawValue.capitalized) \(change.numericID): account quantity changed \(change.delta.formatted(.number.sign(strategy: .always())))")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        ForEach(entry.todayChanges ?? []) { change in
+                            Text("\(change.label): \(change.before) → \(change.after) changed during this session")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                     }

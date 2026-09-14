@@ -1,0 +1,11 @@
+{
+  "meta_progress_current": 4,
+  "meta_progress_complete": 6,
+  "meta_reward_item_id": 100137,
+  "meta_reward_astral": 450,
+  "meta_reward_claimed": false,
+  "objectives": [
+    {"id": 5, "title": "Defeat Veteran Enemies", "track": "PvE", "acclaim": 50, "progress_current": 50, "progress_complete": 50, "claimed": true},
+    {"id": 57, "title": "Complete 10 Events", "track": "PvE", "acclaim": 50, "progress_current": 7, "progress_complete": 10, "claimed": false}
+  ]
+}

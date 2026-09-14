@@ -1,0 +1,11 @@
+[
+  {"id":"ascalonian_catacombs","paths":[
+    {"id":"ac_story","type":"Story"},
+    {"id":"hodgins","type":"Explorable"},
+    {"id":"detha","type":"Explorable"}
+  ]},
+  {"id":"caudecus_manor","paths":[
+    {"id":"cm_story","type":"Story"},
+    {"id":"seraph","type":"Explorable"}
+  ]}
+]

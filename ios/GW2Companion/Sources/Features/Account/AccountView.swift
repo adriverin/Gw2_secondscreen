@@ -2,10 +2,9 @@ import SwiftUI
 
 struct AccountView: View {
     @EnvironmentObject private var store: AccountStore
-    @State private var apiKey = ""
-    @State private var isConnecting = false
     @State private var localError: String?
     @State private var walletSearch = ""
+    @State private var showingReplaceKey = false
 
     var body: some View {
         NavigationStack {
@@ -15,37 +14,15 @@ struct AccountView: View {
                 else { dashboard }
             }
             .navigationTitle("Account")
+            .sheet(isPresented: $showingReplaceKey) {
+                NavigationStack { AccountSetupForm(connected: { showingReplaceKey = false }) }
+            }
         }
     }
 
     private var connectView: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                Image(systemName: "person.crop.circle.badge.plus")
-                    .font(.system(size: 64)).foregroundStyle(GWPalette.accent)
-                Text("Connect your Guild Wars 2 account").font(.title2.bold())
-                Text("View your characters, equipment, builds and everything you own. Your key stays in this device's Keychain.")
-                    .foregroundStyle(.secondary).multilineTextAlignment(.center)
-                SecureField("ArenaNet API key", text: $apiKey)
-                    .textContentType(.oneTimeCode).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-                Button {
-                    Task { await connect() }
-                } label: {
-                    if isConnecting { ProgressView().frame(maxWidth: .infinity) }
-                    else { Text("Connect Account").frame(maxWidth: .infinity) }
-                }
-                .buttonStyle(.borderedProminent).tint(GWPalette.accent).disabled(apiKey.isEmpty || isConnecting)
-                Link("Create an API key on account.arena.net", destination: URL(string: "https://account.arena.net/applications")!)
-                    .font(.subheadline)
-                Text("Use a key with account, characters, inventories, builds, and wallet permissions for the complete experience. The key is sent only to the official Guild Wars 2 API.")
-                    .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                if let error = localError ?? store.errorMessage {
-                    GWErrorBanner(message: error, stale: false)
-                }
-            }
+        AccountSetupForm(connected: {})
             .frame(maxWidth: 520).padding(28).frame(maxWidth: .infinity)
-        }
     }
 
     private var dashboard: some View {
@@ -55,6 +32,7 @@ struct AccountView: View {
                     GWErrorBanner(message: error, stale: store.isStale) { Task { await store.refresh() } }
                 }
                 identityCard
+                if !missingPermissions.isEmpty { limitedPermissionsCard }
                 summaryGrid
                 if store.permissions.contains(.wallet) { walletCard }
                 inventoryCard
@@ -167,14 +145,27 @@ struct AccountView: View {
         }
     }
 
-    private func connect() async {
-        isConnecting = true
-        defer { isConnecting = false }
-        do {
-            try await store.connect(apiKey: apiKey)
-            apiKey = ""
-            localError = nil
-        } catch { localError = error.localizedDescription }
+    private var missingPermissions: [AccountPermission] {
+        [.account, .characters, .inventories, .builds, .progression, .unlocks, .wallet]
+            .filter { !store.permissions.contains($0) }
+    }
+
+    private var limitedPermissionsCard: some View {
+        GWCard {
+            Label("Connected with limited permissions", systemImage: "exclamationmark.circle.fill")
+                .font(.headline).foregroundStyle(.orange)
+            Text("Unrelated features remain available. Missing permissions:")
+                .font(.subheadline).foregroundStyle(.secondary)
+            ForEach(missingPermissions) { permission in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(permission.title).bold()
+                    Text(permission.affectedFeatures).font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.top, 5)
+            }
+            Button("Replace API Key") { showingReplaceKey = true }.buttonStyle(.bordered)
+                .padding(.top, 6)
+        }
     }
 
     private func accountAge(created: String) -> Int? {

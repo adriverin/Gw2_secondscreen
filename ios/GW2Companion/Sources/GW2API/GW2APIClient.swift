@@ -5,13 +5,21 @@ enum GW2APIError: LocalizedError, Equatable {
     case missingPermission(String)
     case invalidResponse
     case server(Int)
+    case rateLimited
+    case serviceUnavailable
+    case networkUnavailable
+    case timedOut
 
     var errorDescription: String? {
         switch self {
-        case .invalidAPIKey: "API key invalid. Create a new key on account.arena.net."
+        case .invalidAPIKey: "This API key is invalid or has been revoked. Create or paste a new key."
         case let .missingPermission(permission): "Your API key does not include the \(permission) permission."
-        case .invalidResponse: "The Guild Wars 2 API returned an unexpected response."
-        case let .server(code): "The Guild Wars 2 API returned HTTP \(code)."
+        case .invalidResponse: "ArenaNet returned data this version of the app could not read. Your saved data is still available."
+        case .server: "ArenaNet is temporarily unavailable. Showing saved data where possible."
+        case .rateLimited: "ArenaNet is temporarily limiting requests. Showing your saved data."
+        case .serviceUnavailable: "ArenaNet is temporarily unavailable. Try again in a few minutes."
+        case .networkUnavailable: "The internet connection is unavailable. Showing your saved data."
+        case .timedOut: "ArenaNet took too long to respond. Showing your saved data."
         }
     }
 }
@@ -237,6 +245,56 @@ actor GW2APIClient {
     func accountSkinIDs() async throws -> [Int] { try await authenticatedRequest("account/skins") }
     func accountMiniIDs() async throws -> [Int] { try await authenticatedRequest("account/minis") }
 
+    // MARK: - Today / account-current opportunities
+
+    func wizardVaultSeason(language: String = "en") async throws -> WizardVaultSeason {
+        try await request("wizardsvault?lang=\(Self.encodedQuery(language))")
+    }
+
+    func wizardVaultObjectives(ids: [Int], language: String = "en") async throws -> [WizardVaultObjectiveMetadata] {
+        guard !ids.isEmpty else { return [] }
+        return try await request(
+            "wizardsvault/objectives?ids=\(Self.batchedIDs(ids).joined(separator: ","))&lang=\(Self.encodedQuery(language))")
+    }
+
+    func wizardVaultListings(ids: [Int], language: String = "en") async throws -> [WizardVaultListingMetadata] {
+        guard !ids.isEmpty else { return [] }
+        return try await request(
+            "wizardsvault/listings?ids=\(Self.batchedIDs(ids).joined(separator: ","))&lang=\(Self.encodedQuery(language))")
+    }
+
+    func worldBossIDs() async throws -> [String] { try await request("worldbosses") }
+    func mapChestIDs() async throws -> [String] { try await request("mapchests") }
+    func dailyCraftingIDs() async throws -> [String] { try await request("dailycrafting") }
+    func raids(language: String = "en") async throws -> [RaidDefinition] {
+        try await request("raids?ids=all&lang=\(Self.encodedQuery(language))")
+    }
+    func dungeons(language: String = "en") async throws -> [DungeonDefinition] {
+        try await request("dungeons?ids=all&lang=\(Self.encodedQuery(language))")
+    }
+
+    func wizardVaultDaily() async throws -> WizardVaultAccountPeriod {
+        try await authenticatedRequest("account/wizardsvault/daily")
+    }
+    func wizardVaultWeekly() async throws -> WizardVaultAccountPeriod {
+        try await authenticatedRequest("account/wizardsvault/weekly")
+    }
+    func wizardVaultSpecial() async throws -> WizardVaultAccountSpecial {
+        try await authenticatedRequest("account/wizardsvault/special")
+    }
+    func accountWizardVaultListings() async throws -> [WizardVaultAccountListing] {
+        try await authenticatedRequest("account/wizardsvault/listings")
+    }
+    func accountWorldBossIDs() async throws -> [String] { try await authenticatedRequest("account/worldbosses") }
+    func accountMapChestIDs() async throws -> [String] { try await authenticatedRequest("account/mapchests") }
+    func accountDailyCraftingIDs() async throws -> [String] { try await authenticatedRequest("account/dailycrafting") }
+    func accountRaidEventIDs() async throws -> [String] { try await authenticatedRequest("account/raids") }
+    func accountDungeonPathIDs() async throws -> [String] { try await authenticatedRequest("account/dungeons") }
+
+    func todayItems(ids: [Int]) async throws -> [Int: ItemMetadata] { try await items(ids: ids) }
+    func todayCurrencies(ids: [Int]) async throws -> [Int: CurrencyMetadata] { try await currencies(ids: ids) }
+    func todayWallet() async throws -> [WalletEntry] { try await walletEntries() }
+
     /// Trading Post data is intentionally short-lived. Stale records remain usable as explicitly
     /// stale fallback data when the network is unavailable.
     func commercePrices(
@@ -390,12 +448,25 @@ actor GW2APIClient {
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         if let apiKey { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            switch error.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                throw GW2APIError.networkUnavailable
+            case .timedOut: throw GW2APIError.timedOut
+            default: throw GW2APIError.serviceUnavailable
+            }
+        }
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw GW2APIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw GW2APIError.invalidAPIKey }
             if http.statusCode == 403 { throw GW2APIError.missingPermission("required") }
+            if http.statusCode == 429 { throw GW2APIError.rateLimited }
+            if [500, 502, 503, 504].contains(http.statusCode) { throw GW2APIError.serviceUnavailable }
             throw GW2APIError.server(http.statusCode)
         }
         return data
@@ -404,6 +475,11 @@ actor GW2APIClient {
     private static func encodedPath(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
     }
+
+    private static func encodedQuery(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+    }
 }
 
 extension GW2APIClient: MapLandmarkDataProvider, MapObjectiveDataProvider {}
+extension GW2APIClient: TodayDataProvider {}

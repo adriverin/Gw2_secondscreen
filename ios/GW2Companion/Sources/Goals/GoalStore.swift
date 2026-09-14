@@ -90,6 +90,12 @@ final class GoalStore: ObservableObject {
         persist()
     }
 
+    func deleteAllLocalGoals() {
+        goals = []
+        selectedGoalID = nil
+        persist()
+    }
+
     func trackAchievement(_ achievement: AchievementDefinition, priority: GoalPriority = .normal) {
         if let existing = goals.first(where: { $0.type == .achievement(achievement.id) && $0.status != .archived }) {
             selectedGoalID = existing.id
@@ -178,7 +184,7 @@ final class GoalStore: ObservableObject {
             achievementState = .ready
         } catch {
             didPrepareAchievements = false
-            achievementState = .unavailable(error.localizedDescription)
+            achievementState = .unavailable(error.userFacingMessage(fallback: "Achievement data couldn’t be loaded. Try again later."))
         }
     }
 
@@ -190,7 +196,7 @@ final class GoalStore: ObservableObject {
             await resolveAchievementBits(in: Array(loaded.values))
             achievementState = .ready
         } catch {
-            achievementState = .unavailable(error.localizedDescription)
+            achievementState = .unavailable(error.userFacingMessage(fallback: "Achievement data couldn’t be loaded. Try again later."))
         }
     }
 
@@ -201,7 +207,7 @@ final class GoalStore: ObservableObject {
             achievements.merge(loaded) { _, new in new }
             await resolveAchievementBits(in: Array(loaded.values))
         } catch {
-            achievementState = .unavailable(error.localizedDescription)
+            achievementState = .unavailable(error.userFacingMessage(fallback: "Achievement data couldn’t be loaded. Try again later."))
         }
     }
 
@@ -219,7 +225,7 @@ final class GoalStore: ObservableObject {
             achievementState = .ready
         } catch {
             didPrepareAchievementSearch = false
-            achievementState = .unavailable(error.localizedDescription)
+            achievementState = .unavailable(error.userFacingMessage(fallback: "Achievement data couldn’t be loaded. Try again later."))
         }
     }
 
@@ -250,7 +256,7 @@ final class GoalStore: ObservableObject {
             if recipeIndex != nil { recipeState = .ready }
             else {
                 didPrepareRecipes = false
-                recipeState = .unavailable(error.localizedDescription)
+                recipeState = .unavailable(error.userFacingMessage(fallback: "Recipe data couldn’t be loaded. Try again later."))
             }
         }
     }
@@ -327,7 +333,7 @@ final class GoalStore: ObservableObject {
             marketPrices.merge(loaded) { _, new in new }
             priceError = nil
         } catch {
-            priceError = error.localizedDescription
+            priceError = error.userFacingMessage(fallback: "Trading Post prices couldn’t be refreshed. Showing saved prices where possible.")
         }
     }
 
@@ -342,7 +348,7 @@ final class GoalStore: ObservableObject {
             marketPrices.merge(loaded) { _, new in new }
             priceError = nil
         } catch {
-            priceError = error.localizedDescription
+            priceError = error.userFacingMessage(fallback: "Trading Post prices couldn’t be refreshed. Showing saved prices where possible.")
         }
     }
 
@@ -377,7 +383,9 @@ final class GoalStore: ObservableObject {
         do {
             craftableItems = try await api.items(ids: Array(recipeIndex.recipeIDsByOutputItem.keys))
         } catch {
-            if craftableItems.isEmpty { recipeState = .unavailable(error.localizedDescription) }
+            if craftableItems.isEmpty {
+                recipeState = .unavailable(error.userFacingMessage(fallback: "Recipe data couldn’t be loaded. Try again later."))
+            }
         }
     }
 

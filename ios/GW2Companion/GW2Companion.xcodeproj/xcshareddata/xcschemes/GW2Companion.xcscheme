@@ -64,6 +64,17 @@
                ReferencedContainer = "container:GW2Companion.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "CACA7BE34211B084D55EBB7B"
+               BuildableName = "GW2CompanionUITests.xctest"
+               BlueprintName = "GW2CompanionUITests"
+               ReferencedContainer = "container:GW2Companion.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

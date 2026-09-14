@@ -1,0 +1,13 @@
+{
+  "meta_progress_current": 3,
+  "meta_progress_complete": 4,
+  "meta_reward_item_id": 99961,
+  "meta_reward_astral": 20,
+  "meta_reward_claimed": false,
+  "objectives": [
+    {"id": 1, "title": "Complete 3 Events", "track": "PvE", "acclaim": 10, "progress_current": 0, "progress_complete": 3, "claimed": false},
+    {"id": 2, "title": "Defeat 10 Enemies", "track": "PvE", "acclaim": 10, "progress_current": 4, "progress_complete": 10, "claimed": false},
+    {"id": 3, "title": "Dodge 3 Attacks", "track": "PvE", "acclaim": 10, "progress_current": 3, "progress_complete": 3, "claimed": false},
+    {"id": 4, "title": "Gather 10 Resources", "track": "PvE", "acclaim": 10, "progress_current": 10, "progress_complete": 10, "claimed": true}
+  ]
+}

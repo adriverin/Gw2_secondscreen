@@ -3,6 +3,39 @@
 The planner is a deterministic, local, read-only heuristic. It does not spend resources, place
 Trading Post orders, craft, send game input, or claim optimal gameplay or exact durations.
 
+## Phase 6A Today integration
+
+The existing planner now receives both goal-derived needs and `AccountOpportunity` values in one `SessionPlanningContext`:
+
+```text
+Goals ────────────────┐
+Today opportunities ──┼─ SessionPlanner ─ SessionTask[]
+Current map ───────────┤
+Preferences ───────────┘
+```
+
+`SessionTaskSource` records a goal, opportunity, multiple goals, or a mixed source. Daily crafting cross-benefit uses only the reviewed opportunity-to-item ID mapping. When an incomplete daily craft has the same item target as a goal craft candidate, the planner emits one task and explains both benefits.
+
+Today score contributions are deterministic and appear in “Why this?”:
+
+| Factor | Score |
+| --- | ---: |
+| Daily opportunity | +40 |
+| Weekly opportunity | +20 |
+| Seasonal opportunity | +5 |
+| Ready-to-claim Vault reward | +70 |
+| API progress at least 75% complete | +15 |
+| Preferred Today activity | +20 |
+| Avoided Today activity | -25 |
+| Same validated current map | +50 |
+| Structured goal + opportunity cross-benefit | +60 |
+
+These combine with the documented Phase 5 goal/acquisition factors. Daily urgency is an advantage, not a claim of optimality; a high-priority goal can still outrank a daily task. Activity avoidance changes rank but does not hide dashboard data.
+
+No task duration is invented. The Session duration remains a task-count planning horizon.
+
+Active sessions capture an optional `TodayProgressSnapshot` alongside the holdings snapshot. “Refresh Progress” refreshes account and Today data, then stores the latest factual snapshot. Session history reports count changes as “changed during this session”; it does not attribute causality.
+
 ## Pipeline
 
 ```text

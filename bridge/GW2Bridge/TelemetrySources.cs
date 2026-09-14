@@ -56,7 +56,7 @@ public sealed class MumbleLinkTelemetrySource : ITelemetrySource
             _view!.ReadArray(0, data, 0, data.Length);
             if (!_parser.TryParse(data, out var snapshot) || snapshot is null || snapshot.Context is null)
             {
-                return ValueTask.FromResult(Disconnected("Waiting for Guild Wars 2 telemetry."));
+                return ValueTask.FromResult(Disconnected("MumbleLink data appears invalid or is not ready."));
             }
 
             var stale = snapshot.UiTick == 0 || _staleness.IsStale(snapshot.UiTick, DateTimeOffset.UtcNow);
@@ -135,6 +135,29 @@ public sealed class MumbleLinkTelemetrySource : ITelemetrySource
     }
 
     public void Dispose() => DisposeMapping();
+}
+
+public sealed class MumbleLinkValidationReader(string mappingName) : IDisposable
+{
+    private MemoryMappedFile? _mapping;
+    private MemoryMappedViewAccessor? _view;
+    private readonly MumbleLinkParser _parser = new();
+
+    [SupportedOSPlatform("windows")]
+    public MumbleSnapshot? Read()
+    {
+        _mapping ??= MemoryMappedFile.CreateOrOpen(mappingName, MumbleLinkLayout.TotalBytes, MemoryMappedFileAccess.ReadWrite);
+        _view ??= _mapping.CreateViewAccessor(0, MumbleLinkLayout.TotalBytes, MemoryMappedFileAccess.Read);
+        var data = new byte[MumbleLinkLayout.TotalBytes];
+        _view.ReadArray(0, data, 0, data.Length);
+        return _parser.TryParse(data, out var snapshot) ? snapshot : null;
+    }
+
+    public void Dispose()
+    {
+        _view?.Dispose();
+        _mapping?.Dispose();
+    }
 }
 
 public sealed class SimulatedTelemetrySource : ITelemetrySource

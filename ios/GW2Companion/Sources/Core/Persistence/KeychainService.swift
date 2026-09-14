@@ -18,7 +18,9 @@ struct KeychainService: SecureValueStore {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            // Credentials are available only while the device is unlocked and never migrate
+            // to another device through a backup.
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
             kSecValueData as String: data
         ]
         let status = SecItemAdd(query as CFDictionary, nil)

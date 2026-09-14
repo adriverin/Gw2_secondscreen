@@ -28,7 +28,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the pairing QR code shown by GW2 Companion Bridge.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Connect to GW2 Companion Bridge on your local network to show your in-game position.</string>
+	<string>GW2 Companion uses your local network to receive live Guild Wars 2 position data from GW2 Companion Bridge on your PC.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>

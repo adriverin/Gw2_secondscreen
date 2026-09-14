@@ -72,3 +72,34 @@ public sealed class PairingTokenStore(string path, IUserDataProtector protector)
     private static string Base64Url(byte[] bytes) =>
         Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }
+
+/// <summary>A random installation identity. It is not derived from hardware and is not secret.</summary>
+public sealed class BridgeIdentityStore(string path)
+{
+    public static BridgeIdentityStore CreateDefault()
+    {
+        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return new BridgeIdentityStore(Path.Combine(root, "GW2CompanionBridge", "bridge-id.txt"));
+    }
+
+    public string LoadOrCreate()
+    {
+        if (File.Exists(path) && Guid.TryParse(File.ReadAllText(path).Trim(), out var saved))
+            return saved.ToString("N");
+
+        var value = Guid.NewGuid().ToString("N");
+        var directory = Path.GetDirectoryName(path) ?? throw new InvalidOperationException("Bridge identity storage has no directory.");
+        Directory.CreateDirectory(directory);
+        var temporaryPath = Path.Combine(directory, $"bridge-id-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(temporaryPath, value, Encoding.UTF8);
+            File.Move(temporaryPath, path, true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+        return value;
+    }
+}

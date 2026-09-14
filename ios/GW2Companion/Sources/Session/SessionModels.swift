@@ -17,6 +17,30 @@ struct PlanningPreferences: Codable, Hashable, Sendable {
     var goalOverrides: [String: AcquisitionMethodType] = [:]
     /// Key: goal UUID + requirement identity. This has the highest precedence.
     var requirementOverrides: [String: AcquisitionMethodType] = [:]
+    /// Today activity preferences affect ranking but never hide dashboard data.
+    var activities: [OpportunityType: AcquisitionPreferenceLevel] = [:]
+
+    init(
+        global: [AcquisitionMethodType: AcquisitionPreferenceLevel] = [:],
+        goalOverrides: [String: AcquisitionMethodType] = [:],
+        requirementOverrides: [String: AcquisitionMethodType] = [:],
+        activities: [OpportunityType: AcquisitionPreferenceLevel] = [:]
+    ) {
+        self.global = global
+        self.goalOverrides = goalOverrides
+        self.requirementOverrides = requirementOverrides
+        self.activities = activities
+    }
+
+    private enum CodingKeys: String, CodingKey { case global, goalOverrides, requirementOverrides, activities }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        global = try values.decodeIfPresent([AcquisitionMethodType: AcquisitionPreferenceLevel].self, forKey: .global) ?? [:]
+        goalOverrides = try values.decodeIfPresent([String: AcquisitionMethodType].self, forKey: .goalOverrides) ?? [:]
+        requirementOverrides = try values.decodeIfPresent([String: AcquisitionMethodType].self, forKey: .requirementOverrides) ?? [:]
+        activities = try values.decodeIfPresent([OpportunityType: AcquisitionPreferenceLevel].self, forKey: .activities) ?? [:]
+    }
 
     static func goalKey(goalID: UUID, targetKey: String) -> String { "\(goalID.uuidString)|\(targetKey)" }
     static func requirementKey(goalID: UUID, requirementID: String) -> String { "\(goalID.uuidString)|\(requirementID)" }
@@ -92,7 +116,7 @@ struct ScoreBreakdown: Codable, Hashable, Sendable {
 enum SessionTaskType: String, Codable, CaseIterable, Sendable {
     case navigate, gather, craft, buy, vendor, achievement, mysticForge, visit, manual
     // Reserved general-purpose shapes for later API-backed daily/weekly work.
-    case daily, weekly
+    case daily, weekly, seasonal
 
     var title: String {
         switch self {
@@ -107,6 +131,7 @@ enum SessionTaskType: String, Codable, CaseIterable, Sendable {
         case .manual: "Manual"
         case .daily: "Daily"
         case .weekly: "Weekly"
+        case .seasonal: "Seasonal"
         }
     }
 }
@@ -124,6 +149,9 @@ struct SessionTask: Identifiable, Codable, Hashable, Sendable {
     let type: SessionTaskType
     let relatedGoalIDs: [UUID]
     let relatedGoalTitles: [String]
+    let source: SessionTaskSource?
+    let relatedOpportunityIDs: [OpportunityID]?
+    let relatedOpportunityTitles: [String]?
     let acquisitionMethodID: String?
     let target: AcquisitionTarget?
     let quantity: Int?
@@ -140,6 +168,8 @@ struct SessionTask: Identifiable, Codable, Hashable, Sendable {
     init(
         id: UUID = UUID(), deduplicationKey: String, title: String, type: SessionTaskType,
         relatedGoalIDs: [UUID], relatedGoalTitles: [String], acquisitionMethodID: String? = nil,
+        source: SessionTaskSource? = nil, relatedOpportunityIDs: [OpportunityID]? = nil,
+        relatedOpportunityTitles: [String]? = nil,
         target: AcquisitionTarget? = nil, quantity: Int? = nil,
         mapObjectiveIDs: [MapObjectiveID] = [], mapID: Int? = nil, reason: String,
         scoreBreakdown: ScoreBreakdown, provenance: [DataProvenance],
@@ -152,6 +182,9 @@ struct SessionTask: Identifiable, Codable, Hashable, Sendable {
         self.type = type
         self.relatedGoalIDs = relatedGoalIDs
         self.relatedGoalTitles = relatedGoalTitles
+        self.source = source
+        self.relatedOpportunityIDs = relatedOpportunityIDs
+        self.relatedOpportunityTitles = relatedOpportunityTitles
         self.acquisitionMethodID = acquisitionMethodID
         self.target = target
         self.quantity = quantity
@@ -165,6 +198,17 @@ struct SessionTask: Identifiable, Codable, Hashable, Sendable {
         self.state = state
         self.isLocked = isLocked
     }
+
+    var benefitTitles: [String] {
+        relatedGoalTitles + (relatedOpportunityTitles ?? [])
+    }
+}
+
+enum SessionTaskSource: Codable, Hashable, Sendable {
+    case goal(UUID)
+    case opportunity(OpportunityID)
+    case multipleGoals([UUID])
+    case mixed(goals: [UUID], opportunities: [OpportunityID])
 }
 
 struct SessionPlanDiagnostics: Codable, Hashable, Sendable {
@@ -173,6 +217,7 @@ struct SessionPlanDiagnostics: Codable, Hashable, Sendable {
     let filteredCount: Int
     let selectedCount: Int
     let planningDurationMilliseconds: Double
+    var todayDerivedCandidateCount: Int? = nil
 }
 
 struct SessionPlan: Codable, Hashable, Sendable {
@@ -242,6 +287,8 @@ struct ActiveSession: Identifiable, Codable, Hashable, Sendable {
     let initialPlayerPosition: ContinentPoint?
     let initialAccountSnapshot: SessionAccountSnapshot
     var latestAccountSnapshot: SessionAccountSnapshot
+    var initialTodaySnapshot: TodayProgressSnapshot? = nil
+    var latestTodaySnapshot: TodayProgressSnapshot? = nil
     var tasks: [SessionTask]
 
     var completedTaskCount: Int { tasks.filter { [.visited, .completed].contains($0.state) }.count }
@@ -259,4 +306,5 @@ struct SessionHistoryEntry: Identifiable, Codable, Hashable, Sendable {
     let mapsVisited: [Int]
     let objectiveVisits: Int
     let accountChanges: [SessionAccountChange]
+    var todayChanges: [TodayProgressChange]? = nil
 }

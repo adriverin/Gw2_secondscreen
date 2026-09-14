@@ -56,6 +56,7 @@ final class MapIconStore: ObservableObject {
 
     @Published private(set) var images: [URL: Image] = [:]
     private let cache: MapIconDataCache
+    private let maximumImageCount = 256
 
     init(cache: MapIconDataCache = MapIconDataCache()) {
         self.cache = cache
@@ -80,6 +81,14 @@ final class MapIconStore: ObservableObject {
         for (url, data) in decoded {
             if let image = UIImage(data: data) { updated[url] = Image(uiImage: image) }
         }
+        if updated.count > maximumImageCount {
+            let preferred = urls.compactMap { url in updated[url].map { (url, $0) } }
+            updated = Dictionary(uniqueKeysWithValues: preferred.prefix(maximumImageCount))
+        }
         if updated.count != images.count { images = updated }
     }
+
+    func handleMemoryPressure() { images = [:] }
+
+    var loadedImageCount: Int { images.count }
 }

@@ -1,0 +1,6 @@
+[
+  {"id": 1, "item_id": 46742, "item_count": 1, "type": "Featured", "cost": 60, "purchased": 2, "purchase_limit": 20},
+  {"id": 2, "item_id": 43772, "item_count": 1, "type": "Normal", "cost": 35},
+  {"id": 3, "item_id": 46744, "item_count": 1, "type": "Legacy", "cost": 450, "purchased": 1, "purchase_limit": 1},
+  {"id": 4, "item_id": 46745, "item_count": 1, "type": "FutureType", "cost": 99, "purchased": 0, "purchase_limit": 2}
+]

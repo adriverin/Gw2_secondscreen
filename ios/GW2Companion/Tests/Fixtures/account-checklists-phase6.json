@@ -1,0 +1,8 @@
+{
+  "worldbosses_public": ["tequatl_the_sunless", "shadow_behemoth"],
+  "worldbosses_completed": ["tequatl_the_sunless", "future_boss"],
+  "mapchests_public": ["verdant_brink_heros_choice_chest", "auric_basin_heros_choice_chest"],
+  "mapchests_completed": ["verdant_brink_heros_choice_chest"],
+  "dailycrafting_public": ["lump_of_mithrilium", "spool_of_silk_weaving_thread", "charged_quartz_crystal"],
+  "dailycrafting_completed": ["spool_of_silk_weaving_thread"]
+}
