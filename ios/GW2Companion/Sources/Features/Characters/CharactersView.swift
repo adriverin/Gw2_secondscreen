@@ -145,7 +145,7 @@ struct CharacterDetailView: View {
                     case .build:
                         BuildSection(detail: detail)
                     case .inventory:
-                        CharacterInventorySection(detail: detail)
+                        CharacterInventorySection(detail: detail, fallbackItems: account.itemMetadata)
                     }
                 }
             }
@@ -496,11 +496,16 @@ private struct MetadataDetailView: View {
     private var kind: String { switch inspection { case .trait: "Trait"; case .skill: "Skill" } }
 }
 
-private struct CharacterInventorySection: View {
+struct CharacterInventorySection: View {
     enum Layout: String, CaseIterable { case grid = "Grid"; case list = "List" }
     let detail: CharacterDetailData
+    var fallbackItems: [Int: ItemMetadata] = [:]
     @State private var layout: Layout = .grid
     @State private var inspected: InspectedItem?
+
+    private var items: [Int: ItemMetadata] {
+        fallbackItems.merging(detail.items) { _, new in new }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -520,14 +525,21 @@ private struct CharacterInventorySection: View {
                 ProgressView("Loading inventory…").frame(maxWidth: .infinity).padding(30)
             }
         }
-        .sheet(item: $inspected) { ItemDetailView(inspected: $0, metadata: detail.items) }
+        .sheet(item: $inspected) { ItemDetailView(inspected: $0, metadata: items) }
     }
 
     private func bagView(_ bag: InventoryBag, index: Int) -> some View {
         let slots = bag.inventory ?? []
         let used = slots.compactMap { $0 }.count
+        let bagItem = bag.id.flatMap { items[$0] }
         return GWCard {
-            Text("Bag \(index + 1) — \(used) / \(bag.size ?? slots.count)").font(.headline)
+            HStack(spacing: 10) {
+                if let bagItem { GWItemIcon(item: bagItem, size: 36) }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(bagItem?.name ?? "Bag \(index + 1)").font(.headline)
+                    Text("\(used) / \(bag.size ?? slots.count) slots").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             if layout == .grid {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 52, maximum: 62), spacing: 9)], spacing: 9) {
                     ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in inventorySlot(slot) }
@@ -536,7 +548,7 @@ private struct CharacterInventorySection: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in
-                        if let slot, let item = detail.items[slot.id] {
+                        if let slot, let item = items[slot.id] {
                             Button { inspected = InspectedItem(item: item, quantity: slot.count, slot: slot) } label: {
                                 HStack { GWItemIcon(item: item, size: 38); Text(item.name); Spacer(); Text(slot.count.formatted()).bold() }
                                     .padding(.vertical, 7)
@@ -549,7 +561,7 @@ private struct CharacterInventorySection: View {
     }
 
     @ViewBuilder private func inventorySlot(_ slot: InventorySlot?) -> some View {
-        if let slot, let item = detail.items[slot.id] {
+        if let slot, let item = items[slot.id] {
             Button { inspected = InspectedItem(item: item, quantity: slot.count, slot: slot) } label: {
                 ZStack(alignment: .bottomTrailing) {
                     GWItemIcon(item: item, size: 52)
@@ -557,6 +569,7 @@ private struct CharacterInventorySection: View {
                 }
             }
             .buttonStyle(.plain).accessibilityLabel("\(item.name), quantity \(slot.count)")
+            .accessibilityIdentifier("inventory.item.\(item.name)")
         } else {
             RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.45)).frame(width: 52, height: 52)
                 .accessibilityHidden(true)

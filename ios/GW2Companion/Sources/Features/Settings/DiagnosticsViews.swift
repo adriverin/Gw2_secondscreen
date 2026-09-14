@@ -151,7 +151,9 @@ struct MapCalibrationView: View {
     @EnvironmentObject private var telemetry: TelemetryStore
     @EnvironmentObject private var objectives: MapObjectiveStore
     @State private var selectedID: MapObjectiveID?
+    @State private var selectedHarness = MapAlignmentLandmarks.kessexHavenWaypoint.name
     private let tolerance = 75.0
+    private let projection = ArenaNetTileProjection.shared
 
     var body: some View {
         List {
@@ -165,7 +167,7 @@ struct MapCalibrationView: View {
                 }
             }
             if let measurement {
-                Section("Raw coordinates") {
+                Section("CURRENT CONTINENT") {
                     LabeledContent("Player X", value: measurement.player.x.formatted(.number.precision(.fractionLength(3))))
                     LabeledContent("Player Y", value: measurement.player.y.formatted(.number.precision(.fractionLength(3))))
                     LabeledContent("Objective X", value: measurement.objective.x.formatted(.number.precision(.fractionLength(3))))
@@ -177,29 +179,89 @@ struct MapCalibrationView: View {
                           systemImage: measurement.distance <= tolerance ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(measurement.distance <= tolerance ? .green : .orange)
                 }
+                Section("TILE WORLD") {
+                    LabeledContent("Player X", value: measurement.playerTile.x.formatted(.number.precision(.fractionLength(3))))
+                    LabeledContent("Player Y", value: measurement.playerTile.y.formatted(.number.precision(.fractionLength(3))))
+                    LabeledContent("EoD tile offset X", value: measurement.eodOffset.x.formatted())
+                    LabeledContent("EoD tile offset Y", value: measurement.eodOffset.y.formatted())
+                    LabeledContent("Tile z", value: "\(measurement.tile.zoom)")
+                    LabeledContent("Tile x", value: "\(measurement.tile.x)")
+                    LabeledContent("Tile y", value: "\(measurement.tile.y)")
+                    LabeledContent("Map ID", value: "\(telemetry.latest?.map?.id ?? -1)")
+                    LabeledContent("Continent", value: "\(measurement.config.continentID)")
+                    LabeledContent("Floor", value: "\(telemetry.latest?.map?.id == nil ? 1 : 1)")
+                    LabeledContent("API max zoom", value: "\(measurement.config.advertisedMaxZoom)")
+                    LabeledContent("Projection reference zoom", value: "\(measurement.config.referenceZoom)")
+                }
                 Section { ShareLink(item: report(measurement)) { Label("Export Calibration Report", systemImage: "square.and.arrow.up") } }
             } else {
                 Section { Text("Fresh live telemetry and a waypoint on the current map are required.").foregroundStyle(.secondary) }
+            }
+            Section("Alignment harness") {
+                Picker("Landmark", selection: $selectedHarness) {
+                    ForEach(MapAlignmentLandmarks.coreTyria, id: \.name) { Text($0.name).tag($0.name) }
+                }
+                if let landmark = MapAlignmentLandmarks.coreTyria.first(where: { $0.name == selectedHarness }) {
+                    NavigationLink("Render tiles + \(landmark.name)") {
+                        MapAlignmentHarnessView(
+                            landmark: landmark,
+                            metadata: harnessMetadata(for: landmark))
+                    }
+                }
             }
         }
         .navigationTitle("Map Calibration")
     }
 
+    private func harnessMetadata(for landmark: MapAlignmentLandmarks.Landmark) -> GW2MapMetadata {
+        switch landmark.mapID {
+        case 15: MapAlignmentLandmarks.queensdaleMetadata
+        case 23: MapAlignmentLandmarks.kessexHillsMetadata
+        case 50: MapAlignmentLandmarks.lionsArchMetadata
+        case 53: MapAlignmentLandmarks.sparkflyFenMetadata
+        default: MapAlignmentLandmarks.kessexHillsMetadata
+        }
+    }
+
     private var waypoints: [MapObjective] {
         objectives.objectives.filter { $0.type == .waypoint }.sorted { $0.name < $1.name }
     }
-    private var measurement: (player: ContinentPoint, objective: ContinentPoint, dx: Double, dy: Double, distance: Double)? {
+    private var measurement: (
+        player: ContinentPoint, objective: ContinentPoint, dx: Double, dy: Double, distance: Double,
+        playerTile: TileWorldCoordinate, eodOffset: (x: Double, y: Double), tile: TileIndex,
+        config: TileProjectionConfiguration
+    )? {
         guard telemetry.state == .connectedLive, let player = telemetry.latest?.player,
               let selectedID, let objective = waypoints.first(where: { $0.id == selectedID }) else { return nil }
         let p = ContinentPoint(x: player.continentX, y: player.continentY)
         let o = objective.coordinate
-        return (p, o, p.x - o.x, p.y - o.y, ObjectiveDistanceEngine.distance(from: p, to: o))
+        let continentID = 1
+        let config = projection.configuration(continentID: continentID)
+        let tileWorld = projection.tileWorldCoordinate(from: p, continentID: continentID, mapFloor: 1)
+            ?? TileWorldCoordinate(x: p.x, y: p.y)
+        let tile = projection.tileIndex(from: tileWorld, zoom: config.referenceZoom, continentID: continentID)
+            ?? TileIndex(zoom: config.referenceZoom, x: -1, y: -1)
+        return (
+            p, o, p.x - o.x, p.y - o.y, ObjectiveDistanceEngine.distance(from: p, to: o),
+            tileWorld,
+            (config.usesLegacyTileOrigin ? EndOfDragonsShift.deltaX : 0,
+             config.usesLegacyTileOrigin ? EndOfDragonsShift.deltaY : 0),
+            tile, config)
     }
-    private func report(_ value: (player: ContinentPoint, objective: ContinentPoint, dx: Double, dy: Double, distance: Double)) -> String {
+    private func report(_ value: (
+        player: ContinentPoint, objective: ContinentPoint, dx: Double, dy: Double, distance: Double,
+        playerTile: TileWorldCoordinate, eodOffset: (x: Double, y: Double), tile: TileIndex,
+        config: TileProjectionConfiguration
+    )) -> String {
         let payload: [String: Any] = [
             "mapId": telemetry.latest?.map?.id ?? -1,
             "character": "redacted",
-            "player": [value.player.x, value.player.y],
+            "continent": [value.player.x, value.player.y],
+            "tileWorld": [value.playerTile.x, value.playerTile.y],
+            "eodOffset": [value.eodOffset.x, value.eodOffset.y],
+            "tile": ["z": value.tile.zoom, "x": value.tile.x, "y": value.tile.y],
+            "referenceZoom": value.config.referenceZoom,
+            "advertisedMaxZoom": value.config.advertisedMaxZoom,
             "objective": [value.objective.x, value.objective.y],
             "delta": [value.dx, value.dy],
             "distance": value.distance,

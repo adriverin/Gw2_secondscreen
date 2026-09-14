@@ -181,7 +181,7 @@ extension AccountPermission {
         switch self {
         case .account: "Affects account identity and account-wide status."
         case .characters: "Affects the character roster."
-        case .inventories: "Affects character inventory, bank, materials, and crafting progress."
+        case .inventories: "Affects character inventories, bank, material storage, and shared inventory."
         case .builds: "Affects equipment and build tabs."
         case .wallet: "Affects wallet balances."
         case .progression: "Affects achievements, Wizard’s Vault, and daily or weekly completion."

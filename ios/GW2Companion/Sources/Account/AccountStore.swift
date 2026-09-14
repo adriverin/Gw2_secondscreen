@@ -16,7 +16,9 @@ final class AccountStore: ObservableObject {
     @Published private(set) var professions: [String: ProfessionMetadata] = [:]
     @Published private(set) var characterInventories: [String: CharacterInventoryResponse] = [:]
     @Published private(set) var bank: [InventorySlot] = []
+    @Published private(set) var bankSlots: [InventorySlot?] = []
     @Published private(set) var sharedInventory: [InventorySlot] = []
+    @Published private(set) var sharedSlots: [InventorySlot?] = []
     @Published private(set) var materials: [AccountMaterial] = []
     @Published private(set) var materialCategories: [Int: MaterialCategoryMetadata] = [:]
     @Published private(set) var wallet: [WalletEntry] = []
@@ -50,11 +52,25 @@ final class AccountStore: ObservableObject {
         CurrentCharacterMatcher.match(liveName: liveCharacterName, characters: characters)
     }
     var summary: AccountSummary { AccountSummary(characters: characters, holdings: holdings) }
+    var cacheStatusText: String {
+        if isStale, let date = accountLastRefreshedAt {
+            return "Offline using cache. Last updated \(date.formatted(date: .abbreviated, time: .shortened)). Quantities may have changed."
+        }
+        if isStale { return "Offline using cache. Quantities may have changed." }
+        if let date = accountLastRefreshedAt {
+            return "Last updated \(date.formatted(date: .omitted, time: .shortened))"
+        }
+        return "Never loaded"
+    }
 
     func start() async {
         guard !hasStarted else { return }
         hasStarted = true
 #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--phase2-no-inventories") {
+            loadPhaseTwoLimitedInventoryFixtures()
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("--phase2-fixtures") {
             loadPhaseTwoFixtures()
             return
@@ -80,7 +96,9 @@ final class AccountStore: ObservableObject {
         professions = [:]
         characterInventories = [:]
         bank = []
+        bankSlots = []
         sharedInventory = []
+        sharedSlots = []
         materials = []
         materialCategories = [:]
         wallet = []
@@ -132,7 +150,9 @@ final class AccountStore: ObservableObject {
             } else {
                 characterInventories = [:]
                 bank = []
+                bankSlots = []
                 sharedInventory = []
+                sharedSlots = []
                 materials = []
                 holdings = []
             }
@@ -200,6 +220,7 @@ final class AccountStore: ObservableObject {
             }
             if let bags = detail.inventory?.bags {
                 for bag in bags.compactMap({ $0 }) {
+                    if let bagID = bag.id { itemIDs.append(bagID) }
                     itemIDs.append(contentsOf: (bag.inventory ?? []).compactMap { $0?.id })
                 }
             }
@@ -255,7 +276,9 @@ final class AccountStore: ObservableObject {
             ?? CharacterInventoryResponse(bags: [])
         characterInventories = ["Andrea": andreaInventory, "Test Mesmer": andreaInventory]
         bank = [InventorySlot(id: 19697, count: 211), InventorySlot(id: 46731, count: 4)]
+        bankSlots = [InventorySlot(id: 19697, count: 211), nil, InventorySlot(id: 46731, count: 4), nil]
         sharedInventory = [InventorySlot(id: 19697, count: 100)]
+        sharedSlots = [InventorySlot(id: 19697, count: 100), nil]
         materials = [AccountMaterial(id: 19697, category: 5, count: 250)]
         itemMetadata = (try? decoder.decode([ItemMetadata].self, from: Data(Self.fixtureItems.utf8)))
             .map { Dictionary(uniqueKeysWithValues: $0.map { ($0.id, $0) }) } ?? [:]
@@ -295,6 +318,26 @@ final class AccountStore: ObservableObject {
         connectionState = .connected
         errorMessage = nil
         isStale = false
+        accountLastRefreshedAt = Date()
+    }
+
+    private func loadPhaseTwoLimitedInventoryFixtures() {
+        loadPhaseTwoFixtures()
+        tokenInfo = TokenInfo(
+            id: "limited-key", name: "Limited key",
+            permissions: ["account", "characters"])
+        characterInventories = [:]
+        bank = []
+        bankSlots = []
+        sharedInventory = []
+        sharedSlots = []
+        materials = []
+        holdings = []
+        characterDetails = characterDetails.mapValues { detail in
+            var copy = detail
+            copy.inventory = nil
+            return copy
+        }
     }
 #endif
 
@@ -328,7 +371,7 @@ final class AccountStore: ObservableObject {
     [{"name":"Andrea","race":"Human","gender":"Female","profession":"Mesmer","level":80,"age":4467600,"created":"2018-05-18T17:42:00Z","deaths":83,"crafting":[{"discipline":"Tailor","rating":500,"active":true}]},{"name":"Test Mesmer","race":"Human","gender":"Female","profession":"Mesmer","level":80,"age":1241000,"created":"2025-01-01T12:00:00Z","deaths":14,"crafting":[]},{"name":"Sylvari Ranger","race":"Sylvari","gender":"Male","profession":"Ranger","level":35,"age":1537200,"created":"2024-01-04T12:00:00Z","deaths":12,"crafting":[]}]
     """#
     private static let fixtureInventory = #"{"bags":[{"id":20,"size":5,"inventory":[{"id":19697,"count":173},null,{"id":46731,"count":4},null,null]}]}"#
-    private static let fixtureItems = #"[{"id":19697,"name":"Mithril Ore","icon":null,"rarity":"Basic","type":"CraftingMaterial","level":0},{"id":46731,"name":"Bolt of Damask","icon":null,"rarity":"Ascended","type":"CraftingMaterial","level":0},{"id":101,"name":"Zojja's Sword","icon":null,"rarity":"Ascended","type":"Weapon","level":80,"details":{"type":"Sword","infix_upgrade":{"id":161,"attributes":[{"attribute":"Power","modifier":125},{"attribute":"Precision","modifier":90},{"attribute":"Ferocity","modifier":90}],"buff":null}}},{"id":201,"name":"Superior Sigil of Force","icon":null,"rarity":"Exotic","type":"UpgradeComponent","level":60},{"id":301,"name":"+9 Agony Infusion","icon":null,"rarity":"Fine","type":"UpgradeComponent","level":0}]"#
+    private static let fixtureItems = #"[{"id":20,"name":"Starter Backpack","icon":null,"rarity":"Basic","type":"Bag","level":0},{"id":19697,"name":"Mithril Ore","icon":null,"rarity":"Basic","type":"CraftingMaterial","level":0},{"id":46731,"name":"Bolt of Damask","icon":null,"rarity":"Ascended","type":"CraftingMaterial","level":0},{"id":101,"name":"Zojja's Sword","icon":null,"rarity":"Ascended","type":"Weapon","level":80,"details":{"type":"Sword","infix_upgrade":{"id":161,"attributes":[{"attribute":"Power","modifier":125},{"attribute":"Precision","modifier":90},{"attribute":"Ferocity","modifier":90}],"buff":null}}},{"id":201,"name":"Superior Sigil of Force","icon":null,"rarity":"Exotic","type":"UpgradeComponent","level":60},{"id":301,"name":"+9 Agony Infusion","icon":null,"rarity":"Fine","type":"UpgradeComponent","level":0}]"#
     private static let fixtureEquipment = #"[{"tab":1,"name":"Raid DPS","is_active":true,"equipment":[{"id":101,"slot":"WeaponA1","stats":{"id":161,"attributes":{"Power":125,"Precision":90,"Ferocity":90}},"upgrades":[201],"infusions":[301],"binding":"Account"}]},{"tab":2,"name":"Open World","is_active":false,"equipment":[]}]"#
     private static let fixtureBuild = #"[{"tab":1,"name":"Power Virtuoso","is_active":true,"build":{"name":"Power Virtuoso","profession":"Mesmer","specializations":[{"id":66,"traits":[31,32,33]}],"skills":{"terrestrial":{"heal":5503,"utilities":[5519,5570,10234],"elite":29519},"aquatic":null,"pve":null,"pvp":null,"wvw":null}}}]"#
 #endif
@@ -348,11 +391,13 @@ final class AccountStore: ObservableObject {
         }
         characterInventories = loadedCharacters
 
-        async let loadedBank = api.bank()
-        async let loadedShared = api.sharedInventory()
+        async let loadedBank = api.bankSlots()
+        async let loadedShared = api.sharedInventorySlots()
         async let loadedMaterials = api.accountMaterials()
-        bank = (try? await loadedBank) ?? bank
-        sharedInventory = (try? await loadedShared) ?? sharedInventory
+        bankSlots = (try? await loadedBank) ?? bankSlots
+        sharedSlots = (try? await loadedShared) ?? sharedSlots
+        bank = bankSlots.compactMap { $0 }
+        sharedInventory = sharedSlots.compactMap { $0 }
         materials = (try? await loadedMaterials) ?? materials
 
         var sources: [(ItemLocation, [InventorySlot])] = characterInventories.map { name, response in
@@ -380,7 +425,9 @@ final class AccountStore: ObservableObject {
         professions = snapshot.professions
         characterInventories = snapshot.characterInventories
         bank = snapshot.bank
+        bankSlots = snapshot.bankSlots ?? snapshot.bank.map { Optional($0) }
         sharedInventory = snapshot.sharedInventory
+        sharedSlots = snapshot.sharedSlots ?? snapshot.sharedInventory.map { Optional($0) }
         materials = snapshot.materials
         materialCategories = snapshot.materialCategories
         wallet = snapshot.wallet
@@ -401,7 +448,7 @@ final class AccountStore: ObservableObject {
         let snapshot = AccountSnapshot(
             tokenInfo: tokenInfo, account: account, world: world, characters: characters,
             professions: professions, characterInventories: characterInventories, bank: bank,
-            sharedInventory: sharedInventory, materials: materials, materialCategories: materialCategories,
+            bankSlots: bankSlots, sharedInventory: sharedInventory, sharedSlots: sharedSlots, materials: materials, materialCategories: materialCategories,
             wallet: wallet, currencies: currencies, itemMetadata: itemMetadata, holdings: holdings,
             achievementProgress: achievementProgress, unlockedRecipeIDs: Array(unlockedRecipeIDs),
             unlockedSkinIDs: Array(unlockedSkinIDs), unlockedMiniIDs: Array(unlockedMiniIDs),
@@ -419,7 +466,9 @@ private struct AccountSnapshot: Codable, Sendable {
     let professions: [String: ProfessionMetadata]
     let characterInventories: [String: CharacterInventoryResponse]
     let bank: [InventorySlot]
+    var bankSlots: [InventorySlot?]?
     let sharedInventory: [InventorySlot]
+    var sharedSlots: [InventorySlot?]?
     let materials: [AccountMaterial]
     let materialCategories: [Int: MaterialCategoryMetadata]
     let wallet: [WalletEntry]

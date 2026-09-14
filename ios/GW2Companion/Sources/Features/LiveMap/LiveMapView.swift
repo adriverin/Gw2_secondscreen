@@ -21,6 +21,12 @@ struct LiveMapView: View {
     @State private var characterPanelExpanded = false
     @State private var focusRequest: MapFocusRequest?
     @State private var goalAction: SuggestedAction?
+    @State private var viewportCenter = ContinentPoint(x: 0, y: 0)
+    @State private var viewportZoom = 6
+    @State private var viewportTileWorld: TileWorldCoordinate?
+    @State private var viewportTile: TileIndex?
+    @AppStorage("developer.mode.enabled") private var developerMode = false
+    @AppStorage("developer.map.tileGrid") private var showTileDebugGrid = false
 
     private var playerPoint: ContinentPoint? {
         guard telemetry.latest?.positionAvailable == true, let player = telemetry.latest?.player else { return nil }
@@ -110,14 +116,29 @@ struct LiveMapView: View {
                 objectives: objectives.visibleObjectives, sceneVersion: objectives.sceneRevision,
                 harvested: gathering.harvested, target: objectives.currentTarget,
                 followPlayer: $followPlayer, focusRequest: focusRequest,
-                onSelectObjective: select)
+                showTileDebugGrid: {
+#if DEBUG
+                    developerMode && showTileDebugGrid
+#else
+                    false
+#endif
+                }(),
+                showTiles: artworkAvailable,
+                onSelectObjective: select,
+                onVisibleCoordinateChange: { center, zoom, tileWorld, tile in
+                    viewportCenter = center
+                    viewportZoom = zoom
+                    viewportTileWorld = tileWorld
+                    viewportTile = tile
+                })
                 .ignoresSafeArea(edges: .top)
 
             VStack(spacing: 10) {
                 header
                 connectionBanner
                 if let notice = objectives.arrivalNotice { arrivalBanner(notice) }
-                if metadataFailed { unavailableArtworkBanner }
+                if metadataFailed || !artworkAvailable { unavailableArtworkBanner }
+                if developerMode { calibrationHUD }
                 objectiveStatusBanner
                 Spacer()
                 if horizontalSizeClass != .regular, sessions.activeSession != nil {
@@ -351,9 +372,42 @@ struct LiveMapView: View {
         }
     }
 
+    private var artworkAvailable: Bool {
+        guard let metadata else { return true }
+        return ArenaNetTileProjection.shared.mapHasPaintedArtwork(metadata)
+    }
+
     private var unavailableArtworkBanner: some View {
-        Label("Map artwork unavailable for this area. Live telemetry remains connected.", systemImage: "map")
+        Label("Map artwork unavailable for this area. Player, objectives, and gathering remain on the live map.", systemImage: "map")
             .font(.caption).padding(9).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private var calibrationHUD: some View {
+        let projection = ArenaNetTileProjection.shared
+        let continentID = metadata?.continentId ?? 1
+        let config = projection.configuration(continentID: continentID)
+        let tileWorld = viewportTileWorld
+            ?? projection.tileWorldCoordinate(from: viewportCenter, continentID: continentID, mapFloor: metadata?.defaultFloor ?? 1)
+        VStack(alignment: .leading, spacing: 3) {
+            Text("MAP CALIBRATION").font(.caption2.bold()).foregroundStyle(.secondary)
+            Text("CURRENT CONTINENT  X: \(viewportCenter.x.formatted(.number.precision(.fractionLength(1))))  Y: \(viewportCenter.y.formatted(.number.precision(.fractionLength(1))))")
+            if let tileWorld {
+                Text("TILE WORLD  X: \(tileWorld.x.formatted(.number.precision(.fractionLength(1))))  Y: \(tileWorld.y.formatted(.number.precision(.fractionLength(1))))")
+            }
+            Text("EoD tile offset  X: \(config.usesLegacyTileOrigin ? Int(EndOfDragonsShift.deltaX) : 0)  Y: \(config.usesLegacyTileOrigin ? Int(EndOfDragonsShift.deltaY) : 0)")
+            if let viewportTile {
+                Text("Tile  z: \(viewportTile.zoom)  x: \(viewportTile.x)  y: \(viewportTile.y)")
+            }
+            Text("Map ID \(metadata?.id ?? telemetry.latest?.map?.id ?? -1)  continent \(continentID)  floor \(metadata?.defaultFloor ?? 1)")
+            Text("API max zoom \(config.advertisedMaxZoom)  projection reference zoom \(config.referenceZoom)  user zoom \(viewportZoom)")
+            Toggle("Tile debug grid", isOn: $showTileDebugGrid).font(.caption)
+        }
+        .font(.system(size: 11, design: .monospaced))
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Map calibration overlay")
     }
 
     private func statusBanner(_ message: String, symbol: String) -> some View {

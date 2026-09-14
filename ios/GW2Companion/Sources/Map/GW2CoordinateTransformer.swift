@@ -1,10 +1,5 @@
 import Foundation
 
-struct ContinentPoint: Codable, Hashable, Sendable {
-    let x: Double
-    let y: Double
-}
-
 struct MapPoint: Equatable, Sendable {
     let x: Double
     let y: Double
@@ -20,8 +15,21 @@ struct TilePoint: Equatable, Sendable {
 enum CoordinateTransformError: Error { case invalidRectangle }
 
 struct GW2CoordinateTransformer: Sendable {
-    static let maximumTileZoom = 8
+    /// Tile imagery reference zoom for Tyria. Independent of `/v2/continents.max_zoom`.
+    static var tileReferenceZoom: Int {
+        ArenaNetTileProjection.shared.configuration(continentID: 1).referenceZoom
+    }
+
+    @available(*, deprecated, renamed: "tileReferenceZoom", message: "API continent max_zoom is not the tile projection basis.")
+    static var maximumTileZoom: Int { tileReferenceZoom }
+
     let metadata: GW2MapMetadata
+    private let projection: ArenaNetTileProjection
+
+    init(metadata: GW2MapMetadata, projection: ArenaNetTileProjection = .shared) {
+        self.metadata = metadata
+        self.projection = projection
+    }
 
     func mapPoint(from continent: ContinentPoint) throws -> MapPoint {
         let rectangles = try validatedRectangles()
@@ -48,14 +56,21 @@ struct GW2CoordinateTransformer: Sendable {
             y: -worldZ * metersToInches))
     }
 
+    func tileWorldCoordinate(from continent: ContinentPoint) -> TileWorldCoordinate? {
+        projection.tileWorldCoordinate(
+            from: continent, continentID: metadata.continentId, mapFloor: metadata.defaultFloor)
+    }
+
     func tilePoint(from continent: ContinentPoint, zoom: Int) -> TilePoint {
-        let clampedZoom = min(max(zoom, 0), Self.maximumTileZoom)
-        let scale = pow(2.0, Double(Self.maximumTileZoom - clampedZoom))
-        let px = continent.x / scale
-        let py = continent.y / scale
-        return TilePoint(tileX: Int(floor(px / 256)), tileY: Int(floor(py / 256)),
-                         pixelX: px.truncatingRemainder(dividingBy: 256),
-                         pixelY: py.truncatingRemainder(dividingBy: 256))
+        guard let tileWorld = tileWorldCoordinate(from: continent),
+              let index = projection.tileIndex(
+                from: tileWorld, zoom: zoom, continentID: metadata.continentId),
+              let pixel = projection.pixelInTile(
+                from: tileWorld, zoom: zoom, continentID: metadata.continentId)
+        else {
+            return TilePoint(tileX: -1, tileY: -1, pixelX: 0, pixelY: 0)
+        }
+        return TilePoint(tileX: index.x, tileY: index.y, pixelX: pixel.x, pixelY: pixel.y)
     }
 
     private func validatedRectangles() throws -> (m0: MapPoint, m1: MapPoint, c0: ContinentPoint, c1: ContinentPoint) {

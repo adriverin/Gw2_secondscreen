@@ -1,16 +1,11 @@
 import SwiftUI
 
-private struct TileID: Hashable {
-    let x: Int
-    let y: Int
-}
-
-enum MapFocusMode: Equatable { case player, target, both, coordinate(ContinentPoint) }
-
 struct MapFocusRequest: Equatable {
     let id = UUID()
     let mode: MapFocusMode
 }
+
+enum MapFocusMode: Equatable { case player, target, both, coordinate(ContinentPoint), mapBounds }
 
 struct NativeTileMapView: View {
     let player: ContinentPoint?
@@ -22,12 +17,16 @@ struct NativeTileMapView: View {
     let target: MapObjective?
     @Binding var followPlayer: Bool
     let focusRequest: MapFocusRequest?
+    var showTileDebugGrid: Bool = false
+    var showTiles: Bool = true
     let onSelectObjective: (MapObjective) -> Void
+    var onVisibleCoordinateChange: ((ContinentPoint, Int, TileWorldCoordinate?, TileIndex?) -> Void)? = nil
 
+    private let projection = ArenaNetTileProjection.shared
     private let tileProvider: MapTileProvider = ArenaNetTileProvider()
     @ObservedObject private var iconStore = MapIconStore.shared
     @State private var center = ContinentPoint(x: 44_615.5, y: 29_863.7)
-    @State private var zoom = 7
+    @State private var zoom = 6
     @State private var markerScene = MapMarkerScene(objectives: [])
     @GestureState private var dragOffset: CGSize = .zero
     @GestureState private var magnification = 1.0
@@ -38,7 +37,7 @@ struct NativeTileMapView: View {
             let visibleMarkers = renderableMarkers(markerScene.visibleMarkers(in: transform))
             ZStack {
                 Color(red: 0.10, green: 0.12, blue: 0.14)
-                tileLayer(transform: transform)
+                if showTiles { tileLayer(transform: transform) }
                 targetVector(transform: transform)
                 markerCanvas(visibleMarkers, transform: transform)
                 if let player { playerMarker(player, transform: transform) }
@@ -60,41 +59,47 @@ struct NativeTileMapView: View {
                 guard followPlayer, let newPlayer else { return }
                 center = newPlayer
             }
+            .onChange(of: metadata?.id) { _, _ in
+                if let metadata, let bounds = metadata.continentBounds {
+                    if followPlayer, let player {
+                        center = player
+                    } else {
+                        fit(bounds, size: geometry.size)
+                    }
+                }
+            }
             .onChange(of: focusRequest) { _, request in
                 if let request { focus(request.mode, size: geometry.size) }
             }
+            .onChange(of: center) { _, _ in reportVisibleCoordinate() }
+            .onChange(of: zoom) { _, _ in reportVisibleCoordinate() }
+            .onAppear { reportVisibleCoordinate() }
         }
     }
 
     @ViewBuilder
     private func tileLayer(transform: MapViewportTransform) -> some View {
         let viewport = transform.visibleContinentRect(marginPoints: 256 * magnification)
-        let minX = Int(floor(viewport.minX / worldUnitsPerPixel / 256))
-        let maxX = Int(ceil(viewport.maxX / worldUnitsPerPixel / 256))
-        let minY = Int(floor(viewport.minY / worldUnitsPerPixel / 256))
-        let maxY = Int(ceil(viewport.maxY / worldUnitsPerPixel / 256))
-        let tileIDs = (minY...maxY).flatMap { y in (minX...maxX).map { TileID(x: $0, y: y) } }
+        let continentID = metadata?.continentId ?? 1
+        let floor = metadata?.defaultFloor ?? 1
+        let tileIDs = projection.tiles(
+            coveringContinentRect: viewport, zoom: zoom, continentID: continentID, mapFloor: floor)
 
         ForEach(tileIDs, id: \.self) { tile in
-            if let metadata,
-               let url = tileProvider.tileURL(
-                continent: metadata.continentId, floor: metadata.defaultFloor,
-                zoom: zoom, x: tile.x, y: tile.y) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable() }
-                    else { tilePlaceholder }
-                }
-                .frame(width: 257 * magnification, height: 257 * magnification)
-                .position(transform.screenPosition(for: ContinentPoint(
-                    x: (Double(tile.x * 256) + 128) * worldUnitsPerPixel,
-                    y: (Double(tile.y * 256) + 128) * worldUnitsPerPixel)))
+            if let url = tileProvider.tileURL(
+                continent: continentID, floor: floor, zoom: tile.zoom, x: tile.x, y: tile.y),
+               let worldRect = projection.tileWorldRect(for: tile, continentID: continentID),
+               let continent = projection.continentCoordinate(
+                from: TileWorldCoordinate(x: worldRect.midX, y: worldRect.midY),
+                continentID: continentID, mapFloor: floor) {
+                MapTileImage(url: url, index: tile, showDebug: showTileDebugGrid)
+                    .frame(width: tileScreenSize * magnification, height: tileScreenSize * magnification)
+                    .position(transform.screenPosition(for: continent))
             }
         }
     }
 
-    private var tilePlaceholder: some View {
-        Rectangle().fill(Color.white.opacity(0.035)).overlay(Rectangle().stroke(Color.white.opacity(0.04)))
-    }
+    private var tileScreenSize: CGFloat { CGFloat(ArenaNetTileProjection.tileSize + 1) }
 
     private func markerCanvas(_ markers: [MapSceneMarker], transform: MapViewportTransform) -> some View {
         MapMarkerCanvas(
@@ -154,11 +159,20 @@ struct NativeTileMapView: View {
     }
 
     private func viewportTransform(size: CGSize) -> MapViewportTransform {
-        MapViewportTransform(center: center, zoom: zoom, magnification: magnification, dragOffset: dragOffset, size: size)
+        MapViewportTransform(
+            center: center, zoom: zoom, magnification: magnification, dragOffset: dragOffset, size: size,
+            tileReferenceZoom: tileReferenceZoom)
+    }
+
+    private var tileReferenceZoom: Int {
+        projection.configuration(continentID: metadata?.continentId ?? 1).referenceZoom
     }
 
     private var iconRequestKey: String { markerScene.iconURLs.map(\.absoluteString).sorted().joined(separator: "|") }
-    private var worldUnitsPerPixel: Double { pow(2, Double(GW2CoordinateTransformer.maximumTileZoom - zoom)) }
+
+    private var worldUnitsPerPixel: Double {
+        projection.worldUnitsPerTilePixel(zoom: zoom, continentID: metadata?.continentId ?? 1)
+    }
 
     private func renderableMarkers(_ markers: [MapSceneMarker]) -> [MapSceneMarker] {
         guard zoom <= 3 else { return Array(markers.prefix(700)) }
@@ -184,8 +198,8 @@ struct NativeTileMapView: View {
             center = ContinentPoint(x: (player.x + target.continentX) / 2, y: (player.y + target.continentY) / 2)
             let dx = abs(player.x - target.continentX)
             let dy = abs(player.y - target.continentY)
-            for candidate in stride(from: GW2CoordinateTransformer.maximumTileZoom, through: 2, by: -1) {
-                let units = pow(2, Double(GW2CoordinateTransformer.maximumTileZoom - candidate))
+            for candidate in stride(from: tileReferenceZoom, through: 2, by: -1) {
+                let units = projection.worldUnitsPerTilePixel(zoom: candidate, continentID: metadata?.continentId ?? 1)
                 if dx <= Double(size.width) * units * 0.72 && dy <= Double(size.height) * units * 0.62 {
                     zoom = candidate
                     break
@@ -194,7 +208,31 @@ struct NativeTileMapView: View {
         case let .coordinate(point):
             center = point
             followPlayer = false
+        case .mapBounds:
+            guard let bounds = metadata?.continentBounds else { return }
+            followPlayer = false
+            fit(bounds, size: size)
         }
+    }
+
+    private func fit(_ bounds: CGRect, size: CGSize) {
+        center = ContinentPoint(x: bounds.midX, y: bounds.midY)
+        for candidate in stride(from: tileReferenceZoom, through: 2, by: -1) {
+            let units = projection.worldUnitsPerTilePixel(zoom: candidate, continentID: metadata?.continentId ?? 1)
+            if bounds.width <= Double(size.width) * units * 0.92 && bounds.height <= Double(size.height) * units * 0.92 {
+                zoom = candidate
+                return
+            }
+        }
+        zoom = 2
+    }
+
+    private func reportVisibleCoordinate() {
+        let continentID = metadata?.continentId ?? 1
+        let floor = metadata?.defaultFloor ?? 1
+        let tileWorld = projection.tileWorldCoordinate(from: center, continentID: continentID, mapFloor: floor)
+        let tile = tileWorld.flatMap { projection.tileIndex(from: $0, zoom: zoom, continentID: continentID) }
+        onVisibleCoordinateChange?(center, zoom, tileWorld, tile)
     }
 
     private var panGesture: some Gesture {
@@ -212,8 +250,40 @@ struct NativeTileMapView: View {
         MagnifyGesture()
             .updating($magnification) { value, state, _ in state = value.magnification }
             .onEnded { value in
-                if value.magnification > 1.25 { zoom = min(GW2CoordinateTransformer.maximumTileZoom, zoom + 1) }
+                if value.magnification > 1.25 { zoom = min(tileReferenceZoom, zoom + 1) }
                 if value.magnification < 0.8 { zoom = max(2, zoom - 1) }
             }
+    }
+}
+
+private struct MapTileImage: View {
+    let url: URL
+    let index: TileIndex
+    let showDebug: Bool
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case let .success(image):
+                image.resizable()
+            default:
+                Rectangle().fill(Color.white.opacity(0.035))
+                    .overlay(Rectangle().stroke(Color.white.opacity(0.04)))
+            }
+        }
+        .overlay {
+            if showDebug {
+                VStack(spacing: 1) {
+                    Text("z=\(index.zoom)")
+                    Text("x=\(index.x)")
+                    Text("y=\(index.y)")
+                }
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.yellow)
+                .shadow(color: .black, radius: 1)
+                .allowsHitTesting(false)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

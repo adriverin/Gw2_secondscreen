@@ -49,10 +49,10 @@ final class CoordinateTransformerTests: XCTestCase {
         XCTAssertEqual(roundTrip.y, 13_000, accuracy: 0.001)
     }
 
-    func testTileCoordinateAtMaximumZoom() {
+    func testTileCoordinateAtReferenceZoom() {
         let metadata = GW2MapMetadata(id: 15, name: "Test", continentId: 1, defaultFloor: 1,
                                       mapRect: [[0, 0], [1, 1]], continentRect: [[0, 0], [1, 1]])
-        let tile = GW2CoordinateTransformer(metadata: metadata).tilePoint(from: ContinentPoint(x: 513, y: 770), zoom: 8)
+        let tile = GW2CoordinateTransformer(metadata: metadata).tilePoint(from: ContinentPoint(x: 513, y: 770), zoom: 7)
         XCTAssertEqual(tile.tileX, 2)
         XCTAssertEqual(tile.tileY, 3)
         XCTAssertEqual(tile.pixelX, 1)

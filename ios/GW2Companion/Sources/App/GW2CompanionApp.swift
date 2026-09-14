@@ -87,7 +87,7 @@ private struct RootNavigationView: View {
     let api: GW2APIClient
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var navigation: AppNavigation
-    @State private var splitVisibility: NavigationSplitViewVisibility = .detailOnly
+    @State private var splitVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("onboarding.completed.v1") private var onboardingCompleted = false
 
     var body: some View {
@@ -95,16 +95,16 @@ private struct RootNavigationView: View {
         if horizontalSizeClass == .regular {
             NavigationSplitView(columnVisibility: $splitVisibility) {
                 List {
-                    ForEach(AppTab.allCases) { tab in
+                    ForEach(AppTab.iPadSidebar) { tab in
                         Button {
-                            navigation.selectedTab = tab
-                            splitVisibility = .detailOnly
+                            navigation.show(tab)
                         } label: {
                             Label(tab.title, systemImage: tab.symbol)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("sidebar.\(tab.title.lowercased())")
                         .listRowBackground(navigation.selectedTab == tab ? GWPalette.accent.opacity(0.16) : Color.clear)
                     }
                 }
@@ -114,12 +114,23 @@ private struct RootNavigationView: View {
                 content(for: navigation.selectedTab)
             }
         } else {
-            TabView(selection: $navigation.selectedTab) {
-                ForEach(AppTab.allCases, id: \.self) { tab in
-                    content(for: tab)
-                        .tabItem { Label(tab.title, systemImage: tab.symbol) }
-                        .tag(tab)
-                }
+            TabView(selection: phoneTabBinding) {
+                content(for: .session)
+                    .tabItem { Label(AppTab.session.title, systemImage: AppTab.session.symbol) }
+                    .tag(PhoneRootTab.session)
+                content(for: .map)
+                    .tabItem { Label(AppTab.map.title, systemImage: AppTab.map.symbol) }
+                    .tag(PhoneRootTab.map)
+                content(for: .goals)
+                    .tabItem { Label(AppTab.goals.title, systemImage: AppTab.goals.symbol) }
+                    .tag(PhoneRootTab.goals)
+                content(for: .inventory)
+                    .tabItem { Label(AppTab.inventory.title, systemImage: AppTab.inventory.symbol) }
+                    .tag(PhoneRootTab.inventory)
+                    .accessibilityIdentifier("tab.inventory")
+                moreNavigation
+                    .tabItem { Label("More", systemImage: "ellipsis") }
+                    .tag(PhoneRootTab.more)
             }
         }
         }
@@ -127,6 +138,34 @@ private struct RootNavigationView: View {
             get: { !onboardingCompleted },
             set: { if !$0 { onboardingCompleted = true } }
         )) { OnboardingFlow() }
+    }
+
+    private var phoneTabBinding: Binding<PhoneRootTab> {
+        Binding(
+            get: { navigation.phoneRootTab },
+            set: { navigation.phoneRootTab = $0 })
+    }
+
+    private var moreNavigation: some View {
+        Group {
+            if navigation.moreShowsList || !AppTab.iPhoneMore.contains(navigation.selectedTab) {
+                NavigationStack {
+                    List {
+                        ForEach(AppTab.iPhoneMore) { tab in
+                            Button {
+                                navigation.show(tab)
+                            } label: {
+                                Label(tab.title, systemImage: tab.symbol)
+                            }
+                            .accessibilityIdentifier("more.\(tab.title.lowercased())")
+                        }
+                    }
+                    .navigationTitle("More")
+                }
+            } else {
+                content(for: navigation.selectedTab)
+            }
+        }
     }
 
     @ViewBuilder

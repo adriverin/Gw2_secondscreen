@@ -37,6 +37,7 @@
 		5505A76723F41F9D4478EC0B /* recipes-phase4.json in Resources */ = {isa = PBXBuildFile; fileRef = 85805548E1DFB2EA11320151 /* recipes-phase4.json */; };
 		5531AE3EE2E6920B0DA53809 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 590A3CAC7E1B0B74D008B4D1 /* AccountStore.swift */; };
 		5736EBEB07FBDD53DBC519E2 /* GoalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3C87107612B71E0528B10B /* GoalModels.swift */; };
+		58B7369D806F4551B9C07A0B /* MapTileProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC274837A7D3B8C3642DB078 /* MapTileProjectionTests.swift */; };
 		6439A168FB6F59C24C20EBC1 /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8746803A9E9D9CD741685226 /* ItemDetailView.swift */; };
 		66A53DE8937E100AE0476BCF /* DiagnosticsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A359E5EEE5FA7E3BE9F9A7BB /* DiagnosticsViews.swift */; };
 		6817A8A70A4F84ABA56BCA0A /* wizards-vault-daily-phase6.json in Resources */ = {isa = PBXBuildFile; fileRef = 529837E58A436F1EE57D51B0 /* wizards-vault-daily-phase6.json */; };
@@ -58,6 +59,7 @@
 		89E8280BF80F5495EBA672DB /* NavigatorPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F380C84FC6A0DB82D7E38403 /* NavigatorPanelView.swift */; };
 		8BEFBDBF2F42B76BF34F022F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1C6D08BA632B0704B1488B1 /* SettingsView.swift */; };
 		8D749E2281BDF4E5D7854276 /* build-tabs.json in Resources */ = {isa = PBXBuildFile; fileRef = 203640634EADC83FFCA476B2 /* build-tabs.json */; };
+		8E45C020BB66772743AAEA0A /* MapAlignmentHarnessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B1474C16120CDB07FCF5F4B /* MapAlignmentHarnessView.swift */; };
 		91425164586232ECEF531838 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = 4C83866BB25238A1F481E603 /* THIRD_PARTY_NOTICES.md */; };
 		970B569714A37AE010A4A747 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D945F404EE6F376D785DDB /* KeychainService.swift */; };
 		9A02FA39D1987EAADBFC1815 /* TodayAPIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E3F2A41745ACB2467EDFFE /* TodayAPIModels.swift */; };
@@ -65,6 +67,7 @@
 		9E2E1F49ABD60E380565A1F1 /* GoalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A964C8EEF987F421085CD45 /* GoalsView.swift */; };
 		9E949FCF850C34CC8154A5D1 /* SessionPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6299C640515E2A0BDA654A2 /* SessionPlanner.swift */; };
 		A0557736B0499CB4B17F8BC2 /* tyrian-gathering-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = A6A4F980E9D96A9AEBCEAE84 /* tyrian-gathering-v1.json */; };
+		A1D940273867BA8134370076 /* TileCoordinateProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08D30ADA0045AF82FB2B0928 /* TileCoordinateProjection.swift */; };
 		A1F93FEF0C15B363CF5DBFA5 /* PhaseSixTodayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16F159AE3A4E9196618DFE52 /* PhaseSixTodayTests.swift */; };
 		A2A1EB693DEAAAA9AC1F8BED /* continent-floor-sparkfly.json in Resources */ = {isa = PBXBuildFile; fileRef = A1921EE974437D625F3C81D3 /* continent-floor-sparkfly.json */; };
 		A6F64FAD9C880063A68A345F /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0557C9CF9C9322538E0C4D7 /* PairingView.swift */; };
@@ -78,6 +81,7 @@
 		BC0DCDD56EAD17877B311C88 /* MapMarkerCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDE6AE2BFC74A0D37B0E07E /* MapMarkerCanvas.swift */; };
 		BC808FD863CA703281164891 /* AcquisitionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F84C4508AB554B351D2889D /* AcquisitionModels.swift */; };
 		BD863B704C68B81B19AAD40A /* wallet.json in Resources */ = {isa = PBXBuildFile; fileRef = 37C434101D09F60B9AC83A1C /* wallet.json */; };
+		C2B2F453008E897DBA55D54F /* MapAlignmentLandmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 778D451668D46EF41D09CEE0 /* MapAlignmentLandmarks.swift */; };
 		C3C6C5C94A3FA181FA0E0AE8 /* InventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E23DF52F865064CC0D61208 /* InventoryView.swift */; };
 		C9CA996D7CC025926B606C33 /* prices-phase4.json in Resources */ = {isa = PBXBuildFile; fileRef = 83CCF1DE12CA1501D6A03FC9 /* prices-phase4.json */; };
 		CAF463C0E142C15A9A7BCD3E /* inventory.json in Resources */ = {isa = PBXBuildFile; fileRef = 71166E5C28F14CE5F9FD6571 /* inventory.json */; };
@@ -123,9 +127,11 @@
 /* Begin PBXFileReference section */
 		00C5310FA0F99F2C2C68C10F /* continent-floor-verdant-brink.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "continent-floor-verdant-brink.json"; sourceTree = "<group>"; };
 		031A0FED64155985B5F07B46 /* Provenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provenance.swift; sourceTree = "<group>"; };
+		08D30ADA0045AF82FB2B0928 /* TileCoordinateProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TileCoordinateProjection.swift; sourceTree = "<group>"; };
 		091B5FF307A2978C42ADB439 /* AcquisitionKnowledgeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcquisitionKnowledgeStore.swift; sourceTree = "<group>"; };
 		09B5D0BCDD3FC918EB995016 /* GW2APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2APIClient.swift; sourceTree = "<group>"; };
 		0A2F634635A7235050177692 /* GW2CompanionTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GW2CompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B1474C16120CDB07FCF5F4B /* MapAlignmentHarnessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapAlignmentHarnessView.swift; sourceTree = "<group>"; };
 		10B618919C976E88C4BBD672 /* APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModels.swift; sourceTree = "<group>"; };
 		11ABF849A24D7DFAD5A540F6 /* GW2CompanionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2CompanionTests.swift; sourceTree = "<group>"; };
 		12BFDF56EFEC085CCEC46A81 /* continent-floor-queensdale.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "continent-floor-queensdale.json"; sourceTree = "<group>"; };
@@ -164,6 +170,7 @@
 		6D27CD6530C914DF329277E1 /* tokeninfo-limited.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "tokeninfo-limited.json"; sourceTree = "<group>"; };
 		71166E5C28F14CE5F9FD6571 /* inventory.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = inventory.json; sourceTree = "<group>"; };
 		71EBC9CAC050BEBCA0EC5677 /* MapLandmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLandmarks.swift; sourceTree = "<group>"; };
+		778D451668D46EF41D09CEE0 /* MapAlignmentLandmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapAlignmentLandmarks.swift; sourceTree = "<group>"; };
 		77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GW2CoordinateTransformer.swift; sourceTree = "<group>"; };
 		786A8676EC2E1B93E35AC628 /* MapObjectiveStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapObjectiveStore.swift; sourceTree = "<group>"; };
 		803D38165D757499E9523D7B /* CraftingPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CraftingPlanner.swift; sourceTree = "<group>"; };
@@ -198,6 +205,7 @@
 		C0263ADCBE21D6BF1D796FD4 /* SuggestedActionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestedActionEngine.swift; sourceTree = "<group>"; };
 		C1629D04C80758090CF0F8DF /* holdings-phase4.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "holdings-phase4.json"; sourceTree = "<group>"; };
 		C348FD05D07B2140CE5A5A5E /* wizards-vault-special-phase6.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "wizards-vault-special-phase6.json"; sourceTree = "<group>"; };
+		CC274837A7D3B8C3642DB078 /* MapTileProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTileProjectionTests.swift; sourceTree = "<group>"; };
 		CD74B1D772C4C7397A3216EB /* SessionPlannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPlannerView.swift; sourceTree = "<group>"; };
 		CDA3F37C8E1AED116EC83249 /* characters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = characters.json; sourceTree = "<group>"; };
 		D10909DEFA1AAE1C689F4346 /* AchievementTracking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementTracking.swift; sourceTree = "<group>"; };
@@ -252,6 +260,7 @@
 			isa = PBXGroup;
 			children = (
 				11ABF849A24D7DFAD5A540F6 /* GW2CompanionTests.swift */,
+				CC274837A7D3B8C3642DB078 /* MapTileProjectionTests.swift */,
 				608C82D7454A551444D2E8C4 /* PhaseFiveSessionPlannerTests.swift */,
 				3D95DCAF0B68E52A01E9823D /* PhaseFourGoalsTests.swift */,
 				5081C3D0B06666E7D12D89F1 /* PhaseSixBHardeningTests.swift */,
@@ -345,12 +354,15 @@
 			isa = PBXGroup;
 			children = (
 				77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */,
+				0B1474C16120CDB07FCF5F4B /* MapAlignmentHarnessView.swift */,
+				778D451668D46EF41D09CEE0 /* MapAlignmentLandmarks.swift */,
 				2BE93751AAFB77C4FEF799FD /* MapIconCache.swift */,
 				71EBC9CAC050BEBCA0EC5677 /* MapLandmarks.swift */,
 				DEDE6AE2BFC74A0D37B0E07E /* MapMarkerCanvas.swift */,
 				237A9416DA412605209608F2 /* MapMarkerScene.swift */,
 				197E6205FE2FA510BEF687D0 /* MapTileProvider.swift */,
 				FDDA2B781B4D8F637DCD608C /* NativeTileMapView.swift */,
+				08D30ADA0045AF82FB2B0928 /* TileCoordinateProjection.swift */,
 			);
 			path = Map;
 			sourceTree = "<group>";
@@ -746,6 +758,8 @@
 				970B569714A37AE010A4A747 /* KeychainService.swift in Sources */,
 				CF8F4DCFD311BB8D3FB0CEE7 /* LayerPanelView.swift in Sources */,
 				697B9256626686AA0A02F8D1 /* LiveMapView.swift in Sources */,
+				8E45C020BB66772743AAEA0A /* MapAlignmentHarnessView.swift in Sources */,
+				C2B2F453008E897DBA55D54F /* MapAlignmentLandmarks.swift in Sources */,
 				21C6BBC9F2FDF4FADA3C7D57 /* MapIconCache.swift in Sources */,
 				502B1EA971EA0575DC7F3F7A /* MapLandmarks.swift in Sources */,
 				BC0DCDD56EAD17877B311C88 /* MapMarkerCanvas.swift in Sources */,
@@ -770,6 +784,7 @@
 				FBCF11D4AB3880DBFEEB042B /* TelemetryModels.swift in Sources */,
 				B13AA7D36A0C4F8E758871D4 /* TelemetryProvider.swift in Sources */,
 				7BE6AF1E087CCAB57FC611BA /* TelemetryStore.swift in Sources */,
+				A1D940273867BA8134370076 /* TileCoordinateProjection.swift in Sources */,
 				9A02FA39D1987EAADBFC1815 /* TodayAPIModels.swift in Sources */,
 				7746D93BFF21FDE55ABABD65 /* TodayDashboardView.swift in Sources */,
 				CFC132E9D5344369035EDFAF /* TodayMerge.swift in Sources */,
@@ -784,6 +799,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E41065CF999C6BFB1A88AF9A /* GW2CompanionTests.swift in Sources */,
+				58B7369D806F4551B9C07A0B /* MapTileProjectionTests.swift in Sources */,
 				BBB2F1DEA307B74A82F15858 /* PhaseFiveSessionPlannerTests.swift in Sources */,
 				22521838CFAC2F3124A2259F /* PhaseFourGoalsTests.swift in Sources */,
 				CD16410E6F3E63B12DEA4CAE /* PhaseSixBHardeningTests.swift in Sources */,

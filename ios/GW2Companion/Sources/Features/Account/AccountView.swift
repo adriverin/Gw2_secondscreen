@@ -2,9 +2,11 @@ import SwiftUI
 
 struct AccountView: View {
     @EnvironmentObject private var store: AccountStore
+    @EnvironmentObject private var navigation: AppNavigation
     @State private var localError: String?
     @State private var walletSearch = ""
     @State private var showingReplaceKey = false
+    @State private var showingInventoryPermissionHelp = false
 
     var body: some View {
         NavigationStack {
@@ -127,6 +129,9 @@ struct AccountView: View {
                 Label("\(store.materials.filter { $0.count > 0 }.count) materials", systemImage: "cube.box")
             }
             .font(.subheadline).padding(.top, 12)
+            Button("Open Inventory") { navigation.showInventory(.all) }
+                .buttonStyle(.bordered)
+                .padding(.top, 8)
         }
     }
 
@@ -136,12 +141,25 @@ struct AccountView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 145))], alignment: .leading, spacing: 9) {
                 ForEach(AccountPermission.allCases) { permission in
                     let enabled = store.permissions.contains(permission)
-                    Label(permission.title, systemImage: enabled ? "checkmark.circle.fill" : "circle")
-                        .font(.subheadline).foregroundStyle(enabled ? Color.primary : Color.secondary)
-                        .accessibilityLabel("\(permission.title) permission \(enabled ? "enabled" : "not enabled")")
+                    Button {
+                        if permission == .inventories && !enabled { showingInventoryPermissionHelp = true }
+                    } label: {
+                        Label("\(permission.title)    \(enabled ? "✓" : "Missing")",
+                              systemImage: enabled ? "checkmark.circle.fill" : "circle")
+                            .font(.subheadline).foregroundStyle(enabled ? Color.primary : Color.orange)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(permission.title) permission \(enabled ? "enabled" : "missing")")
+                    .accessibilityIdentifier("permission.\(permission.rawValue)")
                 }
             }
             .padding(.top, 12)
+            .alert("Inventories permission missing", isPresented: $showingInventoryPermissionHelp) {
+                Button("Replace API Key") { showingReplaceKey = true }
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The inventories permission is required for character inventories, bank, material storage, and shared inventory.")
+            }
         }
     }
 

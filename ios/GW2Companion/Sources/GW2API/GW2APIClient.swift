@@ -99,13 +99,19 @@ actor GW2APIClient {
     }
 
     func bank() async throws -> [InventorySlot] {
-        let slots: [InventorySlot?] = try await authenticatedRequest("account/bank")
-        return slots.compactMap { $0 }
+        try await bankSlots().compactMap { $0 }
+    }
+
+    func bankSlots() async throws -> [InventorySlot?] {
+        try await authenticatedRequest("account/bank")
     }
 
     func sharedInventory() async throws -> [InventorySlot] {
-        let slots: [InventorySlot?] = try await authenticatedRequest("account/inventory")
-        return slots.compactMap { $0 }
+        try await sharedInventorySlots().compactMap { $0 }
+    }
+
+    func sharedInventorySlots() async throws -> [InventorySlot?] {
+        try await authenticatedRequest("account/inventory")
     }
 
     func accountMaterials() async throws -> [AccountMaterial] {
