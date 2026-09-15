@@ -95,17 +95,19 @@ struct InventoryView: View {
             HStack {
                 Label(account.cacheStatusText, systemImage: "clock.arrow.circlepath")
                 Spacer()
+                Text("CACHED").font(.caption2.bold()).foregroundStyle(.orange)
             }
             .font(.caption).foregroundStyle(.secondary)
             .padding(.horizontal).padding(.top, 8)
             .accessibilityIdentifier("inventory.state.cached")
         } else if let updated = account.accountLastRefreshedAt {
             HStack {
-                Text("Last updated \(updated.formatted(date: .omitted, time: .shortened))")
+                Text("LIVE ACCOUNT RESPONSE • \(updated.formatted(date: .omitted, time: .shortened))")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
             .padding(.horizontal).padding(.top, 8)
+            .accessibilityIdentifier("inventory.state.live")
         }
     }
 
@@ -215,7 +217,7 @@ struct BankStorageView: View {
         let occupied = account.bankSlots.compactMap { $0 }.count
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                GWSectionHeader(title: "Bank", subtitle: "\(occupied) occupied slots")
+                GWSectionHeader(title: "Bank", subtitle: "\(occupied) occupied slots • \(account.dataSource.qaLabel)")
                 if account.bankSlots.isEmpty {
                     Text("Bank is empty.").foregroundStyle(.secondary).padding(.top, 8)
                 } else {
@@ -246,7 +248,7 @@ struct SharedInventoryView: View {
         let occupied = account.sharedSlots.compactMap { $0 }.count
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                GWSectionHeader(title: "Shared Inventory", subtitle: "\(occupied) occupied slots")
+                GWSectionHeader(title: "Shared Inventory", subtitle: "\(occupied) occupied slots • \(account.dataSource.qaLabel)")
                 if account.sharedSlots.isEmpty {
                     Text("Shared inventory is empty.").foregroundStyle(.secondary).padding(.top, 8)
                 } else {

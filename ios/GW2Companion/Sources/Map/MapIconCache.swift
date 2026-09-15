@@ -28,6 +28,7 @@ actor MapIconDataCache {
             inFlight[url] = nil
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: file, options: .atomic)
+            DiskCachePruner.prune(directory: directory, maxFiles: 2_000)
             return data
         } catch {
             inFlight[url] = nil

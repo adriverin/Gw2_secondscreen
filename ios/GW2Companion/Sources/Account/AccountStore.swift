@@ -31,6 +31,10 @@ final class AccountStore: ObservableObject {
     @Published private(set) var unlockedMiniIDs: Set<Int> = []
     @Published private(set) var accountLastRefreshedAt: Date?
     @Published private(set) var goalsAccountLastRefreshedAt: Date?
+    @Published private(set) var accountMetadataUpdatedAt: Date?
+    @Published private(set) var charactersUpdatedAt: Date?
+    @Published private(set) var inventoryUpdatedAt: Date?
+    @Published private(set) var dataSource: AccountDataSource = .unknown
     @Published private(set) var characterDetails: [String: CharacterDetailData] = [:]
     @Published private(set) var loadingCharacterNames: Set<String> = []
     @Published private(set) var isRefreshing = false
@@ -54,14 +58,23 @@ final class AccountStore: ObservableObject {
     var summary: AccountSummary { AccountSummary(characters: characters, holdings: holdings) }
     var cacheStatusText: String {
         if isStale, let date = accountLastRefreshedAt {
-            return "Offline using cache. Last updated \(date.formatted(date: .abbreviated, time: .shortened)). Quantities may have changed."
+            return "CACHED. Last updated \(date.formatted(date: .abbreviated, time: .shortened)). Quantities may have changed."
         }
-        if isStale { return "Offline using cache. Quantities may have changed." }
+        if isStale { return "CACHED. Quantities may have changed." }
         if let date = accountLastRefreshedAt {
-            return "Last updated \(date.formatted(date: .omitted, time: .shortened))"
+            return "\(dataSource.qaLabel). Last updated \(date.formatted(date: .omitted, time: .shortened))"
         }
         return "Never loaded"
     }
+
+    var qaCharacterBagOccupiedSlots: Int {
+        characterInventories.values.reduce(0) { total, response in
+            total + response.bags.compactMap { $0 }.flatMap { $0.inventory ?? [] }.compactMap { $0 }.count
+        }
+    }
+    var qaBankOccupiedSlots: Int { bankSlots.compactMap { $0 }.count }
+    var qaMaterialEntries: Int { materials.filter { $0.count > 0 }.count }
+    var qaSharedOccupiedSlots: Int { sharedSlots.compactMap { $0 }.count }
 
     func start() async {
         guard !hasStarted else { return }
@@ -111,9 +124,13 @@ final class AccountStore: ObservableObject {
         unlockedMiniIDs = []
         accountLastRefreshedAt = nil
         goalsAccountLastRefreshedAt = nil
+        accountMetadataUpdatedAt = nil
+        charactersUpdatedAt = nil
+        inventoryUpdatedAt = nil
         characterDetails = [:]
         errorMessage = nil
         isStale = false
+        dataSource = .unknown
         connectionState = .disconnected
     }
 
@@ -134,6 +151,7 @@ final class AccountStore: ObservableObject {
 
             if allowed.contains(.account) {
                 account = try await api.account()
+                accountMetadataUpdatedAt = Date()
                 if let worldID = account?.world { world = try? await api.world(id: worldID) }
             }
 
@@ -142,6 +160,7 @@ final class AccountStore: ObservableObject {
                     if $0.level != $1.level { return $0.level > $1.level }
                     return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
                 }
+                charactersUpdatedAt = Date()
                 professions = try await api.professions(ids: characters.map(\.profession))
             }
 
@@ -169,6 +188,7 @@ final class AccountStore: ObservableObject {
 
             errorMessage = nil
             isStale = false
+            dataSource = .live
             accountLastRefreshedAt = Date()
             await saveSnapshot()
         } catch is CancellationError {
@@ -318,7 +338,11 @@ final class AccountStore: ObservableObject {
         connectionState = .connected
         errorMessage = nil
         isStale = false
+        dataSource = .live
         accountLastRefreshedAt = Date()
+        accountMetadataUpdatedAt = Date()
+        charactersUpdatedAt = Date()
+        inventoryUpdatedAt = Date()
     }
 
     private func loadPhaseTwoLimitedInventoryFixtures() {
@@ -414,6 +438,7 @@ final class AccountStore: ObservableObject {
             itemMetadata = resolvedItems
         }
         materialCategories = (try? await api.materialCategories(ids: materials.map(\.category))) ?? materialCategories
+        inventoryUpdatedAt = Date()
     }
 
     private func restoreSnapshot() async {
@@ -440,7 +465,11 @@ final class AccountStore: ObservableObject {
         unlockedMiniIDs = Set(snapshot.unlockedMiniIDs ?? [])
         accountLastRefreshedAt = snapshot.accountLastRefreshedAt
         goalsAccountLastRefreshedAt = snapshot.goalsAccountLastRefreshedAt
+        accountMetadataUpdatedAt = snapshot.accountMetadataUpdatedAt ?? snapshot.accountLastRefreshedAt
+        charactersUpdatedAt = snapshot.charactersUpdatedAt ?? snapshot.accountLastRefreshedAt
+        inventoryUpdatedAt = snapshot.inventoryUpdatedAt ?? snapshot.accountLastRefreshedAt
         isStale = true
+        dataSource = .cached
         connectionState = snapshot.tokenInfo == nil ? .disconnected : .connected
     }
 
@@ -453,7 +482,10 @@ final class AccountStore: ObservableObject {
             achievementProgress: achievementProgress, unlockedRecipeIDs: Array(unlockedRecipeIDs),
             unlockedSkinIDs: Array(unlockedSkinIDs), unlockedMiniIDs: Array(unlockedMiniIDs),
             accountLastRefreshedAt: accountLastRefreshedAt,
-            goalsAccountLastRefreshedAt: goalsAccountLastRefreshedAt)
+            goalsAccountLastRefreshedAt: goalsAccountLastRefreshedAt,
+            accountMetadataUpdatedAt: accountMetadataUpdatedAt,
+            charactersUpdatedAt: charactersUpdatedAt,
+            inventoryUpdatedAt: inventoryUpdatedAt)
         await cache.save(snapshot, named: "account-snapshot")
     }
 }
@@ -481,4 +513,107 @@ private struct AccountSnapshot: Codable, Sendable {
     let unlockedMiniIDs: [Int]?
     let accountLastRefreshedAt: Date?
     let goalsAccountLastRefreshedAt: Date?
+    var accountMetadataUpdatedAt: Date?
+    var charactersUpdatedAt: Date?
+    var inventoryUpdatedAt: Date?
+}
+
+extension AccountStore {
+    func refreshQADomain(_ domain: QADomain) async -> QADomainRefreshResult {
+        let started = Date()
+        do {
+            switch domain {
+            case .account:
+                guard permissions.contains(.account) else {
+                    return qaFailure(domain, status: 403, message: "Missing account permission", at: started)
+                }
+                account = try await api.account()
+                if let worldID = account?.world { world = try? await api.world(id: worldID) }
+                accountMetadataUpdatedAt = Date()
+                dataSource = .live
+                return qaSuccess(domain, status: 200, message: "OK", at: Date())
+            case .characters:
+                guard permissions.contains(.characters) else {
+                    return qaFailure(domain, status: 403, message: "Missing characters permission", at: started)
+                }
+                characters = try await api.characters().sorted {
+                    if $0.level != $1.level { return $0.level > $1.level }
+                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+                professions = try await api.professions(ids: characters.map(\.profession))
+                charactersUpdatedAt = Date()
+                dataSource = .live
+                return qaSuccess(domain, status: 200, message: "OK", at: Date())
+            case .inventory:
+                guard permissions.contains(.inventories) else {
+                    return qaFailure(domain, status: 403, message: "Missing inventories permission", at: started)
+                }
+                await refreshInventories()
+                dataSource = .live
+                isStale = false
+                return qaSuccess(domain, status: 200, message: "OK", at: Date())
+            case .builds:
+                guard permissions.contains(.builds) else {
+                    return qaFailure(domain, status: 403, message: "Missing builds permission", at: started)
+                }
+                guard let character = currentCharacter ?? characters.first else {
+                    return qaFailure(domain, status: nil, message: "No character available", at: started)
+                }
+                await loadCharacterDetails(character, force: true)
+                if let error = characterDetails[character.name]?.errorMessage {
+                    return qaFailure(domain, status: nil, message: error, at: Date())
+                }
+                return qaSuccess(domain, status: 200, message: "OK", at: Date())
+            case .achievements:
+                guard permissions.contains(.progression) else {
+                    return qaFailure(domain, status: 403, message: "Missing progression permission", at: started)
+                }
+                await loadGoalAccountData(permissions: permissions)
+                return qaSuccess(domain, status: 200, message: "OK", at: Date())
+            case .today:
+                return qaFailure(domain, status: nil, message: "Today is refreshed by TodayStore", at: started)
+            }
+        } catch {
+            let mapped = Self.mapAPIError(error)
+            return qaFailure(domain, status: mapped.status, message: mapped.message, at: Date())
+        }
+    }
+
+    func refreshAllQADomains() async -> [QADomainRefreshResult] {
+        var results: [QADomainRefreshResult] = []
+        for domain in [QADomain.account, .characters, .inventory, .builds, .achievements] {
+            results.append(await refreshQADomain(domain))
+        }
+        accountLastRefreshedAt = Date()
+        await saveSnapshot()
+        return results
+    }
+
+    static func mapAPIError(_ error: Error) -> (status: Int?, message: String) {
+        if let api = error as? GW2APIError {
+            switch api {
+            case .invalidAPIKey: return (401, api.errorDescription ?? "Invalid API key")
+            case let .missingPermission(permission): return (403, "Missing \(permission) permission")
+            case .rateLimited: return (429, "Rate limited")
+            case let .server(code): return (code, api.errorDescription ?? "Server error")
+            default: return (nil, error.userFacingMessage(fallback: "Request failed"))
+            }
+        }
+        return (nil, error.userFacingMessage(fallback: "Request failed"))
+    }
+
+    private func qaSuccess(_ domain: QADomain, status: Int?, message: String, at: Date) -> QADomainRefreshResult {
+        let result = QADomainRefreshResult(
+            domain: domain, success: true, httpStatus: status, message: message, usedCache: false, timestamp: at)
+        DeveloperDiagnostics.shared.recordDomainRefresh(result)
+        return result
+    }
+
+    private func qaFailure(_ domain: QADomain, status: Int?, message: String, at: Date) -> QADomainRefreshResult {
+        let result = QADomainRefreshResult(
+            domain: domain, success: false, httpStatus: status, message: message, usedCache: dataSource == .cached,
+            timestamp: at)
+        DeveloperDiagnostics.shared.recordDomainRefresh(result)
+        return result
+    }
 }

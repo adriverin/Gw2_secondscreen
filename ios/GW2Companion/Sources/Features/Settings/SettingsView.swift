@@ -52,10 +52,16 @@ struct SettingsView: View {
                 }
                 if developerMode {
                     Section("Developer") {
+                        NavigationLink("Real Hardware QA") { QAModeView() }
+                            .accessibilityIdentifier("settings.developer.qa")
+                            .accessibilityLabel("Real Hardware QA")
                         NavigationLink("Diagnostics") { ConnectionDiagnosticsView(showTechnicalDetails: true) }
                         NavigationLink("Map Calibration") { MapCalibrationView() }
                         Button(telemetry.isSimulating ? "Stop Telemetry Simulation" : "Start Telemetry Simulation") {
                             telemetry.isSimulating ? telemetry.stopSimulation() : telemetry.startSimulation()
+                        }
+                        if telemetry.isSoaking {
+                            Text("Soak simulation running").font(.caption).foregroundStyle(.secondary)
                         }
                         Button("Disable Developer Mode") { developerMode = false }
                     }
@@ -124,11 +130,15 @@ private enum DestructiveAction: Equatable {
 }
 
 enum AppDataReset {
+    @MainActor
     static func clearCaches(fileManager: FileManager = .default) {
         guard let root = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
-        for name in ["GW2CompanionMetadata", "GW2MapIcons-v1"] {
+        for name in ["GW2CompanionMetadata", "GW2MapIcons-v1", "GW2CompanionImages", "GW2MapTiles-v1"] {
             try? fileManager.removeItem(at: root.appending(path: name, directoryHint: .isDirectory))
         }
+        Task { await MapTileImageCache.shared.handleMemoryPressure() }
+        Task { await RemoteImagePipeline.shared.handleMemoryPressure() }
+        MapIconStore.shared.handleMemoryPressure()
     }
 
     static func clearLocalHistory(defaults: UserDefaults = .standard) {
@@ -138,9 +148,12 @@ enum AppDataReset {
         }
     }
 
+    @MainActor
     static func resetDefaults(defaults: UserDefaults = .standard) {
         clearCaches()
         for key in defaults.dictionaryRepresentation().keys { defaults.removeObject(forKey: key) }
+        QAResultStore(defaults: defaults).reset()
+        DeveloperDiagnostics.shared.reset()
     }
 }
 

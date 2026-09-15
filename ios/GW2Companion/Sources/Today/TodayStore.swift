@@ -125,6 +125,7 @@ final class TodayStore: ObservableObject {
     @Published private(set) var snapshot: TodayDataSnapshot?
     @Published private(set) var loadState: LoadState = .idle
     @Published private(set) var isStale = false
+    @Published private(set) var dataSource: AccountDataSource = .unknown
     @Published private(set) var errorMessage: String?
     @Published private(set) var wishedRewardIDs: Set<Int> = []
     @Published private(set) var opportunityLinks: [OpportunityID: TodayOpportunityLink] = [:]
@@ -158,6 +159,8 @@ final class TodayStore: ObservableObject {
             restoreLinks()
             snapshot = await repository.cached(accountID: id)
             isStale = snapshot != nil
+            dataSource = snapshot == nil ? .unknown : .cached
+            if snapshot != nil { DeveloperDiagnostics.shared.recordCachedToday() }
         }
         await refreshIfNeeded()
     }
@@ -179,6 +182,7 @@ final class TodayStore: ObservableObject {
             loadState = .loaded
             errorMessage = nil
             isStale = false
+            dataSource = .live
         } catch is CancellationError {
             loadState = snapshot == nil ? .idle : .loaded
         } catch {
@@ -186,6 +190,8 @@ final class TodayStore: ObservableObject {
             loadState = .failed
             errorMessage = error.userFacingMessage(fallback: "Today couldn’t be refreshed. Showing saved data where possible.")
             isStale = snapshot != nil
+            dataSource = snapshot == nil ? .unknown : .cached
+            if snapshot != nil { DeveloperDiagnostics.shared.recordCachedToday() }
         }
     }
 

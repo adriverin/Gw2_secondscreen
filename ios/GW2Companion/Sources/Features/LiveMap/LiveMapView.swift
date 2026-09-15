@@ -130,6 +130,13 @@ struct LiveMapView: View {
                     viewportZoom = zoom
                     viewportTileWorld = tileWorld
                     viewportTile = tile
+                    DeveloperDiagnostics.shared.mapSnapshot = MapQADiagnostics.snapshot(
+                        metadata: metadata,
+                        player: playerPoint,
+                        viewport: center,
+                        userZoom: zoom,
+                        tileWorld: tileWorld,
+                        tile: tile)
                 })
                 .ignoresSafeArea(edges: .top)
 
@@ -444,6 +451,13 @@ struct LiveMapView: View {
             let loadedMetadata = try await api.map(id: id)
             guard telemetry.latest?.map?.id == id else { return }
             metadata = loadedMetadata
+            DeveloperDiagnostics.shared.mapSnapshot = MapQADiagnostics.snapshot(
+                metadata: loadedMetadata,
+                player: playerPoint,
+                viewport: viewportCenter,
+                userZoom: viewportZoom,
+                tileWorld: viewportTileWorld,
+                tile: viewportTile)
             async let officialLoad: Void = objectives.load(
                 provider: api, metadata: loadedMetadata, language: objectiveLanguage)
             async let gatheringLoad: Void = gathering.load(mapId: id, metadata: loadedMetadata, simulation: telemetry.isSimulating)

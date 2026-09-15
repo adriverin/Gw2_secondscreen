@@ -54,6 +54,8 @@ The API actor owns request serialization, item batching, and in-memory caches ba
 
 The map renderer is native SwiftUI. It requests only visible tiles, renders missing requests as a neutral grid, retains overlay coordinates independently from artwork, and supports north-up pan/zoom/follow modes.
 
+Developer Mode (seven taps on the Settings version row) unlocks **Real Hardware QA**. QA results, the bounded event log, and support bundles stay on-device. Fixture account data and the tile debug grid remain Debug-only.
+
 ## Trust boundaries
 
 The phone contacts only the paired LAN bridge, official ArenaNet API, and configured tile provider. The bridge exposes selected MumbleLink identity, map, position, camera direction, mount, and UI flags. It has no ArenaNet account credential and no cloud dependency.

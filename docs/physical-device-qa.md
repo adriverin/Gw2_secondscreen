@@ -42,3 +42,5 @@ No physical-device result should be recorded from Simulator evidence. Record dev
 - [ ] Elevated terrain.
 - [ ] Underground-like area where the map projection is applicable.
 - [ ] Export a redacted calibration report for every sample and record delta/distance; never introduce an undocumented offset.
+
+Phase 6D adds **Settings → Developer → Real Hardware QA** (seven taps on the version row). Use `docs/early-beta-checklist.md` for the first physical beta pass and record P0–P3 severity on failures.

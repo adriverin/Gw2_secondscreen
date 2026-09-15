@@ -55,18 +55,39 @@ enum TelemetryConnectionStateMachine {
 @MainActor
 final class TelemetryStore: ObservableObject {
     @Published private(set) var latest: TelemetryEnvelope?
-    @Published private(set) var state: TelemetryConnectionState = .unpaired
+    @Published private(set) var state: TelemetryConnectionState = .unpaired {
+        didSet {
+            guard oldValue != state else { return }
+            DeveloperDiagnostics.shared.recordConnection(from: oldValue, to: state)
+        }
+    }
     @Published private(set) var isSimulating = false
+    @Published private(set) var isSoaking = false
     @Published private(set) var savedPairing: BridgePairing?
     @Published private(set) var lastUpdate: Date?
     @Published private(set) var packetsPerSecond = 0
+    @Published private(set) var bridgeVersion: String?
+    @Published private(set) var publishedEnvelopeCount = 0
 
     private let credentials: CredentialStore
+    private let diagnostics: DeveloperDiagnostics
     private var connectionTask: Task<Void, Never>?
     private var isActive = true
     private var packetTimes: [Date] = []
+    private var lastLoggedCharacter: String?
+    private var lastLoggedMapID: Int?
 
-    init(credentials: CredentialStore = CredentialStore()) { self.credentials = credentials }
+    init(
+        credentials: CredentialStore = CredentialStore(),
+        diagnostics: DeveloperDiagnostics = .shared
+    ) {
+        self.credentials = credentials
+        self.diagnostics = diagnostics
+    }
+
+    var telemetryAge: TimeInterval? {
+        lastUpdate.map { Date().timeIntervalSince($0) }
+    }
 
     func connectSavedPairing() {
         guard !isSimulating else { return }
@@ -76,7 +97,11 @@ final class TelemetryStore: ObservableObject {
                 return
             }
             savedPairing = pairing
-            run(provider: BridgeConnection(pairing: pairing), reconnect: true)
+            run(provider: BridgeConnection(pairing: pairing, onHello: { [weak self] hello in
+                Task { @MainActor in
+                    self?.bridgeVersion = hello.bridgeVersion
+                }
+            }), reconnect: true)
         } catch {
             state = .unpaired
         }
@@ -87,7 +112,12 @@ final class TelemetryStore: ObservableObject {
         try credentials.savePairing(pairing)
         savedPairing = pairing
         isSimulating = false
-        run(provider: BridgeConnection(pairing: pairing), reconnect: true)
+        isSoaking = false
+        run(provider: BridgeConnection(pairing: pairing, onHello: { [weak self] hello in
+            Task { @MainActor in
+                self?.bridgeVersion = hello.bridgeVersion
+            }
+        }), reconnect: true)
     }
 
     func forgetPairing() {
@@ -98,16 +128,32 @@ final class TelemetryStore: ObservableObject {
         lastUpdate = nil
         packetsPerSecond = 0
         isSimulating = false
+        isSoaking = false
+        bridgeVersion = nil
+        publishedEnvelopeCount = 0
+        lastLoggedCharacter = nil
+        lastLoggedMapID = nil
         state = .unpaired
     }
 
     func startSimulation() {
+        guard EarlyBeta.allowsTelemetrySimulation(developerMode: UserDefaults.standard.bool(forKey: EarlyBeta.developerModeKey)) else { return }
         isSimulating = true
+        isSoaking = false
         run(provider: MockTelemetryProvider(), reconnect: false)
+    }
+
+    func startSoakSimulation(duration: TimeInterval = SoakScenario.defaultDuration) {
+        guard EarlyBeta.allowsTelemetrySimulation(developerMode: UserDefaults.standard.bool(forKey: EarlyBeta.developerModeKey)) else { return }
+        isSimulating = true
+        isSoaking = true
+        diagnostics.record("Soak simulation started (\(Int(duration / 60)) min)")
+        run(provider: SoakTelemetryProvider(duration: duration), reconnect: false)
     }
 
     func stopSimulation() {
         isSimulating = false
+        isSoaking = false
         connectionTask?.cancel()
         latest = nil
         connectSavedPairing()
@@ -116,7 +162,8 @@ final class TelemetryStore: ObservableObject {
     func setAppActive(_ active: Bool) {
         isActive = active
         if active {
-            if isSimulating { run(provider: MockTelemetryProvider(), reconnect: false) }
+            if isSoaking { run(provider: SoakTelemetryProvider(duration: SoakScenario.defaultDuration), reconnect: false) }
+            else if isSimulating { run(provider: MockTelemetryProvider(), reconnect: false) }
             else { connectSavedPairing() }
         } else {
             connectionTask?.cancel()
@@ -135,6 +182,7 @@ final class TelemetryStore: ObservableObject {
                         self.latest = telemetry
                         self.state = TelemetryConnectionStateMachine.transition(from: self.state, event: .received(telemetry))
                         self.recordPacket()
+                        self.noteIdentityChanges(telemetry)
                         backoff = 1
                     }
                 } catch {
@@ -173,8 +221,26 @@ final class TelemetryStore: ObservableObject {
 
     private func recordPacket(now: Date = Date()) {
         lastUpdate = now
+        publishedEnvelopeCount += 1
         packetTimes.append(now)
         packetTimes.removeAll { now.timeIntervalSince($0) > 1 }
         packetsPerSecond = packetTimes.count
+    }
+
+    private func noteIdentityChanges(_ telemetry: TelemetryEnvelope) {
+        let character = telemetry.character?.name
+        if character != lastLoggedCharacter {
+            if lastLoggedCharacter != nil || character != nil {
+                diagnostics.record("Character identity changed")
+            }
+            lastLoggedCharacter = character
+        }
+        let mapID = telemetry.map?.id
+        if mapID != lastLoggedMapID {
+            if let previous = lastLoggedMapID, let mapID {
+                diagnostics.record("Map changed \(previous) → \(mapID)")
+            }
+            lastLoggedMapID = mapID
+        }
     }
 }

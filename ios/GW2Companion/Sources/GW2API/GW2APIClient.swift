@@ -461,21 +461,46 @@ actor GW2APIClient {
         } catch let error as URLError {
             switch error.code {
             case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                await Self.trace(path: path, statusCode: nil, error: "Network unavailable")
                 throw GW2APIError.networkUnavailable
-            case .timedOut: throw GW2APIError.timedOut
-            default: throw GW2APIError.serviceUnavailable
+            case .timedOut:
+                await Self.trace(path: path, statusCode: nil, error: "Timed out")
+                throw GW2APIError.timedOut
+            default:
+                await Self.trace(path: path, statusCode: nil, error: "Service unavailable")
+                throw GW2APIError.serviceUnavailable
             }
         }
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw GW2APIError.invalidResponse }
+        await Self.trace(path: path, statusCode: http.statusCode, error: nil)
         guard (200..<300).contains(http.statusCode) else {
+            let domainHint = path.split(separator: "?").first.map(String.init) ?? path
             if http.statusCode == 401 { throw GW2APIError.invalidAPIKey }
-            if http.statusCode == 403 { throw GW2APIError.missingPermission("required") }
+            if http.statusCode == 403 { throw GW2APIError.missingPermission(Self.permissionHint(for: domainHint)) }
             if http.statusCode == 429 { throw GW2APIError.rateLimited }
             if [500, 502, 503, 504].contains(http.statusCode) { throw GW2APIError.serviceUnavailable }
             throw GW2APIError.server(http.statusCode)
         }
         return data
+    }
+
+    private static func trace(path: String, statusCode: Int?, error: String?) async {
+        let safePath = QARedaction.apiPath(path)
+        await MainActor.run {
+            DeveloperDiagnostics.shared.recordAPICall(path: safePath, statusCode: statusCode, error: error)
+        }
+    }
+
+    private static func permissionHint(for path: String) -> String {
+        switch DeveloperDiagnostics.domain(for: path) {
+        case "inventory": "inventories"
+        case "achievements", "today": "progression"
+        case "builds": "builds"
+        case "characters": "characters"
+        case "account": "account"
+        default: "required"
+        }
     }
 
     private static func encodedPath(_ value: String) -> String {

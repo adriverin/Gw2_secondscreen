@@ -1,4 +1,5 @@
 import CryptoKit
+import os
 import SwiftUI
 import UIKit
 
@@ -134,25 +135,32 @@ struct GWItemIcon: View {
 
 actor RemoteImagePipeline {
     static let shared = RemoteImagePipeline()
+    static let memoryCountLimit = 400
+    static let memoryCostLimit = 64 * 1_024 * 1_024
+    static let diskFileLimit = 2_000
+
     private let session: URLSession
     private let directory: URL
-    private let memory = NSCache<NSURL, UIImage>()
+    private var memory = BoundedMemoryCache<URL, UIImage>(
+        countLimit: memoryCountLimit, totalCostLimit: memoryCostLimit)
     private var inFlight: [URL: Task<UIImage, Error>] = [:]
+    private let countState = OSAllocatedUnfairLock(initialState: 0)
+    nonisolated var memoryCount: Int { countState.withLock { $0 } }
 
     init(session: URLSession = .shared, directory: URL? = nil) {
         self.session = session
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         self.directory = directory ?? caches.appending(path: "GW2CompanionImages", directoryHint: .isDirectory)
-        memory.countLimit = 500
-        memory.totalCostLimit = 96 * 1_024 * 1_024
     }
 
     func image(for url: URL) async throws -> UIImage {
-        if let cached = memory.object(forKey: url as NSURL) { return cached }
+        if let cached = memory.value(for: url) { return cached }
         let file = directory.appending(path: Self.hash(url.absoluteString))
         if let data = try? Data(contentsOf: file), let image = UIImage(data: data) {
-            memory.setObject(image, forKey: url as NSURL, cost: data.count)
+            memory.set(image, for: url, cost: data.count)
+            let count = memory.count
+            countState.withLock { $0 = count }
             return image
         }
         if let task = inFlight[url] { return try await task.value }
@@ -163,13 +171,21 @@ actor RemoteImagePipeline {
                   let image = UIImage(data: data) else { throw URLError(.badServerResponse) }
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try? data.write(to: directory.appending(path: Self.hash(url.absoluteString)), options: .atomic)
+            DiskCachePruner.prune(directory: directory, maxFiles: Self.diskFileLimit)
             return image
         }
         inFlight[url] = task
         defer { inFlight[url] = nil }
         let image = try await task.value
-        memory.setObject(image, forKey: url as NSURL, cost: Int(image.size.width * image.size.height * 4))
+        memory.set(image, for: url, cost: Int(image.size.width * image.size.height * 4))
+        let count = memory.count
+        countState.withLock { $0 = count }
         return image
+    }
+
+    func handleMemoryPressure() {
+        memory.removeAll()
+        countState.withLock { $0 = 0 }
     }
 
     private static func hash(_ value: String) -> String {

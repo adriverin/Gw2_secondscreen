@@ -13,6 +13,7 @@ struct TelemetryEnvelope: Codable, Sendable, Equatable {
     let ui: UITelemetry
     let mount: MountTelemetry
     let statusMessage: String?
+    var uiVersion: UInt32? = nil
 }
 
 struct CharacterTelemetry: Codable, Sendable, Equatable {

@@ -46,22 +46,28 @@ enum BridgeConnectionError: LocalizedError, Equatable {
     }
 }
 
-private struct BridgeHello: Decodable {
+struct BridgeHello: Decodable, Sendable {
     let protocolVersion: Int
     let bridgeId: String?
+    let bridgeVersion: String?
 }
 
 final class BridgeConnection: LiveTelemetryProvider, @unchecked Sendable {
     private let pairing: BridgePairing
     private let session: URLSession
     private let socketFactory: @Sendable (URL) -> any BridgeWebSocket
+    private let onHello: (@Sendable (BridgeHello) -> Void)?
 
-    init(pairing: BridgePairing,
-         session: URLSession = .shared,
-         socketFactory: (@Sendable (URL) -> any BridgeWebSocket)? = nil) {
+    init(
+        pairing: BridgePairing,
+        session: URLSession = .shared,
+        socketFactory: (@Sendable (URL) -> any BridgeWebSocket)? = nil,
+        onHello: (@Sendable (BridgeHello) -> Void)? = nil
+    ) {
         self.pairing = pairing
         self.session = session
         self.socketFactory = socketFactory ?? { session.webSocketTask(with: $0) }
+        self.onHello = onHello
     }
 
     func telemetryStream() -> AsyncThrowingStream<TelemetryEnvelope, Error> {
@@ -116,6 +122,7 @@ final class BridgeConnection: LiveTelemetryProvider, @unchecked Sendable {
         // A 204 response is accepted for compatibility with the original v1 bridge.
         guard !data.isEmpty else { return }
         let hello = try JSONDecoder().decode(BridgeHello.self, from: data)
+        onHello?(hello)
         guard hello.protocolVersion == BridgeProtocol.current else {
             throw hello.protocolVersion < BridgeProtocol.current ? BridgeConnectionError.bridgeTooOld : BridgeConnectionError.appTooOld
         }
@@ -189,7 +196,8 @@ struct MockTelemetryProvider: LiveTelemetryProvider {
                         camera: CameraTelemetry(frontX: -sin(angle), frontY: 0, frontZ: -cos(angle)),
                         ui: UITelemetry(inCombat: false, mapOpen: false, gameHasFocus: true),
                         mount: MountTelemetry(index: 0),
-                        statusMessage: nil))
+                        statusMessage: nil,
+                        uiVersion: 2))
                     try await Task.sleep(for: .milliseconds(50))
                 }
                 continuation.finish()

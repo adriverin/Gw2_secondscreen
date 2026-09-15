@@ -13,12 +13,16 @@ struct GW2CompanionApp: App {
     @StateObject private var sessions = SessionStore()
     @StateObject private var today: TodayStore
     @StateObject private var navigation = AppNavigation()
+    @StateObject private var qaResults = QAResultStore()
     private let api: GW2APIClient
 
     init() {
         if ProcessInfo.processInfo.arguments.contains("--ui-smoke") {
             UserDefaults.standard.set(true, forKey: "onboarding.completed.v1")
             UserDefaults.standard.set(false, forKey: "developer.mode.enabled")
+        }
+        if ProcessInfo.processInfo.arguments.contains("--developer-mode") {
+            UserDefaults.standard.set(true, forKey: "developer.mode.enabled")
         }
         let api = GW2APIClient()
         self.api = api
@@ -39,8 +43,11 @@ struct GW2CompanionApp: App {
                 .environmentObject(sessions)
                 .environmentObject(today)
                 .environmentObject(navigation)
+                .environmentObject(qaResults)
+                .environmentObject(DeveloperDiagnostics.shared)
                 .tint(GWPalette.accent)
                 .task {
+                    DeveloperDiagnostics.shared.startNetworkMonitor()
 #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--simulate-telemetry") {
                         telemetry.startSimulation()
@@ -69,6 +76,8 @@ struct GW2CompanionApp: App {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     MapIconStore.shared.handleMemoryPressure()
+                    Task { await MapTileImageCache.shared.handleMemoryPressure() }
+                    Task { await RemoteImagePipeline.shared.handleMemoryPressure() }
                 }
         }
         .onChange(of: scenePhase) { _, phase in

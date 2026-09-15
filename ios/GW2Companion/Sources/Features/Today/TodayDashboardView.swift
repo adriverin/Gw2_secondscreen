@@ -9,6 +9,7 @@ struct TodayDashboardView: View {
     @State private var filter: TodayFilter = .all
     @State private var showingRewards = false
     @State private var showingDiagnostics = false
+    @AppStorage("developer.mode.enabled") private var developerMode = false
 
     var body: some View {
         NavigationStack {
@@ -25,8 +26,10 @@ struct TodayDashboardView: View {
             .refreshable { await today.refresh() }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Button { showingDiagnostics = true } label: { Image(systemName: "ladybug") }
-                        .accessibilityLabel("Today diagnostics")
+                    if developerMode {
+                        Button { showingDiagnostics = true } label: { Image(systemName: "ladybug") }
+                            .accessibilityLabel("Today diagnostics")
+                    }
                     Button { Task { await today.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                         .disabled(today.loadState == .loading)
                         .accessibilityLabel("Refresh Today")
@@ -50,7 +53,10 @@ struct TodayDashboardView: View {
             Section { Label("Offline • cached Today data", systemImage: "clock.badge.exclamationmark") }
         }
         if let updated = today.lastUpdatedAt {
-            Section { LabeledContent("Last updated", value: updated, format: .relative(presentation: .named)) }
+            Section {
+                LabeledContent("Last updated", value: updated, format: .relative(presentation: .named))
+                LabeledContent("Data source", value: today.dataSource.qaLabel)
+            }
         }
     }
 
@@ -354,7 +360,7 @@ private struct VaultRewardsView: View {
 
     private func rewardRow(_ reward: VaultRewardListing, showArithmetic: Bool) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            AsyncImage(url: reward.icon) { image in image.resizable().scaledToFit() } placeholder: { Image(systemName: "gift") }
+            CachedAsyncImage(url: reward.icon) { Image(systemName: "gift") }
                 .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 3) {
                 Text(reward.itemName).font(.headline)

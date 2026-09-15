@@ -39,8 +39,10 @@ When adding gathering sources, implement `MarkerDataProvider`, preserve source/l
 | Protocol serialization/decoding | Yes | — |
 | Stale tick detection | Yes | — |
 | Coordinates/gathering/batching | Yes | — |
+| QA result persistence, redaction, support bundle | Yes | — |
 | iOS app compile | Yes | — |
 | Real GW2 shared memory | No | Windows + GW2 |
 | Physical QR camera/local network | No | iPhone + PC |
 | Account API with a real key | No | User-owned API key |
 | Tile completeness on all maps | No | Provider/content dependent |
+| Real-hardware beta candidate | Harness only | `docs/early-beta-checklist.md` |

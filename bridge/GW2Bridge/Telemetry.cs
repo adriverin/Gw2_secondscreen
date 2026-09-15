@@ -14,7 +14,8 @@ public sealed record TelemetryEnvelope(
     CameraTelemetry? Camera,
     UiTelemetry Ui,
     MountTelemetry Mount,
-    string? StatusMessage = null);
+    string? StatusMessage = null,
+    uint? UiVersion = null);
 
 public sealed record CharacterTelemetry(
     string Name,

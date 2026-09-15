@@ -58,6 +58,8 @@
     "mount": {
       "type": "object", "additionalProperties": true, "required": ["index"],
       "properties": { "index": { "type": "integer", "minimum": 0, "maximum": 255 } }
-    }
+    },
+    "uiVersion": { "type": ["integer", "null"], "minimum": 0 }
+
   }
 }

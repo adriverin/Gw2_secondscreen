@@ -62,6 +62,11 @@ struct ConnectionDiagnosticsView: View {
 struct DiagnosticsExportView: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var telemetry: TelemetryStore
+    @EnvironmentObject private var today: TodayStore
+    @EnvironmentObject private var goals: GoalStore
+    @EnvironmentObject private var objectives: MapObjectiveStore
+    @EnvironmentObject private var qa: QAResultStore
+    @EnvironmentObject private var diagnostics: DeveloperDiagnostics
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -79,27 +84,12 @@ struct DiagnosticsExportView: View {
     }
 
     private var report: String {
-        let payload: [String: Any] = [
-            "appVersion": AppBuildInfo.version,
-            "build": AppBuildInfo.build,
-            "device": UIDevice.current.model,
-            "systemVersion": UIDevice.current.systemVersion,
-            "bridgeProtocolVersion": BridgeProtocol.current,
-            "connectionStatus": telemetry.state.label,
-            "bridgeConfigured": telemetry.savedPairing != nil,
-            "mapId": telemetry.latest?.map?.id ?? -1,
-            "telemetryPacketsPerSecond": telemetry.packetsPerSecond,
-            "apiPermissions": account.tokenInfo?.permissions.sorted() ?? [],
-            "accountLastRefresh": account.accountLastRefreshedAt?.ISO8601Format() ?? "never",
-            "accountUsingSavedData": account.isStale,
-            "accountError": account.errorMessage ?? "none",
-            "redaction": "account and character names omitted"
-        ]
-        guard JSONSerialization.isValidJSONObject(payload),
-              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]) else {
-            return "Diagnostics could not be generated."
-        }
-        return String(decoding: data, as: UTF8.self)
+        let secrets = QAExportFactory.secrets(account: account, telemetry: telemetry)
+        let document = QASupportBundle.make(
+            context: QAExportFactory.context(
+                telemetry: telemetry, account: account, today: today, goals: goals,
+                objectives: objectives, qa: qa, diagnostics: diagnostics, secrets: secrets))
+        return QASupportBundle.jsonString(document)
     }
 }
 

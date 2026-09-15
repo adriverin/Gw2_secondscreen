@@ -119,7 +119,8 @@ public sealed class MumbleLinkTelemetrySource : ITelemetrySource
             new UiTelemetry(context.InCombat, context.IsMapOpen, context.GameHasFocus),
             new MountTelemetry(context.MountIndex),
             context.IsCompetitive ? "Position is unavailable in this competitive map." :
-                positionAvailable ? null : "Telemetry is stale.");
+                positionAvailable ? null : "Telemetry is stale.",
+            snapshot.UiVersion);
     }
 
     private static TelemetryEnvelope Disconnected(string message) => new(

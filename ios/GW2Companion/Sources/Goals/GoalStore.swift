@@ -42,6 +42,7 @@ final class GoalStore: ObservableObject {
     @Published private(set) var recipeIndex: RecipeOutputIndex?
     @Published private(set) var craftableItems: [Int: ItemMetadata] = [:]
     @Published private(set) var marketPrices: [Int: TimedCommercePrice] = [:]
+    @Published private(set) var pricesUpdatedAt: Date?
     @Published private(set) var achievementState: GoalMetadataLoadState = .idle
     @Published private(set) var recipeState: GoalMetadataLoadState = .idle
     @Published private(set) var priceError: String?
@@ -331,6 +332,7 @@ final class GoalStore: ObservableObject {
         do {
             let loaded = try await api.commercePrices(ids: ids, force: force)
             marketPrices.merge(loaded) { _, new in new }
+            pricesUpdatedAt = Date()
             priceError = nil
         } catch {
             priceError = error.userFacingMessage(fallback: "Trading Post prices couldn’t be refreshed. Showing saved prices where possible.")
@@ -346,6 +348,7 @@ final class GoalStore: ObservableObject {
         do {
             let loaded = try await api.commercePrices(ids: ids, force: force)
             marketPrices.merge(loaded) { _, new in new }
+            pricesUpdatedAt = Date()
             priceError = nil
         } catch {
             priceError = error.userFacingMessage(fallback: "Trading Post prices couldn’t be refreshed. Showing saved prices where possible.")

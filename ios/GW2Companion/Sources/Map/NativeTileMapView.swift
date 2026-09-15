@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct MapFocusRequest: Equatable {
     let id = UUID()
@@ -67,6 +68,7 @@ struct NativeTileMapView: View {
                         fit(bounds, size: geometry.size)
                     }
                 }
+                Task { await MapTileImageCache.shared.handleMemoryPressure() }
             }
             .onChange(of: focusRequest) { _, request in
                 if let request { focus(request.mode, size: geometry.size) }
@@ -260,13 +262,13 @@ private struct MapTileImage: View {
     let url: URL
     let index: TileIndex
     let showDebug: Bool
+    @State private var image: UIImage?
 
     var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case let .success(image):
-                image.resizable()
-            default:
+        Group {
+            if let image {
+                Image(uiImage: image).resizable()
+            } else {
                 Rectangle().fill(Color.white.opacity(0.035))
                     .overlay(Rectangle().stroke(Color.white.opacity(0.04)))
             }
@@ -284,6 +286,7 @@ private struct MapTileImage: View {
                 .allowsHitTesting(false)
             }
         }
+        .task(id: url) { image = await MapTileImageCache.shared.image(for: url) }
         .accessibilityHidden(true)
     }
 }
