@@ -1,0 +1,11 @@
+[
+  {
+    "tab": 1,
+    "name": "Open World",
+    "is_active": true,
+    "equipment": [
+      {"id":101,"slot":"Relic","location":"EquippedFromLegendaryArmory","binding":"Account","upgrades":[201,null],"infusions":[null,301]},
+      {"id":102,"slot":"FutureSlot","location":"FutureLocation","binding":"FutureBinding"}
+    ]
+  }
+]

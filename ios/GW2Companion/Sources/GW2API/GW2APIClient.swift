@@ -4,6 +4,7 @@ enum GW2APIError: LocalizedError, Equatable {
     case invalidAPIKey
     case missingPermission(String)
     case invalidResponse
+    case decodeFailed(path: String)
     case server(Int)
     case rateLimited
     case serviceUnavailable
@@ -14,7 +15,8 @@ enum GW2APIError: LocalizedError, Equatable {
         switch self {
         case .invalidAPIKey: "This API key is invalid or has been revoked. Create or paste a new key."
         case let .missingPermission(permission): "Your API key does not include the \(permission) permission."
-        case .invalidResponse: "ArenaNet returned data this version of the app could not read. Your saved data is still available."
+        case .invalidResponse, .decodeFailed:
+            "ArenaNet returned data this version of the app could not read. Your saved data is still available."
         case .server: "ArenaNet is temporarily unavailable. Showing saved data where possible."
         case .rateLimited: "ArenaNet is temporarily limiting requests. Showing your saved data."
         case .serviceUnavailable: "ArenaNet is temporarily unavailable. Try again in a few minutes."
@@ -47,6 +49,8 @@ actor GW2APIClient {
 
     private var loadedCaches: Set<String> = []
     private var inFlightBatches: [String: Task<Data, Error>] = [:]
+    private let scheduler = APIRequestScheduler()
+    private(set) var lastUnresolvedMetadataIDs: [String: [Int]] = [:]
 
     init(
         session: URLSession = .shared,
@@ -78,11 +82,11 @@ actor GW2APIClient {
     func world(id: Int) async throws -> GW2World { try await request("worlds/\(id)") }
 
     func characters() async throws -> [GW2Character] {
-        try await authenticatedRequest("characters?page=0&page_size=200")
+        try await authenticatedLossyArray("characters?page=0&page_size=200", priority: .high)
     }
 
     func characterInventoryResponse(name: String) async throws -> CharacterInventoryResponse {
-        try await authenticatedRequest("characters/\(Self.encodedPath(name))/inventory")
+        try await authenticatedRequest("characters/\(Self.encodedPath(name))/inventory", priority: .high)
     }
 
     func characterInventory(name: String) async throws -> [InventorySlot] {
@@ -91,11 +95,13 @@ actor GW2APIClient {
     }
 
     func equipmentTabs(character name: String) async throws -> [EquipmentTab] {
-        try await authenticatedRequest("characters/\(Self.encodedPath(name))/equipmenttabs?tabs=all")
+        try await authenticatedLossyArray(
+            "characters/\(Self.encodedPath(name))/equipmenttabs?tabs=all", priority: .high)
     }
 
     func buildTabs(character name: String) async throws -> [BuildTab] {
-        try await authenticatedRequest("characters/\(Self.encodedPath(name))/buildtabs?tabs=all")
+        try await authenticatedLossyArray(
+            "characters/\(Self.encodedPath(name))/buildtabs?tabs=all", priority: .high)
     }
 
     func bank() async throws -> [InventorySlot] {
@@ -103,7 +109,7 @@ actor GW2APIClient {
     }
 
     func bankSlots() async throws -> [InventorySlot?] {
-        try await authenticatedRequest("account/bank")
+        try await authenticatedSparseArray("account/bank", priority: .high)
     }
 
     func sharedInventory() async throws -> [InventorySlot] {
@@ -111,11 +117,11 @@ actor GW2APIClient {
     }
 
     func sharedInventorySlots() async throws -> [InventorySlot?] {
-        try await authenticatedRequest("account/inventory")
+        try await authenticatedSparseArray("account/inventory", priority: .high)
     }
 
     func accountMaterials() async throws -> [AccountMaterial] {
-        try await authenticatedRequest("account/materials")
+        try await authenticatedLossyArray("account/materials", priority: .high)
     }
 
     func materials() async throws -> [InventorySlot] {
@@ -124,7 +130,9 @@ actor GW2APIClient {
         }
     }
 
-    func walletEntries() async throws -> [WalletEntry] { try await authenticatedRequest("account/wallet") }
+    func walletEntries() async throws -> [WalletEntry] {
+        try await authenticatedLossyArray("account/wallet", priority: .high)
+    }
 
     func wallet() async throws -> [(WalletEntry, CurrencyMetadata?)] {
         let entries = try await walletEntries()
@@ -146,15 +154,17 @@ actor GW2APIClient {
         .sorted { $0.metadata.name.localizedCaseInsensitiveCompare($1.metadata.name) == .orderedAscending }
     }
 
-    func items(ids: [Int]) async throws -> [Int: ItemMetadata] {
+    func items(ids: [Int], priority: APIRequestPriority = .normal) async throws -> [Int: ItemMetadata] {
         itemCache = await loadedIntCache(itemCache, name: "items")
-        itemCache = try await filledIntCache(itemCache, ids: ids, endpoint: "items", name: "items")
+        itemCache = try await filledIntCache(
+            itemCache, ids: ids, endpoint: "items", name: "items", priority: priority)
         return itemCache.filter { Set(ids).contains($0.key) }
     }
 
-    func currencies(ids: [Int]) async throws -> [Int: CurrencyMetadata] {
+    func currencies(ids: [Int], priority: APIRequestPriority = .normal) async throws -> [Int: CurrencyMetadata] {
         currencyCache = await loadedIntCache(currencyCache, name: "currencies")
-        currencyCache = try await filledIntCache(currencyCache, ids: ids, endpoint: "currencies", name: "currencies")
+        currencyCache = try await filledIntCache(
+            currencyCache, ids: ids, endpoint: "currencies", name: "currencies", priority: priority)
         return currencyCache.filter { Set(ids).contains($0.key) }
     }
 
@@ -231,14 +241,20 @@ actor GW2APIClient {
     }
 
     func accountAchievements() async throws -> [AccountAchievementProgress] {
-        try await authenticatedRequest("account/achievements")
+        try await authenticatedLossyArray("account/achievements")
     }
 
-    func recipeIDs() async throws -> [Int] { try await request("recipes") }
+    func recipeIDs() async throws -> [Int] { try await request("recipes", priority: .low) }
 
-    func recipes(ids: [Int]) async throws -> [Int: RecipeDefinition] {
+    func recipes(
+        ids: [Int],
+        priority: APIRequestPriority = .low,
+        progress: (@Sendable (Int, Int) async -> Void)? = nil
+    ) async throws -> [Int: RecipeDefinition] {
         recipeCache = await loadedIntCache(recipeCache, name: "recipes-v1")
-        recipeCache = try await filledIntCache(recipeCache, ids: ids, endpoint: "recipes", name: "recipes-v1")
+        recipeCache = try await filledIntCache(
+            recipeCache, ids: ids, endpoint: "recipes", name: "recipes-v1",
+            priority: priority, progress: progress)
         return recipeCache.filter { Set(ids).contains($0.key) }
     }
 
@@ -280,16 +296,16 @@ actor GW2APIClient {
     }
 
     func wizardVaultDaily() async throws -> WizardVaultAccountPeriod {
-        try await authenticatedRequest("account/wizardsvault/daily")
+        try await authenticatedRequest("account/wizardsvault/daily", priority: .high)
     }
     func wizardVaultWeekly() async throws -> WizardVaultAccountPeriod {
-        try await authenticatedRequest("account/wizardsvault/weekly")
+        try await authenticatedRequest("account/wizardsvault/weekly", priority: .high)
     }
     func wizardVaultSpecial() async throws -> WizardVaultAccountSpecial {
-        try await authenticatedRequest("account/wizardsvault/special")
+        try await authenticatedRequest("account/wizardsvault/special", priority: .high)
     }
     func accountWizardVaultListings() async throws -> [WizardVaultAccountListing] {
-        try await authenticatedRequest("account/wizardsvault/listings")
+        try await authenticatedRequest("account/wizardsvault/listings", priority: .high)
     }
     func accountWorldBossIDs() async throws -> [String] { try await authenticatedRequest("account/worldbosses") }
     func accountMapChestIDs() async throws -> [String] { try await authenticatedRequest("account/mapchests") }
@@ -410,50 +426,121 @@ actor GW2APIClient {
     }
 
     private func filledIntCache<Value: Codable & Sendable & Identifiable>(
-        _ existing: [Int: Value], ids: [Int], endpoint: String, name: String
+        _ existing: [Int: Value], ids: [Int], endpoint: String, name: String,
+        priority: APIRequestPriority = .normal,
+        progress: (@Sendable (Int, Int) async -> Void)? = nil
     ) async throws -> [Int: Value] where Value.ID == Int {
         var cache = existing
         let wanted = Array(Set(ids)).sorted()
         let missing = wanted.filter { cache[$0] == nil }
-        for batch in Self.chunks(of: missing, size: 200) {
+        var unresolved: [Int] = []
+        let batches = Self.chunks(of: missing, size: 200)
+        for (index, batch) in batches.enumerated() {
             let query = batch.map(String.init).joined(separator: ",")
-            let values: [Value] = try await requestDeduplicated("\(endpoint)?ids=\(query)")
-            values.forEach { cache[$0.id] = $0 }
+            let path = "\(endpoint)?ids=\(query)"
+            do {
+                let decoded: LossyDecodableArray<Value> = try await requestDeduplicated(path, priority: priority)
+                decoded.values.forEach { cache[$0.id] = $0 }
+                let returned = Set(decoded.values.map(\.id))
+                unresolved.append(contentsOf: batch.filter { !returned.contains($0) })
+                if !decoded.failures.isEmpty {
+                    await Self.trace(
+                        path: path, statusCode: 200, error: "Partial decode \(decoded.failures.prefix(3).joined(separator: "; "))",
+                        decodeSucceeded: false, decodePath: decoded.failures.first)
+                }
+            } catch GW2APIError.server(404) {
+                unresolved.append(contentsOf: batch)
+            } catch {
+                unresolved.append(contentsOf: batch.filter { cache[$0] == nil })
+                if cache.isEmpty && index == 0 { throw error }
+            }
+            await progress?(index + 1, max(batches.count, 1))
+            if index % 2 == 1 { await diskCache.save(cache, named: name) }
         }
+        lastUnresolvedMetadataIDs[endpoint] = Array(Set(unresolved)).sorted()
         if !missing.isEmpty { await diskCache.save(cache, named: name) }
         return cache
     }
 
-    private func authenticatedRequest<T: Decodable & Sendable>(_ path: String) async throws -> T {
+    private func authenticatedRequest<T: Decodable & Sendable>(
+        _ path: String, priority: APIRequestPriority = .normal
+    ) async throws -> T {
         guard let key = try credentials.getAPIKey() else { throw GW2APIError.invalidAPIKey }
-        return try await request(path, apiKey: key)
+        return try await request(path, apiKey: key, priority: priority)
     }
 
-    private func request<T: Decodable & Sendable>(_ path: String, apiKey: String? = nil) async throws -> T {
-        let data = try await data(for: path, apiKey: apiKey)
+    private func authenticatedLossyArray<T: Decodable & Sendable>(
+        _ path: String, priority: APIRequestPriority = .normal
+    ) async throws -> [T] {
+        let decoded: LossyDecodableArray<T> = try await authenticatedRequest(path, priority: priority)
+        if !decoded.failures.isEmpty {
+            await Self.trace(
+                path: path, statusCode: 200,
+                error: "Partial decode \(decoded.failures.prefix(3).joined(separator: "; "))",
+                decodeSucceeded: false, decodePath: decoded.failures.first)
+        }
+        return decoded.values
+    }
+
+    private func authenticatedSparseArray<T: Decodable & Sendable>(
+        _ path: String, priority: APIRequestPriority = .normal
+    ) async throws -> [T?] {
+        let decoded: SparseNullableArray<T> = try await authenticatedRequest(path, priority: priority)
+        return decoded.values
+    }
+
+    private func request<T: Decodable & Sendable>(
+        _ path: String, apiKey: String? = nil, priority: APIRequestPriority = .normal
+    ) async throws -> T {
+        let data = try await data(for: path, apiKey: apiKey, priority: priority)
         do { return try JSONDecoder().decode(T.self, from: data) }
-        catch { throw GW2APIError.invalidResponse }
+        catch {
+            let pathText = DecodeErrorPath.describe(error)
+            await Self.trace(
+                path: path, statusCode: 200, error: "Decode failed \(pathText)",
+                decodeSucceeded: false, decodePath: pathText)
+            throw GW2APIError.decodeFailed(path: pathText)
+        }
     }
 
-    private func requestDeduplicated<T: Decodable & Sendable>(_ path: String) async throws -> T {
+    private func requestDeduplicated<T: Decodable & Sendable>(
+        _ path: String, priority: APIRequestPriority = .normal
+    ) async throws -> T {
         let data: Data
         if let task = inFlightBatches[path] {
             data = try await task.value
         } else {
-            let task = Task { try await self.data(for: path, apiKey: nil) }
+            let task = Task { try await self.data(for: path, apiKey: nil, priority: priority) }
             inFlightBatches[path] = task
             defer { inFlightBatches[path] = nil }
             data = try await task.value
         }
         do { return try JSONDecoder().decode(T.self, from: data) }
-        catch { throw GW2APIError.invalidResponse }
+        catch {
+            let pathText = DecodeErrorPath.describe(error)
+            await Self.trace(
+                path: path, statusCode: 200, error: "Decode failed \(pathText)",
+                decodeSucceeded: false, decodePath: pathText)
+            throw GW2APIError.decodeFailed(path: pathText)
+        }
     }
 
-    private func data(for path: String, apiKey: String?) async throws -> Data {
+    private func data(
+        for path: String, apiKey: String?, priority: APIRequestPriority = .normal
+    ) async throws -> Data {
+        try await scheduler.perform(priority: priority) {
+            try await self.send(path: path, apiKey: apiKey, attempt: 0)
+        }
+    }
+
+    private func send(path: String, apiKey: String?, attempt: Int) async throws -> Data {
         guard let url = URL(string: path, relativeTo: baseURL) else { throw GW2APIError.invalidResponse }
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         if let apiKey { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+        if let schema = GW2Schema.headerValue(for: path) {
+            request.setValue(schema, forHTTPHeaderField: "X-Schema-Version")
+        }
         let data: Data
         let response: URLResponse
         do {
@@ -473,33 +560,38 @@ actor GW2APIClient {
         }
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw GW2APIError.invalidResponse }
-        await Self.trace(path: path, statusCode: http.statusCode, error: nil)
+        if http.statusCode == 429 {
+            let delay = RetryAfterParser.delay(from: http, attempt: attempt)
+            await scheduler.noteRateLimited(retryAfter: delay)
+            await Self.trace(path: path, statusCode: 429, error: "HTTP 429")
+            guard attempt < 4 else { throw GW2APIError.rateLimited }
+            try await Task.sleep(for: .milliseconds(Int(delay * 1_000)))
+            return try await send(path: path, apiKey: apiKey, attempt: attempt + 1)
+        }
+        await scheduler.noteSuccess()
+        let schema = GW2Schema.headerValue(for: path)
+        await Self.trace(
+            path: path, statusCode: http.statusCode, error: nil, schemaVersion: schema)
+        if http.statusCode == 206 {
+            return data
+        }
         guard (200..<300).contains(http.statusCode) else {
-            let domainHint = path.split(separator: "?").first.map(String.init) ?? path
             if http.statusCode == 401 { throw GW2APIError.invalidAPIKey }
-            if http.statusCode == 403 { throw GW2APIError.missingPermission(Self.permissionHint(for: domainHint)) }
-            if http.statusCode == 429 { throw GW2APIError.rateLimited }
-            if [500, 502, 503, 504].contains(http.statusCode) { throw GW2APIError.serviceUnavailable }
+            if http.statusCode == 403 { throw GW2APIError.server(403) }
             throw GW2APIError.server(http.statusCode)
         }
         return data
     }
 
-    private static func trace(path: String, statusCode: Int?, error: String?) async {
+    private static func trace(
+        path: String, statusCode: Int?, error: String?, usedCache: Bool = false,
+        schemaVersion: String? = nil, decodeSucceeded: Bool? = nil, decodePath: String? = nil
+    ) async {
         let safePath = QARedaction.apiPath(path)
         await MainActor.run {
-            DeveloperDiagnostics.shared.recordAPICall(path: safePath, statusCode: statusCode, error: error)
-        }
-    }
-
-    private static func permissionHint(for path: String) -> String {
-        switch DeveloperDiagnostics.domain(for: path) {
-        case "inventory": "inventories"
-        case "achievements", "today": "progression"
-        case "builds": "builds"
-        case "characters": "characters"
-        case "account": "account"
-        default: "required"
+            DeveloperDiagnostics.shared.recordAPICall(
+                path: safePath, statusCode: statusCode, error: error, usedCache: usedCache,
+                schemaVersion: schemaVersion, decodeSucceeded: decodeSucceeded, decodePath: decodePath)
         }
     }
 

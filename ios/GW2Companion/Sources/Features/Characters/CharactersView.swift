@@ -49,11 +49,7 @@ struct CharactersView: View {
     private var characterGrid: some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 310, maximum: 520), spacing: 16)], spacing: 16) {
-                if let error = account.errorMessage {
-                    GWErrorBanner(message: error, stale: account.isStale) { Task { await account.refresh() } }
-                        .gridCellColumns(2)
-                }
-                ForEach(account.characters) { character in
+            ForEach(account.characters) { character in
                     NavigationLink(value: CharacterRoute(name: character.name, section: .equipment)) {
                         CharacterCard(
                             character: character,
@@ -132,8 +128,18 @@ struct CharacterDetailView: View {
                 }
                 .pickerStyle(.segmented)
 
-                if let error = detail.errorMessage {
+                if let error = detail.buildError, section == .build {
+                    GWErrorBanner(message: error, stale: !detail.buildTabs.isEmpty) {
+                        Task { await account.loadCharacterDetails(character, force: true) }
+                    }
+                }
+                if let error = detail.equipmentError, section == .equipment {
                     GWErrorBanner(message: error, stale: !detail.equipmentTabs.isEmpty) {
+                        Task { await account.loadCharacterDetails(character, force: true) }
+                    }
+                }
+                if let error = detail.inventoryError, section == .inventory {
+                    GWErrorBanner(message: error, stale: detail.inventory != nil) {
                         Task { await account.loadCharacterDetails(character, force: true) }
                     }
                 }

@@ -105,8 +105,8 @@ enum HoldingSearch {
     ) -> [HoldingSearchResult] {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let values = holdings.compactMap { holding -> HoldingSearchResult? in
-            guard let item = metadata[holding.itemID] else { return nil }
-            guard normalized.isEmpty || item.name.localizedCaseInsensitiveContains(normalized) else { return nil }
+            let item = metadata[holding.itemID] ?? ItemPlaceholder.metadata(id: holding.itemID)
+            guard normalized.isEmpty || item.name.localizedCaseInsensitiveContains(normalized) || String(holding.itemID) == normalized else { return nil }
             return HoldingSearchResult(holding: holding, item: item)
         }
         return values.sorted { lhs, rhs in
@@ -204,6 +204,9 @@ struct CharacterDetailData: Equatable, Sendable {
     var traits: [Int: TraitMetadata] = [:]
     var skills: [Int: SkillMetadata] = [:]
     var errorMessage: String?
+    var equipmentError: String?
+    var buildError: String?
+    var inventoryError: String?
 }
 
 extension GW2Character {

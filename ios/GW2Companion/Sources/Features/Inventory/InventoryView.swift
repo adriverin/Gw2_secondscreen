@@ -87,10 +87,18 @@ struct InventoryView: View {
             Label("Loading inventory…", systemImage: "arrow.triangle.2.circlepath")
                 .font(.caption).padding(8)
                 .accessibilityIdentifier("inventory.state.loading")
-        } else if let error = account.errorMessage, account.holdings.isEmpty {
+        } else if let error = account.errorMessage, account.holdings.isEmpty, !account.inventoryLive {
             GWErrorBanner(message: error, stale: account.isStale) { Task { await account.refresh() } }
                 .padding(.horizontal)
                 .accessibilityIdentifier("inventory.state.error")
+        } else if account.inventoryLive, let updated = account.inventoryUpdatedAt ?? account.accountLastRefreshedAt {
+            HStack {
+                Text("LIVE ACCOUNT RESPONSE • \(updated.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal).padding(.top, 8)
+            .accessibilityIdentifier("inventory.state.live")
         } else if account.isStale {
             HStack {
                 Label(account.cacheStatusText, systemImage: "clock.arrow.circlepath")
@@ -117,8 +125,12 @@ struct InventoryView: View {
 
     private var allSearch: some View {
         List {
-            if let error = account.errorMessage {
+            if let error = account.errorMessage, !account.inventoryLive, account.holdings.isEmpty {
                 GWErrorBanner(message: error, stale: account.isStale) { Task { await account.refresh() } }
+                    .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
+            }
+            if let bank = account.domainStates[.bank], bank.phase == .failed, let message = bank.message {
+                GWErrorBanner(message: "Bank: \(message)", stale: true) { Task { await account.refresh() } }
                     .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
             }
             Section {
@@ -219,7 +231,12 @@ struct BankStorageView: View {
             VStack(alignment: .leading, spacing: 14) {
                 GWSectionHeader(title: "Bank", subtitle: "\(occupied) occupied slots • \(account.dataSource.qaLabel)")
                 if account.bankSlots.isEmpty {
-                    Text("Bank is empty.").foregroundStyle(.secondary).padding(.top, 8)
+                    if account.domainStates[.bank]?.phase == .failed {
+                        Text(account.domainStates[.bank]?.message ?? "Couldn't refresh bank.")
+                            .foregroundStyle(.secondary).padding(.top, 8)
+                    } else {
+                        Text("Bank is empty.").foregroundStyle(.secondary).padding(.top, 8)
+                    }
                 } else {
                     slotGrid(account.bankSlots, items: account.itemMetadata)
                 }
@@ -250,7 +267,12 @@ struct SharedInventoryView: View {
             VStack(alignment: .leading, spacing: 14) {
                 GWSectionHeader(title: "Shared Inventory", subtitle: "\(occupied) occupied slots • \(account.dataSource.qaLabel)")
                 if account.sharedSlots.isEmpty {
-                    Text("Shared inventory is empty.").foregroundStyle(.secondary).padding(.top, 8)
+                    if account.domainStates[.sharedInventory]?.phase == .failed {
+                        Text(account.domainStates[.sharedInventory]?.message ?? "Couldn't refresh shared inventory.")
+                            .foregroundStyle(.secondary).padding(.top, 8)
+                    } else {
+                        Text("Shared inventory is empty.").foregroundStyle(.secondary).padding(.top, 8)
+                    }
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 52, maximum: 62), spacing: 9)], spacing: 9) {
                         ForEach(Array(account.sharedSlots.enumerated()), id: \.offset) { _, slot in
@@ -276,6 +298,9 @@ struct MaterialStorageView: View {
     var body: some View {
         let categories = account.materialCategories.values.sorted { $0.order < $1.order }
         let materialsByID = Dictionary(uniqueKeysWithValues: account.materials.map { ($0.id, $0) })
+        let uncategorized = account.materials.filter { material in
+            !categories.contains { $0.items.contains(material.id) } && (showAll || material.count > 0)
+        }
         List {
             Section {
                 Toggle("Show owned only", isOn: Binding(get: { !showAll }, set: { showAll = !$0 }))
@@ -286,7 +311,7 @@ struct MaterialStorageView: View {
                 let values = category.items.compactMap { itemID -> (AccountMaterial, ItemMetadata)? in
                     guard let material = materialsByID[itemID] else { return nil }
                     if !showAll && material.count <= 0 { return nil }
-                    guard let item = account.itemMetadata[itemID] else { return nil }
+                    let item = account.itemMetadata[itemID] ?? ItemPlaceholder.metadata(id: itemID)
                     if !search.isEmpty && !item.name.localizedCaseInsensitiveContains(search) { return nil }
                     return (material, item)
                 }
@@ -310,12 +335,37 @@ struct MaterialStorageView: View {
                     }
                 }
             }
+            if !uncategorized.isEmpty {
+                Section("Uncategorized") {
+                    ForEach(uncategorized, id: \.id) { material in
+                        let item = account.itemMetadata[material.id] ?? ItemPlaceholder.metadata(id: material.id)
+                        if search.isEmpty || item.name.localizedCaseInsensitiveContains(search) {
+                            Button {
+                                inspected = InspectedItem(item: item, quantity: material.count)
+                            } label: {
+                                HStack {
+                                    GWItemIcon(item: item, size: 40)
+                                    Text(item.name)
+                                    Spacer()
+                                    Text(material.count.formatted()).monospacedDigit().bold()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("inventory.material.\(item.name)")
+                        }
+                    }
+                }
+            }
         }
         .accessibilityIdentifier("inventory.materials")
         .refreshable { await account.refresh() }
         .overlay {
-            if categories.isEmpty {
-                ContentUnavailableView("No material categories", systemImage: "cube.box", description: Text("Material storage has not been loaded yet."))
+            if categories.isEmpty && account.materials.isEmpty {
+                ContentUnavailableView(
+                    "No material categories", systemImage: "cube.box",
+                    description: Text(account.domainStates[.materials]?.phase == .failed
+                        ? (account.domainStates[.materials]?.message ?? "Material storage could not be refreshed.")
+                        : "Material storage has not been loaded yet."))
             }
         }
     }
@@ -327,7 +377,8 @@ struct InventorySlotCell: View {
     let onSelect: (InspectedItem) -> Void
 
     var body: some View {
-        if let slot, let item = items[slot.id] {
+        if let slot {
+            let item = items[slot.id] ?? ItemPlaceholder.metadata(id: slot.id)
             Button { onSelect(InspectedItem(item: item, quantity: slot.count, slot: slot)) } label: {
                 ZStack(alignment: .bottomTrailing) {
                     GWItemIcon(item: item, size: 52)
@@ -340,10 +391,6 @@ struct InventorySlotCell: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(item.name), quantity \(slot.count)")
             .accessibilityIdentifier("inventory.item.\(item.name)")
-        } else if slot != nil {
-            RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.45)).frame(width: 52, height: 52)
-                .overlay(Image(systemName: "shippingbox").foregroundStyle(.tertiary))
-                .accessibilityLabel("Unknown item")
         } else {
             RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.45)).frame(width: 52, height: 52)
                 .accessibilityLabel("Empty slot")

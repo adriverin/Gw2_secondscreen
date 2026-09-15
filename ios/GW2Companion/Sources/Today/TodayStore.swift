@@ -34,30 +34,104 @@ actor TodayRepository {
 
     func refresh(
         accountID: String?, hasProgressionPermission: Bool, hasWalletPermission: Bool,
-        language: String = "en", force: Bool = false, now: Date = Date()
+        language: String = "en", force: Bool = false, now: Date = Date(),
+        onUpdate: (@Sendable (TodayDataSnapshot) async -> Void)? = nil
     ) async throws -> TodayDataSnapshot {
         if !force, let cached = await cached(accountID: accountID),
            now.timeIntervalSince(cached.timestamp) < Self.accountTTL,
            cached.hasProgressionPermission == hasProgressionPermission {
+            await onUpdate?(cached)
             return cached
         }
 
-        // Manual refresh bypasses the short account TTL, not the long metadata TTL.
-        let publicCatalog = try await loadPublic(language: language, force: false, now: now)
-        let account: TodayAccountPayload?
+        var latest = await cached(accountID: accountID)
+
+        var daily: WizardVaultAccountPeriod?
+        var weekly: WizardVaultAccountPeriod?
+        var special: WizardVaultAccountSpecial?
+        var listings: [WizardVaultAccountListing] = []
         if hasProgressionPermission {
-            account = try await loadAccount(hasWalletPermission: hasWalletPermission)
-        } else {
-            account = nil
+            async let dailyValue: WizardVaultAccountPeriod? = optional { try await provider.wizardVaultDaily() }
+            async let weeklyValue: WizardVaultAccountPeriod? = optional { try await provider.wizardVaultWeekly() }
+            async let specialValue: WizardVaultAccountSpecial? = optional { try await provider.wizardVaultSpecial() }
+            async let listingsValue: [WizardVaultAccountListing]? = optional { try await provider.accountWizardVaultListings() }
+            daily = await dailyValue
+            weekly = await weeklyValue
+            special = await specialValue
+            listings = await listingsValue ?? []
+            if daily != nil || weekly != nil || special != nil {
+                let vaultSnapshot = TodayMerger.mergeVaultOnly(
+                    daily: daily, weekly: weekly, special: special, listings: listings,
+                    catalog: nil, accountID: accountID,
+                    hasProgressionPermission: hasProgressionPermission, now: now)
+                latest = vaultSnapshot
+                await onUpdate?(vaultSnapshot)
+            }
+        }
+
+        let publicCatalog = try? await loadPublicCore(language: language, force: false, now: now)
+        var account = TodayAccountPayload(
+            daily: daily ?? emptyPeriod, weekly: weekly ?? emptyPeriod,
+            special: special ?? WizardVaultAccountSpecial(objectives: []),
+            listings: listings, worldBossIDs: [], mapChestIDs: [], dailyCraftingIDs: [],
+            raidEventIDs: [], dungeonPathIDs: [], wallet: [], rewardItems: [:])
+
+        if hasProgressionPermission {
+            async let bosses: [String]? = optional { try await provider.accountWorldBossIDs() }
+            async let chests: [String]? = optional { try await provider.accountMapChestIDs() }
+            async let crafting: [String]? = optional { try await provider.accountDailyCraftingIDs() }
+            account.worldBossIDs = await bosses ?? []
+            account.mapChestIDs = await chests ?? []
+            account.dailyCraftingIDs = await crafting ?? []
+            if hasWalletPermission {
+                account.wallet = (try? await provider.todayWallet()) ?? []
+            }
+        }
+
+        if let publicCatalog {
+            let core = TodayMerger.merge(
+                public: publicCatalog, account: hasProgressionPermission ? account : nil,
+                accountID: accountID, hasProgressionPermission: hasProgressionPermission, now: now)
+            latest = core
+            await onUpdate?(core)
+            await cache.save(core, named: accountCacheName(accountID))
+        }
+
+        async let raids: [RaidDefinition]? = optional { try await provider.raids(language: language) }
+        async let dungeons: [DungeonDefinition]? = optional { try await provider.dungeons(language: language) }
+        async let raidEvents: [String]? = hasProgressionPermission
+            ? optional { try await provider.accountRaidEventIDs() } : nil
+        async let dungeonPaths: [String]? = hasProgressionPermission
+            ? optional { try await provider.accountDungeonPathIDs() } : nil
+
+        var catalog = publicCatalog
+        if var mutable = catalog {
+            mutable.raids = await raids ?? mutable.raids
+            mutable.dungeons = await dungeons ?? mutable.dungeons
+            catalog = mutable
+        }
+        account.raidEventIDs = await raidEvents ?? []
+        account.dungeonPathIDs = await dungeonPaths ?? []
+
+        guard let catalog else {
+            if daily != nil || weekly != nil || special != nil, let latest { return latest }
+            throw TodayLoadError.accountStateUnavailable
         }
         let merged = TodayMerger.merge(
-            public: publicCatalog, account: account, accountID: accountID,
-            hasProgressionPermission: hasProgressionPermission, now: now)
+            public: catalog, account: hasProgressionPermission ? account : nil,
+            accountID: accountID, hasProgressionPermission: hasProgressionPermission, now: now)
         await cache.save(merged, named: accountCacheName(accountID))
+        await onUpdate?(merged)
         return merged
     }
 
-    private func loadPublic(language: String, force: Bool, now: Date) async throws -> TodayPublicCatalog {
+    private var emptyPeriod: WizardVaultAccountPeriod {
+        WizardVaultAccountPeriod(
+            metaProgressCurrent: 0, metaProgressComplete: 0, metaRewardItemID: 0,
+            metaRewardAstral: 0, metaRewardClaimed: false, objectives: [])
+    }
+
+    private func loadPublicCore(language: String, force: Bool, now: Date) async throws -> TodayPublicCatalog {
         let name = "today-public-v1-\(language)"
         if !force, let cached = await cache.load(TimedTodayPublicCatalog.self, named: name),
            now.timeIntervalSince(cached.fetchedAt) < Self.publicTTL,
@@ -71,16 +145,14 @@ actor TodayRepository {
         async let bosses = provider.worldBossIDs()
         async let chests = provider.mapChestIDs()
         async let crafting = provider.dailyCraftingIDs()
-        async let raids = provider.raids(language: language)
-        async let dungeons = provider.dungeons(language: language)
         async let currencies = provider.todayCurrencies(ids: [63])
-        let loaded = try await (objectives, listings, bosses, chests, crafting, raids, dungeons, currencies)
+        let loaded = try await (objectives, listings, bosses, chests, crafting, currencies)
         let items = try await provider.todayItems(ids: loaded.1.map(\.itemID))
-        let astral = loaded.7[63].flatMap { $0.name.isEmpty ? nil : $0 }
+        let astral = loaded.5[63].flatMap { $0.name.isEmpty ? nil : $0 }
         let catalog = TodayPublicCatalog(
             season: season, vaultObjectives: loaded.0, vaultListings: loaded.1,
             worldBossIDs: loaded.2, mapChestIDs: loaded.3, dailyCraftingIDs: loaded.4,
-            raids: loaded.5, dungeons: loaded.6, items: items, astralAcclaimCurrency: astral)
+            raids: [], dungeons: [], items: items, astralAcclaimCurrency: astral)
         await cache.save(TimedTodayPublicCatalog(fetchedAt: now, value: catalog), named: name)
         return catalog
     }
@@ -104,6 +176,10 @@ actor TodayRepository {
             worldBossIDs: loaded.4, mapChestIDs: loaded.5, dailyCraftingIDs: loaded.6,
             raidEventIDs: loaded.7, dungeonPathIDs: loaded.8, wallet: wallet,
             rewardItems: rewardItems)
+    }
+
+    private func optional<T: Sendable>(_ work: () async throws -> T) async -> T? {
+        try? await work()
     }
 
     private func accountCacheName(_ accountID: String?) -> String {
@@ -175,14 +251,15 @@ final class TodayStore: ObservableObject {
     func refresh(force: Bool = true, now: Date = Date()) async {
         guard loadState != .loading else { return }
         loadState = .loading
+        let sink = TodaySnapshotSink { [weak self] update in
+            self?.publish(update)
+        }
         do {
-            snapshot = try await repository.refresh(
+            let result = try await repository.refresh(
                 accountID: accountID, hasProgressionPermission: hasProgressionPermission,
-                hasWalletPermission: hasWalletPermission, force: force, now: now)
-            loadState = .loaded
-            errorMessage = nil
-            isStale = false
-            dataSource = .live
+                hasWalletPermission: hasWalletPermission, force: force, now: now,
+                onUpdate: { update in await sink.yield(update) })
+            publish(result)
         } catch is CancellationError {
             loadState = snapshot == nil ? .idle : .loaded
         } catch {
@@ -192,6 +269,19 @@ final class TodayStore: ObservableObject {
             isStale = snapshot != nil
             dataSource = snapshot == nil ? .unknown : .cached
             if snapshot != nil { DeveloperDiagnostics.shared.recordCachedToday() }
+        }
+    }
+
+    private func publish(_ update: TodayDataSnapshot) {
+        snapshot = update
+        loadState = .loaded
+        errorMessage = nil
+        isStale = false
+        dataSource = .live
+        if update.opportunities.contains(where: {
+            $0.type == .wizardVaultDaily || $0.type == .wizardVaultWeekly
+        }) {
+            DeveloperDiagnostics.shared.recordTodayFirstVault()
         }
     }
 
@@ -246,5 +336,17 @@ final class TodayStore: ObservableObject {
     }
     private func persistLinks() {
         defaults.set(try? JSONEncoder().encode(Array(opportunityLinks.values)), forKey: linksKey)
+    }
+}
+
+private final class TodaySnapshotSink: @unchecked Sendable {
+    private let apply: @MainActor (TodayDataSnapshot) -> Void
+
+    init(_ apply: @escaping @MainActor (TodayDataSnapshot) -> Void) {
+        self.apply = apply
+    }
+
+    func yield(_ value: TodayDataSnapshot) async {
+        await MainActor.run { apply(value) }
     }
 }

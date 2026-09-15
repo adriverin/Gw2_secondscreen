@@ -107,7 +107,7 @@ struct GWErrorBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: stale ? "clock.arrow.circlepath" : "exclamationmark.triangle.fill")
-            Text(stale ? "Couldn't refresh. Showing saved account data." : message)
+            Text(message)
                 .font(.caption).frame(maxWidth: .infinity, alignment: .leading)
             if let retry { Button("Try Again", action: retry).font(.caption.bold()) }
         }

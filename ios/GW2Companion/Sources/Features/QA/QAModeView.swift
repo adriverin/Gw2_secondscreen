@@ -39,6 +39,7 @@ struct QAModeView: View {
             apiRefresh
             apiMatrix
             timestamps
+            accountDomains
             mapDiagnostics
             events
             memory
@@ -147,8 +148,26 @@ struct QAModeView: View {
             labeled("Inventory updated", stamp(account.inventoryUpdatedAt))
             labeled("Today updated", stamp(today.lastUpdatedAt))
             labeled("Prices updated", stamp(goals.pricesUpdatedAt))
+            labeled("Today first Vault ms", diagnostics.todayFirstVaultMs.map(String.init) ?? "—")
             labeled("Account source", account.dataSource.qaLabel)
             labeled("Today source", today.dataSource.qaLabel)
+        }
+    }
+
+    private var accountDomains: some View {
+        Section("Authenticated domain diagnostics") {
+            ForEach(AccountLoadDomain.allCases) { domain in
+                let status = account.domainStates[domain] ?? .idle(domain)
+                Text(status.diagnosticsBlock)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("qa.domain.\(domain.rawValue)")
+            }
+            ForEach(diagnostics.apiDomains.values.sorted { $0.domain < $1.domain }) { status in
+                Text(status.diagnosticsBlock)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+            }
         }
     }
 

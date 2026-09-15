@@ -57,10 +57,13 @@ struct GW2CompanionApp: App {
 #else
                     telemetry.connectSavedPairing()
 #endif
-                    await account.start()
+                    await account.restoreCachedState()
                     goals.setAccountScope(account.account?.id)
                     sessions.setAccountScope(account.account?.id)
-                    await today.setAccountScope(account.account?.id, permissions: account.permissions)
+                    async let accountRefresh: Void = account.refresh()
+                    async let todayRefresh: Void = today.setAccountScope(
+                        account.account?.id, permissions: account.permissions)
+                    _ = await (accountRefresh, todayRefresh)
                     await sessions.prepare(recipes: goals.recipes, prices: goals.marketPrices)
                 }
                 .onChange(of: telemetry.latest?.character?.name, initial: true) { _, name in

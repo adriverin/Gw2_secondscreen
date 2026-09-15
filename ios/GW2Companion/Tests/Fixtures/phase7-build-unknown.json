@@ -1,0 +1,32 @@
+[
+  {
+    "tab": 1,
+    "name": "Future Build",
+    "is_active": true,
+    "build": {
+      "name": "Future Build",
+      "profession": "Virtuoso",
+      "specializations": [
+        {"id": 66, "traits": [31, null, 33]},
+        {"id": null, "traits": [null, null, null]}
+      ],
+      "skills": {
+        "terrestrial": {"heal": 5503, "utilities": [5519, null, 10234], "elite": 29519},
+        "aquatic": null,
+        "pve": null,
+        "pvp": null,
+        "wvw": null
+      }
+    }
+  },
+  {
+    "tab": 2,
+    "name": "Inactive",
+    "is_active": false,
+    "build": {
+      "profession": "Mesmer",
+      "specializations": [],
+      "skills": {}
+    }
+  }
+]

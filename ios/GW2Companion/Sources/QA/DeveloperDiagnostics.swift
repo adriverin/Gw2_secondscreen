@@ -19,7 +19,9 @@ final class DeveloperDiagnostics: ObservableObject {
     @Published private(set) var apiDomains: [String: APIDomainStatus] = [:]
     @Published private(set) var domainRefresh: [QADomain: QADomainRefreshResult] = [:]
     @Published var mapSnapshot = MapQADiagnosticsSnapshot()
-    @Published private(set) var networkSatisfied: Bool?
+    @Published private(set) var todayFirstVaultMs: Int?
+    @Published private(set) var todayScreenAppearedAt: Date?
+    private var networkSatisfied: Bool?
 
     private let defaults: UserDefaults
     private var pathMonitor: NWPathMonitor?
@@ -65,7 +67,10 @@ final class DeveloperDiagnostics: ObservableObject {
         record(Self.eventMessage(for: to), at: date)
     }
 
-    func recordAPICall(path: String, statusCode: Int?, error: String?, usedCache: Bool = false, at date: Date = Date()) {
+    func recordAPICall(
+        path: String, statusCode: Int?, error: String?, usedCache: Bool = false, at date: Date = Date(),
+        schemaVersion: String? = nil, decodeSucceeded: Bool? = nil, decodePath: String? = nil
+    ) {
         let domain = Self.domain(for: path)
         let message: String
         if let error, !error.isEmpty {
@@ -76,10 +81,16 @@ final class DeveloperDiagnostics: ObservableObject {
             message = "Unknown"
         }
         let status = APIDomainStatus(
-            domain: domain, httpStatus: statusCode, message: message, usedCache: usedCache, updatedAt: date)
+            domain: domain, endpoint: path, httpStatus: statusCode, schemaVersion: schemaVersion,
+            message: message, usedCache: usedCache, updatedAt: date,
+            decodeSucceeded: decodeSucceeded, decodePath: decodePath,
+            source: usedCache ? "cache" : "live")
         apiDomains[domain] = status
         if statusCode == 429 {
-            record("ArenaNet request rate-limited", at: date)
+            record("ArenaNet request rate-limited (HTTP 429)", at: date)
+        }
+        if decodeSucceeded == false {
+            record("Decode failed for \(domain) \(path): \(decodePath ?? message)", at: date)
         }
     }
 
@@ -91,6 +102,21 @@ final class DeveloperDiagnostics: ObservableObject {
             error: result.success ? nil : result.message,
             usedCache: result.usedCache,
             at: result.timestamp)
+    }
+
+    func recordTodayScreenAppeared(at date: Date = Date()) {
+        todayScreenAppearedAt = date
+        record("Today screen appeared", at: date)
+    }
+
+    func recordTodayFirstVault(at date: Date = Date()) {
+        guard todayFirstVaultMs == nil else { return }
+        if let start = todayScreenAppearedAt {
+            todayFirstVaultMs = Int(date.timeIntervalSince(start) * 1_000)
+            record("Today first Vault data published in \(todayFirstVaultMs ?? 0) ms", at: date)
+        } else {
+            record("Today first Vault data published", at: date)
+        }
     }
 
     func recordCachedToday() {
@@ -113,6 +139,8 @@ final class DeveloperDiagnostics: ObservableObject {
         clearTransitions()
         apiDomains = [:]
         domainRefresh = [:]
+        todayFirstVaultMs = nil
+        todayScreenAppearedAt = nil
     }
 
     func startNetworkMonitor() {
@@ -143,23 +171,25 @@ final class DeveloperDiagnostics: ObservableObject {
     nonisolated static func domain(for path: String) -> String {
         let clean = QARedaction.apiPath(path).split(separator: "?").first.map(String.init) ?? path
         if clean.hasPrefix("tokeninfo") { return "apiKey" }
-        if clean.hasPrefix("account/bank") || clean.hasPrefix("account/inventory")
-            || clean.hasPrefix("account/materials") || clean.contains("/inventory") {
-            return QADomain.inventory.rawValue
-        }
-        if clean.contains("equipmenttabs") || clean.contains("buildtabs") {
-            return QADomain.builds.rawValue
-        }
+        if clean.hasPrefix("account/bank") { return AccountLoadDomain.bank.title }
+        if clean.hasPrefix("account/materials") { return AccountLoadDomain.materials.title }
+        if clean.hasPrefix("account/inventory") { return AccountLoadDomain.sharedInventory.title }
+        if clean.hasPrefix("account/wallet") { return AccountLoadDomain.wallet.title }
+        if clean.hasPrefix("account/recipes") { return AccountLoadDomain.recipesUnlocked.title }
+        if clean.contains("/inventory") { return AccountLoadDomain.characterInventory.title }
+        if clean.contains("equipmenttabs") { return AccountLoadDomain.equipmentTabs.title }
+        if clean.contains("buildtabs") { return AccountLoadDomain.buildTabs.title }
+        if clean.contains("/equipment") { return AccountLoadDomain.equipment.title }
         if clean.contains("achievement") || clean.hasPrefix("account/achievements") {
-            return QADomain.achievements.rawValue
+            return AccountLoadDomain.achievements.title
         }
         if clean.contains("wizardsvault") || clean.contains("worldboss") || clean.contains("mapchest")
             || clean.contains("dailycrafting") || clean.hasPrefix("raids") || clean.hasPrefix("dungeons")
             || clean.hasPrefix("account/raids") || clean.hasPrefix("account/dungeons") {
-            return QADomain.today.rawValue
+            return AccountLoadDomain.today.title
         }
-        if clean.hasPrefix("characters") { return QADomain.characters.rawValue }
-        if clean.hasPrefix("account") { return QADomain.account.rawValue }
+        if clean.hasPrefix("characters") { return AccountLoadDomain.characters.title }
+        if clean.hasPrefix("account") { return AccountLoadDomain.account.title }
         return clean.split(separator: "/").first.map(String.init) ?? "other"
     }
 
@@ -180,13 +210,10 @@ final class DeveloperDiagnostics: ObservableObject {
 
     private static func message(for status: Int, domain: String) -> String {
         switch status {
-        case 200: "OK"
-        case 403 where domain == QADomain.inventory.rawValue: "Missing inventories permission"
-        case 403 where domain == QADomain.achievements.rawValue || domain == QADomain.today.rawValue:
-            "Missing progression permission"
-        case 403: "Missing required permission"
+        case 200, 206: "OK"
+        case 403: "HTTP 403"
         case 401: "API key invalid"
-        case 429: "Rate limited"
+        case 429: "HTTP 429"
         default: HTTPURLResponse.localizedString(forStatusCode: status)
         }
     }

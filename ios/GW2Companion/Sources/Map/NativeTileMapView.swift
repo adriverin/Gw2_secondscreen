@@ -21,16 +21,21 @@ struct NativeTileMapView: View {
     var showTileDebugGrid: Bool = false
     var showTiles: Bool = true
     let onSelectObjective: (MapObjective) -> Void
-    var onVisibleCoordinateChange: ((ContinentPoint, Int, TileWorldCoordinate?, TileIndex?) -> Void)? = nil
+    var onVisibleCoordinateChange: ((ContinentPoint, Int, TileWorldCoordinate?, TileIndex?, Int, Int) -> Void)? = nil
 
     private let projection = ArenaNetTileProjection.shared
-    private let tileProvider: MapTileProvider = ArenaNetTileProvider()
+    private let tileProvider: MapArtworkProvider = ArenaNetOfficialTileProvider()
     @ObservedObject private var iconStore = MapIconStore.shared
+    @AppStorage(MapDetailMode.storageKey) private var mapDetailRaw = MapDetailMode.balanced.rawValue
     @State private var center = ContinentPoint(x: 44_615.5, y: 29_863.7)
     @State private var zoom = 6
     @State private var markerScene = MapMarkerScene(objectives: [])
     @GestureState private var dragOffset: CGSize = .zero
     @GestureState private var magnification = 1.0
+    @State private var lastVisibleTileCount = 0
+    @State private var lastViewportSize = CGSize(width: 390, height: 844)
+
+    private var mapDetail: MapDetailMode { MapDetailMode(rawValue: mapDetailRaw) ?? .balanced }
 
     var body: some View {
         GeometryReader { geometry in
@@ -75,7 +80,14 @@ struct NativeTileMapView: View {
             }
             .onChange(of: center) { _, _ in reportVisibleCoordinate() }
             .onChange(of: zoom) { _, _ in reportVisibleCoordinate() }
-            .onAppear { reportVisibleCoordinate() }
+            .onChange(of: geometry.size) { _, size in
+                lastViewportSize = size
+                reportVisibleCoordinate()
+            }
+            .onAppear {
+                lastViewportSize = geometry.size
+                reportVisibleCoordinate()
+            }
         }
     }
 
@@ -84,21 +96,29 @@ struct NativeTileMapView: View {
         let viewport = transform.visibleContinentRect(marginPoints: 256 * magnification)
         let continentID = metadata?.continentId ?? 1
         let floor = metadata?.defaultFloor ?? 1
+        let sourceZoom = MapRasterDetail.sourceZoom(
+            displayZoom: zoom, continentID: continentID, viewport: viewport, mode: mapDetail)
         let tileIDs = projection.tiles(
-            coveringContinentRect: viewport, zoom: zoom, continentID: continentID, mapFloor: floor)
+            coveringContinentRect: viewport, zoom: sourceZoom, continentID: continentID, mapFloor: floor)
+        let scale = pow(2.0, Double(sourceZoom - zoom))
+        let screenSize = tileScreenSize * magnification / CGFloat(max(scale, 1))
 
-        ForEach(tileIDs, id: \.self) { tile in
-            if let url = tileProvider.tileURL(
-                continent: continentID, floor: floor, zoom: tile.zoom, x: tile.x, y: tile.y),
-               let worldRect = projection.tileWorldRect(for: tile, continentID: continentID),
-               let continent = projection.continentCoordinate(
-                from: TileWorldCoordinate(x: worldRect.midX, y: worldRect.midY),
-                continentID: continentID, mapFloor: floor) {
-                MapTileImage(url: url, index: tile, showDebug: showTileDebugGrid)
-                    .frame(width: tileScreenSize * magnification, height: tileScreenSize * magnification)
-                    .position(transform.screenPosition(for: continent))
+        Group {
+            ForEach(tileIDs, id: \.self) { tile in
+                if let url = tileProvider.tileURL(
+                    continent: continentID, floor: floor, zoom: tile.zoom, x: tile.x, y: tile.y),
+                   let worldRect = projection.tileWorldRect(for: tile, continentID: continentID),
+                   let continent = projection.continentCoordinate(
+                    from: TileWorldCoordinate(x: worldRect.midX, y: worldRect.midY),
+                    continentID: continentID, mapFloor: floor) {
+                    MapTileImage(url: url, index: tile, showDebug: showTileDebugGrid)
+                        .frame(width: screenSize, height: screenSize)
+                        .position(transform.screenPosition(for: continent))
+                }
             }
         }
+        .onAppear { lastVisibleTileCount = tileIDs.count }
+        .onChange(of: tileIDs.count) { _, count in lastVisibleTileCount = count }
     }
 
     private var tileScreenSize: CGFloat { CGFloat(ArenaNetTileProjection.tileSize + 1) }
@@ -177,10 +197,17 @@ struct NativeTileMapView: View {
     }
 
     private func renderableMarkers(_ markers: [MapSceneMarker]) -> [MapSceneMarker] {
-        guard zoom <= 3 else { return Array(markers.prefix(700)) }
+        let cullZoom = mapDetail.markerCullZoom
+        guard zoom <= cullZoom else { return Array(markers.prefix(700)) }
         return markers.filter {
             guard let objective = $0.objective else { return true }
-            return objective.id == target?.id || objective.type == .waypoint || objective.type == .masteryInsight
+            if objective.id == target?.id { return true }
+            switch objective.type {
+            case .waypoint, .masteryInsight: return true
+            case .vista, .landmark, .heroChallenge, .gatheringOre, .gatheringWood, .gatheringPlant:
+                return mapDetail == .detailed
+            default: return false
+            }
         }.prefix(250).map { $0 }
     }
 
@@ -234,7 +261,16 @@ struct NativeTileMapView: View {
         let floor = metadata?.defaultFloor ?? 1
         let tileWorld = projection.tileWorldCoordinate(from: center, continentID: continentID, mapFloor: floor)
         let tile = tileWorld.flatMap { projection.tileIndex(from: $0, zoom: zoom, continentID: continentID) }
-        onVisibleCoordinateChange?(center, zoom, tileWorld, tile)
+        let transform = MapViewportTransform(
+            center: center, zoom: zoom, magnification: 1, dragOffset: .zero, size: lastViewportSize,
+            tileReferenceZoom: tileReferenceZoom)
+        let viewport = transform.visibleContinentRect(marginPoints: 256)
+        let sourceZoom = MapRasterDetail.sourceZoom(
+            displayZoom: zoom, continentID: continentID, viewport: viewport, mode: mapDetail)
+        lastVisibleTileCount = projection.tiles(
+            coveringContinentRect: viewport, zoom: sourceZoom, continentID: continentID, mapFloor: floor).count
+        let markerCount = renderableMarkers(markerScene.visibleMarkers(in: transform)).count
+        onVisibleCoordinateChange?(center, zoom, tileWorld, tile, lastVisibleTileCount, markerCount)
     }
 
     private var panGesture: some Gesture {

@@ -27,6 +27,7 @@ struct LiveMapView: View {
     @State private var viewportTile: TileIndex?
     @AppStorage("developer.mode.enabled") private var developerMode = false
     @AppStorage("developer.map.tileGrid") private var showTileDebugGrid = false
+    @AppStorage(MapDetailMode.storageKey) private var mapDetailRaw = MapDetailMode.balanced.rawValue
 
     private var playerPoint: ContinentPoint? {
         guard telemetry.latest?.positionAvailable == true, let player = telemetry.latest?.player else { return nil }
@@ -125,7 +126,7 @@ struct LiveMapView: View {
                 }(),
                 showTiles: artworkAvailable,
                 onSelectObjective: select,
-                onVisibleCoordinateChange: { center, zoom, tileWorld, tile in
+                onVisibleCoordinateChange: { center, zoom, tileWorld, tile, tileCount, markerCount in
                     viewportCenter = center
                     viewportZoom = zoom
                     viewportTileWorld = tileWorld
@@ -136,7 +137,13 @@ struct LiveMapView: View {
                         viewport: center,
                         userZoom: zoom,
                         tileWorld: tileWorld,
-                        tile: tile)
+                        tile: tile,
+                        visibleTileCount: tileCount,
+                        visibleMarkerCount: markerCount,
+                        sourceZoomBias: (MapDetailMode(rawValue: mapDetailRaw) ?? .balanced).sourceZoomBias(
+                            displayZoom: zoom,
+                            referenceZoom: ArenaNetTileProjection.shared.configuration(continentID: metadata?.continentId ?? 1).referenceZoom,
+                            visibleTileCountWithoutBias: tileCount))
                 })
                 .ignoresSafeArea(edges: .top)
 
@@ -287,8 +294,9 @@ struct LiveMapView: View {
             statusBanner("Objectives unavailable: \(message)", symbol: "exclamationmark.triangle")
         default:
             switch gathering.availability {
-            case .unavailable: statusBanner("Known gathering locations are not available for this map.", symbol: "leaf")
+            case .unavailable: statusBanner("Gathering coverage unavailable", symbol: "leaf")
             case .failed: statusBanner("Gathering locations could not be loaded.", symbol: "exclamationmark.triangle")
+            case .available(0): statusBanner("Companion gathering dataset is empty for this map", symbol: "leaf")
             default: EmptyView()
             }
         }
@@ -320,6 +328,14 @@ struct LiveMapView: View {
                             } else {
                                 Text(account.connectionState == .disconnected ? "Live character" : "Account character not matched")
                                     .font(.caption).foregroundStyle(.secondary)
+                            }
+                            HStack(spacing: 8) {
+                                if let mount = telemetry.latest?.mount.displayName {
+                                    Label(mount, systemImage: "hare.fill").font(.caption2)
+                                }
+                                if telemetry.latest?.ui.inCombat == true {
+                                    Label("Combat", systemImage: "flame.fill").font(.caption2).foregroundStyle(.orange)
+                                }
                             }
                         }
                         Spacer()
@@ -381,12 +397,15 @@ struct LiveMapView: View {
 
     private var artworkAvailable: Bool {
         guard let metadata else { return true }
-        return ArenaNetTileProjection.shared.mapHasPaintedArtwork(metadata)
+        return ArenaNetOfficialTileProvider().coverage(for: metadata).isOfficial
     }
 
     private var unavailableArtworkBanner: some View {
-        Label("Map artwork unavailable for this area. Player, objectives, and gathering remain on the live map.", systemImage: "map")
-            .font(.caption).padding(9).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        Label("Detailed map artwork is not available from ArenaNet for this area.", systemImage: "map")
+            .font(.caption2).foregroundStyle(.secondary)
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .accessibilityIdentifier("map.artwork.unavailable")
     }
 
     @ViewBuilder

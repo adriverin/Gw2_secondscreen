@@ -52,7 +52,26 @@ struct UITelemetry: Codable, Sendable, Equatable {
     let gameHasFocus: Bool
 }
 
-struct MountTelemetry: Codable, Sendable, Equatable { let index: UInt8 }
+struct MountTelemetry: Codable, Sendable, Equatable {
+    let index: UInt8
+
+    var displayName: String? {
+        switch index {
+        case 0: nil
+        case 1: "Jackal"
+        case 2: "Griffon"
+        case 3: "Springer"
+        case 4: "Skimmer"
+        case 5: "Raptor"
+        case 6: "Roller Beetle"
+        case 7: "Warclaw"
+        case 8: "Skyscale"
+        case 9: "Skiff"
+        case 10: "Siege Turtle"
+        default: "Mount \(index)"
+        }
+    }
+}
 
 struct BridgePairing: Codable, Sendable, Equatable, CustomStringConvertible {
     let version: Int

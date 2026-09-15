@@ -1,33 +1,63 @@
 import Foundation
 
 struct TodayPublicCatalog: Codable, Sendable {
-    let season: WizardVaultSeason
-    let vaultObjectives: [WizardVaultObjectiveMetadata]
-    let vaultListings: [WizardVaultListingMetadata]
-    let worldBossIDs: [String]
-    let mapChestIDs: [String]
-    let dailyCraftingIDs: [String]
-    let raids: [RaidDefinition]
-    let dungeons: [DungeonDefinition]
-    let items: [Int: ItemMetadata]
-    let astralAcclaimCurrency: CurrencyMetadata?
+    var season: WizardVaultSeason
+    var vaultObjectives: [WizardVaultObjectiveMetadata]
+    var vaultListings: [WizardVaultListingMetadata]
+    var worldBossIDs: [String]
+    var mapChestIDs: [String]
+    var dailyCraftingIDs: [String]
+    var raids: [RaidDefinition]
+    var dungeons: [DungeonDefinition]
+    var items: [Int: ItemMetadata]
+    var astralAcclaimCurrency: CurrencyMetadata?
 }
 
 struct TodayAccountPayload: Sendable {
-    let daily: WizardVaultAccountPeriod
-    let weekly: WizardVaultAccountPeriod
-    let special: WizardVaultAccountSpecial
-    let listings: [WizardVaultAccountListing]
-    let worldBossIDs: [String]
-    let mapChestIDs: [String]
-    let dailyCraftingIDs: [String]
-    let raidEventIDs: [String]
-    let dungeonPathIDs: [String]
-    let wallet: [WalletEntry]
-    let rewardItems: [Int: ItemMetadata]
+    var daily: WizardVaultAccountPeriod
+    var weekly: WizardVaultAccountPeriod
+    var special: WizardVaultAccountSpecial
+    var listings: [WizardVaultAccountListing]
+    var worldBossIDs: [String]
+    var mapChestIDs: [String]
+    var dailyCraftingIDs: [String]
+    var raidEventIDs: [String]
+    var dungeonPathIDs: [String]
+    var wallet: [WalletEntry]
+    var rewardItems: [Int: ItemMetadata]
 }
 
 enum TodayMerger {
+    static func mergeVaultOnly(
+        daily: WizardVaultAccountPeriod?,
+        weekly: WizardVaultAccountPeriod?,
+        special: WizardVaultAccountSpecial?,
+        listings: [WizardVaultAccountListing],
+        catalog: TodayPublicCatalog?,
+        accountID: String?,
+        hasProgressionPermission: Bool,
+        now: Date = Date()
+    ) -> TodayDataSnapshot {
+        var opportunities: [AccountOpportunity] = []
+        if let daily { opportunities += vaultOpportunities(daily.objectives, type: .wizardVaultDaily, scope: .daily) }
+        if let weekly { opportunities += vaultOpportunities(weekly.objectives, type: .wizardVaultWeekly, scope: .weekly) }
+        if let special { opportunities += vaultOpportunities(special.objectives, type: .wizardVaultSpecial, scope: .seasonal) }
+        let items = catalog?.items ?? [:]
+        let dailyMeta = daily.map { meta($0, scope: .daily, items: items) }
+        let weeklyMeta = weekly.map { meta($0, scope: .weekly, items: items) }
+        return TodayDataSnapshot(
+            timestamp: now, accountID: accountID, season: catalog?.season, opportunities: opportunities,
+            dailyMeta: dailyMeta, weeklyMeta: weeklyMeta, vaultRewards: [],
+            astralAcclaimBalance: nil, hasProgressionPermission: hasProgressionPermission,
+            diagnostics: TodayDiagnostics(
+                dailyObjectiveCount: daily?.objectives.count ?? 0,
+                weeklyObjectiveCount: weekly?.objectives.count ?? 0,
+                specialObjectiveCount: special?.objectives.count ?? 0,
+                claimableCount: opportunities.filter(\.state.isClaimable).count,
+                worldBossIDs: [], mapChestIDs: [], dailyCraftingIDs: [], raidEventIDs: [],
+                dungeonPathIDs: [], unknownIDs: []))
+    }
+
     static func merge(
         public catalog: TodayPublicCatalog,
         account: TodayAccountPayload?,

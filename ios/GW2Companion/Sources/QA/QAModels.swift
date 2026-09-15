@@ -338,16 +338,61 @@ enum TileCoverageReason: String, Codable, Sendable {
 }
 
 struct APIDomainStatus: Codable, Equatable, Sendable, Identifiable {
-    var id: String { domain }
+    var id: String { domain + (endpoint ?? "") }
     var domain: String
+    var endpoint: String?
     var httpStatus: Int?
+    var schemaVersion: String?
     var message: String
     var usedCache: Bool
     var updatedAt: Date
+    var decodeSucceeded: Bool?
+    var decodePath: String?
+    var source: String
+
+    init(
+        domain: String,
+        endpoint: String? = nil,
+        httpStatus: Int? = nil,
+        schemaVersion: String? = nil,
+        message: String,
+        usedCache: Bool,
+        updatedAt: Date,
+        decodeSucceeded: Bool? = nil,
+        decodePath: String? = nil,
+        source: String? = nil
+    ) {
+        self.domain = domain
+        self.endpoint = endpoint
+        self.httpStatus = httpStatus
+        self.schemaVersion = schemaVersion
+        self.message = message
+        self.usedCache = usedCache
+        self.updatedAt = updatedAt
+        self.decodeSucceeded = decodeSucceeded
+        self.decodePath = decodePath
+        self.source = source ?? (usedCache ? "cache" : "live")
+    }
 
     var summary: String {
         let code = httpStatus.map(String.init) ?? "—"
-        return "\(domain): \(code) \(message)"
+        let schema = schemaVersion ?? "none"
+        let decode = decodeSucceeded == false ? " decode failed \(decodePath ?? "")" : ""
+        return "\(domain): \(code) \(message) schema \(schema) \(source)\(decode)"
+    }
+
+    var diagnosticsBlock: String {
+        """
+        Domain: \(domain)
+        Endpoint: \(endpoint ?? "—")
+        HTTP status: \(httpStatus.map(String.init) ?? "—")
+        Schema version requested: \(schemaVersion ?? "none")
+        Live vs cache: \(source)
+        Response timestamp: \(updatedAt.formatted(date: .abbreviated, time: .standard))
+        Decode: \(decodeSucceeded == false ? "failure" : "success")
+        Decode error coding path: \(decodePath ?? "—")
+        Safe error description: \(message)
+        """
     }
 }
 

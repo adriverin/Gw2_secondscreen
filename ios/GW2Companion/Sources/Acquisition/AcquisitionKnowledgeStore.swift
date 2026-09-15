@@ -101,7 +101,7 @@ enum AcquisitionMethodFactory {
                 switch ingredient.knownType {
                 case .item: .item(id: ingredient.id, quantity: ingredient.count)
                 case .currency: .currency(id: ingredient.id, quantity: ingredient.count)
-                case .guildUpgrade, nil: nil
+                case .guildUpgrade, .unknown: nil
                 }
             }
             methods.append(AcquisitionMethod(

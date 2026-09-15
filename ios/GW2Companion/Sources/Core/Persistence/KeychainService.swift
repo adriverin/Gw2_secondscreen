@@ -55,6 +55,24 @@ struct KeychainService: SecureValueStore {
 
 enum KeychainError: Error { case status(OSStatus) }
 
+final class InMemorySecureStore: SecureValueStore, @unchecked Sendable {
+    private var values: [String: Data] = [:]
+    private let lock = NSLock()
+
+    func save(_ data: Data, account: String) throws {
+        lock.lock(); values[account] = data; lock.unlock()
+    }
+
+    func read(account: String) throws -> Data? {
+        lock.lock(); defer { lock.unlock() }
+        return values[account]
+    }
+
+    func delete(account: String) throws {
+        lock.lock(); values[account] = nil; lock.unlock()
+    }
+}
+
 struct CredentialStore: Sendable {
     private let secureStore: SecureValueStore
     private let apiKeyAccount = "gw2-api-key"

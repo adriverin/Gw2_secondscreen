@@ -1,0 +1,6 @@
+[
+  {"id":1,"type":"Refinement","output_item_id":2000,"output_item_count":1,"time_to_craft_ms":1000,"disciplines":["Weaponsmith"],"min_rating":100,"flags":[],"ingredients":[{"item_id":3000,"count":2}]},
+  {"id":2,"type":"FutureCraftType","output_item_id":4100,"output_item_count":1,"disciplines":["Weaponsmith"],"min_rating":200,"flags":[],"ingredients":[{"type":"Item","id":3000,"count":3},{"type":"Currency","id":23,"count":5},{"type":"GuildUpgrade","id":88,"count":1},{"type":"AstralWidget","id":99,"count":2}]},
+  {"id":"bad","type":"Broken"},
+  {"id":3,"type":"Weapon","output_item_id":4000,"output_item_count":1,"disciplines":["Weaponsmith"],"min_rating":300,"flags":[],"ingredients":[{"type":"Item","id":4100,"count":2}]}
+]

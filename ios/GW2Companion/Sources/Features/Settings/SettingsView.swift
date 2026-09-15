@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject private var objectives: MapObjectiveStore
     @AppStorage("developer.mode.enabled") private var developerMode = false
     @AppStorage("onboarding.completed.v1") private var onboardingCompleted = false
+    @AppStorage(MapDetailMode.storageKey) private var mapDetailRaw = MapDetailMode.balanced.rawValue
     @State private var showingPairing = false
     @State private var showingAccount = false
     @State private var showingHelp = false
@@ -32,6 +33,13 @@ struct SettingsView: View {
                         settingsRow("Gaming PC", detail: telemetry.savedPairing.map { "\($0.host):\($0.port)" } ?? "Not paired", symbol: "desktopcomputer")
                     }
                     NavigationLink("Connection Diagnostics") { ConnectionDiagnosticsView() }
+                }
+                Section("Map") {
+                    Picker("Map Detail", selection: $mapDetailRaw) {
+                        ForEach(MapDetailMode.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
                 }
                 Section("Data") {
                     Button("Clear Cached Game Data") { confirmation = .cache }

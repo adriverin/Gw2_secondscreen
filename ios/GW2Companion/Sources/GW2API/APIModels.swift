@@ -65,10 +65,38 @@ struct InventoryBag: Codable, Sendable, Equatable {
     let id: Int?
     let size: Int?
     let inventory: [InventorySlot?]?
+
+    enum CodingKeys: String, CodingKey { case id, size, inventory }
+
+    init(id: Int?, size: Int?, inventory: [InventorySlot?]?) {
+        self.id = id
+        self.size = size
+        self.inventory = inventory
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(Int.self, forKey: .id)
+        size = try values.decodeIfPresent(Int.self, forKey: .size)
+        if let slots = try? values.decodeIfPresent(SparseNullableArray<InventorySlot>.self, forKey: .inventory) {
+            inventory = slots.values
+        } else {
+            inventory = try? values.decodeIfPresent([InventorySlot?].self, forKey: .inventory)
+        }
+    }
 }
 
 struct CharacterInventoryResponse: Codable, Sendable, Equatable {
     let bags: [InventoryBag?]
+
+    enum CodingKeys: String, CodingKey { case bags }
+
+    init(bags: [InventoryBag?]) { self.bags = bags }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        bags = (try? values.decode(SparseNullableArray<InventoryBag>.self, forKey: .bags))?.values ?? []
+    }
 }
 
 struct InventorySlot: Codable, Sendable, Equatable {
@@ -79,14 +107,48 @@ struct InventorySlot: Codable, Sendable, Equatable {
     var upgrades: [Int]? = nil
     var upgradeSlotIndices: [Int]? = nil
     var infusions: [Int]? = nil
+    var dyes: [Int]? = nil
     var binding: String? = nil
     var boundTo: String? = nil
     var stats: SelectedItemStats? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, count, charges, skin, upgrades, infusions, binding, stats
+        case id, count, charges, skin, upgrades, infusions, dyes, binding, stats
         case upgradeSlotIndices = "upgrade_slot_indices"
         case boundTo = "bound_to"
+    }
+
+    init(
+        id: Int, count: Int, charges: Int? = nil, skin: Int? = nil,
+        upgrades: [Int]? = nil, upgradeSlotIndices: [Int]? = nil, infusions: [Int]? = nil,
+        dyes: [Int]? = nil, binding: String? = nil, boundTo: String? = nil, stats: SelectedItemStats? = nil
+    ) {
+        self.id = id
+        self.count = count
+        self.charges = charges
+        self.skin = skin
+        self.upgrades = upgrades
+        self.upgradeSlotIndices = upgradeSlotIndices
+        self.infusions = infusions
+        self.dyes = dyes
+        self.binding = binding
+        self.boundTo = boundTo
+        self.stats = stats
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        count = try values.decodeIfPresent(Int.self, forKey: .count) ?? 1
+        charges = try values.decodeIfPresent(Int.self, forKey: .charges)
+        skin = try values.decodeIfPresent(Int.self, forKey: .skin)
+        upgrades = values.decodeCompactInts(forKey: .upgrades)
+        upgradeSlotIndices = values.decodeCompactInts(forKey: .upgradeSlotIndices)
+        infusions = values.decodeCompactInts(forKey: .infusions)
+        dyes = values.decodeCompactInts(forKey: .dyes)
+        binding = try values.decodeIfPresent(String.self, forKey: .binding)
+        boundTo = try values.decodeIfPresent(String.self, forKey: .boundTo)
+        stats = try values.decodeIfPresent(SelectedItemStats.self, forKey: .stats)
     }
 }
 
@@ -101,6 +163,7 @@ struct CharacterEquipment: Codable, Sendable, Identifiable, Equatable {
     let slot: String
     var infusions: [Int]? = nil
     var upgrades: [Int]? = nil
+    var dyes: [Int]? = nil
     var skin: Int? = nil
     var stats: SelectedItemStats? = nil
     var binding: String? = nil
@@ -108,9 +171,40 @@ struct CharacterEquipment: Codable, Sendable, Identifiable, Equatable {
     var location: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case slot, infusions, upgrades, skin, stats, binding, location
+        case slot, infusions, upgrades, dyes, skin, stats, binding, location
         case itemID = "id"
         case boundTo = "bound_to"
+    }
+
+    init(
+        itemID: Int, slot: String, infusions: [Int]? = nil, upgrades: [Int]? = nil,
+        dyes: [Int]? = nil, skin: Int? = nil, stats: SelectedItemStats? = nil,
+        binding: String? = nil, boundTo: String? = nil, location: String? = nil
+    ) {
+        self.itemID = itemID
+        self.slot = slot
+        self.infusions = infusions
+        self.upgrades = upgrades
+        self.dyes = dyes
+        self.skin = skin
+        self.stats = stats
+        self.binding = binding
+        self.boundTo = boundTo
+        self.location = location
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        itemID = try values.decode(Int.self, forKey: .itemID)
+        slot = try values.decodeIfPresent(String.self, forKey: .slot) ?? "Unknown"
+        infusions = values.decodeCompactInts(forKey: .infusions)
+        upgrades = values.decodeCompactInts(forKey: .upgrades)
+        dyes = values.decodeCompactInts(forKey: .dyes)
+        skin = try values.decodeIfPresent(Int.self, forKey: .skin)
+        stats = try values.decodeIfPresent(SelectedItemStats.self, forKey: .stats)
+        binding = try values.decodeIfPresent(String.self, forKey: .binding)
+        boundTo = try values.decodeIfPresent(String.self, forKey: .boundTo)
+        location = try values.decodeIfPresent(String.self, forKey: .location)
     }
 }
 
@@ -125,6 +219,21 @@ struct EquipmentTab: Codable, Sendable, Identifiable, Equatable {
         case tab, name, equipment
         case isActive = "is_active"
     }
+
+    init(tab: Int, name: String, isActive: Bool, equipment: [CharacterEquipment]) {
+        self.tab = tab
+        self.name = name
+        self.isActive = isActive
+        self.equipment = equipment
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        tab = try values.decode(Int.self, forKey: .tab)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "Tab \(tab)"
+        isActive = try values.decodeIfPresent(Bool.self, forKey: .isActive) ?? false
+        equipment = values.decodeLossyArray(CharacterEquipment.self, forKey: .equipment)
+    }
 }
 
 struct BuildTab: Codable, Sendable, Identifiable, Equatable {
@@ -138,6 +247,21 @@ struct BuildTab: Codable, Sendable, Identifiable, Equatable {
         case tab, name, build
         case isActive = "is_active"
     }
+
+    init(tab: Int, name: String, isActive: Bool, build: CharacterBuild) {
+        self.tab = tab
+        self.name = name
+        self.isActive = isActive
+        self.build = build
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        tab = try values.decode(Int.self, forKey: .tab)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "Tab \(tab)"
+        isActive = try values.decodeIfPresent(Bool.self, forKey: .isActive) ?? false
+        build = try values.decode(CharacterBuild.self, forKey: .build)
+    }
 }
 
 struct CharacterBuild: Codable, Sendable, Equatable {
@@ -145,11 +269,55 @@ struct CharacterBuild: Codable, Sendable, Equatable {
     let profession: String
     let specializations: [BuildSpecialization]
     let skills: BuildSkillModes
+
+    enum CodingKeys: String, CodingKey {
+        case name, profession, specializations, skills
+    }
+
+    init(name: String?, profession: String, specializations: [BuildSpecialization], skills: BuildSkillModes) {
+        self.name = name
+        self.profession = profession
+        self.specializations = specializations
+        self.skills = skills
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decodeIfPresent(String.self, forKey: .name)
+        profession = try values.decodeIfPresent(String.self, forKey: .profession) ?? "Unknown"
+        specializations = values.decodeLossyArray(BuildSpecialization.self, forKey: .specializations)
+        skills = (try? values.decode(BuildSkillModes.self, forKey: .skills)) ?? .empty
+    }
 }
 
 struct BuildSpecialization: Codable, Sendable, Equatable {
     let id: Int?
     let traits: [Int?]
+
+    enum CodingKeys: String, CodingKey { case id, traits }
+
+    init(id: Int?, traits: [Int?]) {
+        self.id = id
+        self.traits = traits
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(Int.self, forKey: .id)
+        if let compact = try? values.decodeIfPresent([OptionalIntBox].self, forKey: .traits) {
+            traits = compact.map(\.value)
+        } else {
+            traits = (try? values.decodeIfPresent([Int?].self, forKey: .traits)) ?? []
+        }
+    }
+}
+
+private struct OptionalIntBox: Decodable {
+    let value: Int?
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        value = container.decodeNil() ? nil : (try? container.decode(Int.self))
+    }
 }
 
 struct BuildSkillModes: Codable, Sendable, Equatable {
@@ -158,12 +326,33 @@ struct BuildSkillModes: Codable, Sendable, Equatable {
     let pve: BuildSkills?
     let pvp: BuildSkills?
     let wvw: BuildSkills?
+
+    static let empty = BuildSkillModes(terrestrial: nil, aquatic: nil, pve: nil, pvp: nil, wvw: nil)
 }
 
 struct BuildSkills: Codable, Sendable, Equatable {
     let heal: Int?
     let utilities: [Int?]
     let elite: Int?
+
+    enum CodingKeys: String, CodingKey { case heal, utilities, elite }
+
+    init(heal: Int?, utilities: [Int?], elite: Int?) {
+        self.heal = heal
+        self.utilities = utilities
+        self.elite = elite
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        heal = try values.decodeIfPresent(Int.self, forKey: .heal)
+        elite = try values.decodeIfPresent(Int.self, forKey: .elite)
+        if let boxed = try? values.decodeIfPresent([OptionalIntBox].self, forKey: .utilities) {
+            utilities = boxed.map(\.value)
+        } else {
+            utilities = (try? values.decodeIfPresent([Int?].self, forKey: .utilities)) ?? []
+        }
+    }
 }
 
 struct AccountMaterial: Codable, Sendable, Equatable {
@@ -212,6 +401,41 @@ struct ItemMetadata: Codable, Sendable, Identifiable, Equatable {
     var flags: [String]? = nil
     var restrictions: [String]? = nil
     var details: ItemDetails? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, icon, rarity, description, type, level, flags, restrictions, details
+    }
+
+    init(
+        id: Int, name: String, icon: URL?, rarity: String, description: String? = nil,
+        type: String? = nil, level: Int? = nil, flags: [String]? = nil,
+        restrictions: [String]? = nil, details: ItemDetails? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.rarity = rarity
+        self.description = description
+        self.type = type
+        self.level = level
+        self.flags = flags
+        self.restrictions = restrictions
+        self.details = details
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "Item \(id)"
+        icon = values.decodeFlexibleURL(forKey: .icon)
+        rarity = try values.decodeIfPresent(String.self, forKey: .rarity) ?? "Unknown"
+        description = try values.decodeIfPresent(String.self, forKey: .description)
+        type = try values.decodeIfPresent(String.self, forKey: .type)
+        level = try values.decodeIfPresent(Int.self, forKey: .level)
+        flags = try values.decodeIfPresent([String].self, forKey: .flags)
+        restrictions = try values.decodeIfPresent([String].self, forKey: .restrictions)
+        details = try? values.decodeIfPresent(ItemDetails.self, forKey: .details)
+    }
 }
 
 struct ItemDetails: Codable, Sendable, Equatable {
@@ -271,6 +495,27 @@ struct CurrencyMetadata: Codable, Sendable, Identifiable, Equatable {
     let description: String
     let icon: URL?
     var order: Int? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, icon, order
+    }
+
+    init(id: Int, name: String, description: String, icon: URL?, order: Int? = nil) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.icon = icon
+        self.order = order
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "Currency \(id)"
+        description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
+        icon = values.decodeFlexibleURL(forKey: .icon)
+        order = try values.decodeIfPresent(Int.self, forKey: .order)
+    }
 }
 
 struct ProfessionMetadata: Codable, Sendable, Identifiable, Equatable {
@@ -283,6 +528,23 @@ struct ProfessionMetadata: Codable, Sendable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, name, icon, specializations
         case iconBig = "icon_big"
+    }
+
+    init(id: String, name: String, icon: URL?, iconBig: URL?, specializations: [Int]) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.iconBig = iconBig
+        self.specializations = specializations
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? id
+        icon = values.decodeFlexibleURL(forKey: .icon)
+        iconBig = values.decodeFlexibleURL(forKey: .iconBig)
+        specializations = values.decodeCompactInts(forKey: .specializations) ?? []
     }
 }
 
@@ -301,6 +563,32 @@ struct SpecializationMetadata: Codable, Sendable, Identifiable, Equatable {
         case minorTraits = "minor_traits"
         case majorTraits = "major_traits"
     }
+
+    init(
+        id: Int, name: String, profession: String, elite: Bool, icon: URL?, background: URL?,
+        minorTraits: [Int], majorTraits: [Int]
+    ) {
+        self.id = id
+        self.name = name
+        self.profession = profession
+        self.elite = elite
+        self.icon = icon
+        self.background = background
+        self.minorTraits = minorTraits
+        self.majorTraits = majorTraits
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "Specialization \(id)"
+        profession = try values.decodeIfPresent(String.self, forKey: .profession) ?? ""
+        elite = try values.decodeIfPresent(Bool.self, forKey: .elite) ?? false
+        icon = values.decodeFlexibleURL(forKey: .icon)
+        background = values.decodeFlexibleURL(forKey: .background)
+        minorTraits = values.decodeCompactInts(forKey: .minorTraits) ?? []
+        majorTraits = values.decodeCompactInts(forKey: .majorTraits) ?? []
+    }
 }
 
 struct TraitMetadata: Codable, Sendable, Identifiable, Equatable {
@@ -310,6 +598,29 @@ struct TraitMetadata: Codable, Sendable, Identifiable, Equatable {
     let description: String
     let tier: Int?
     let slot: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, icon, description, tier, slot
+    }
+
+    init(id: Int, name: String, icon: URL?, description: String, tier: Int?, slot: String?) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.description = description
+        self.tier = tier
+        self.slot = slot
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "Trait \(id)"
+        icon = values.decodeFlexibleURL(forKey: .icon)
+        description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
+        tier = try values.decodeIfPresent(Int.self, forKey: .tier)
+        slot = try values.decodeIfPresent(String.self, forKey: .slot)
+    }
 }
 
 struct SkillMetadata: Codable, Sendable, Identifiable, Equatable {
@@ -324,6 +635,30 @@ struct SkillMetadata: Codable, Sendable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, name, icon, description, type, slot
         case weaponType = "weapon_type"
+    }
+
+    init(
+        id: Int, name: String, icon: URL?, description: String, type: String?,
+        weaponType: String?, slot: String?
+    ) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.description = description
+        self.type = type
+        self.weaponType = weaponType
+        self.slot = slot
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "Skill \(id)"
+        icon = values.decodeFlexibleURL(forKey: .icon)
+        description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
+        type = try values.decodeIfPresent(String.self, forKey: .type)
+        weaponType = try values.decodeIfPresent(String.self, forKey: .weaponType)
+        slot = try values.decodeIfPresent(String.self, forKey: .slot)
     }
 }
 
@@ -448,10 +783,29 @@ struct AccountAchievementProgress: Codable, Sendable, Identifiable, Equatable {
     let bits: [Int]?
 }
 
-enum RecipeIngredientType: String, Codable, Sendable {
-    case item = "Item"
-    case currency = "Currency"
-    case guildUpgrade = "GuildUpgrade"
+enum RecipeIngredientType: Hashable, Equatable, Sendable {
+    case item
+    case currency
+    case guildUpgrade
+    case unknown(String)
+
+    static func parse(_ raw: String) -> RecipeIngredientType {
+        switch raw.lowercased() {
+        case "item": .item
+        case "currency": .currency
+        case "guildupgrade": .guildUpgrade
+        default: .unknown(raw)
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .item: "Item"
+        case .currency: "Currency"
+        case .guildUpgrade: "GuildUpgrade"
+        case let .unknown(value): value
+        }
+    }
 }
 
 struct RecipeIngredient: Codable, Hashable, Sendable {
@@ -459,7 +813,7 @@ struct RecipeIngredient: Codable, Hashable, Sendable {
     let id: Int
     let count: Int
 
-    var knownType: RecipeIngredientType? { RecipeIngredientType(rawValue: type) }
+    var knownType: RecipeIngredientType { RecipeIngredientType.parse(type) }
 
     private enum CodingKeys: String, CodingKey {
         case type, id, count
@@ -475,7 +829,7 @@ struct RecipeIngredient: Codable, Hashable, Sendable {
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        count = try values.decode(Int.self, forKey: .count)
+        count = (try? values.decode(Int.self, forKey: .count)) ?? 1
         if let itemID = try values.decodeIfPresent(Int.self, forKey: .itemID) {
             type = RecipeIngredientType.item.rawValue
             id = itemID
@@ -483,8 +837,8 @@ struct RecipeIngredient: Codable, Hashable, Sendable {
             type = RecipeIngredientType.guildUpgrade.rawValue
             id = upgradeID
         } else {
-            type = try values.decode(String.self, forKey: .type)
-            id = try values.decode(Int.self, forKey: .id)
+            type = (try? values.decode(String.self, forKey: .type)) ?? "Unknown"
+            id = (try? values.decode(Int.self, forKey: .id)) ?? 0
         }
     }
 
@@ -540,15 +894,15 @@ struct RecipeDefinition: Codable, Sendable, Identifiable, Equatable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(Int.self, forKey: .id)
-        type = try values.decode(String.self, forKey: .type)
+        type = try values.decodeIfPresent(String.self, forKey: .type) ?? "Unknown"
         outputItemID = try values.decodeIfPresent(Int.self, forKey: .outputItemID)
         outputItemCount = try values.decodeIfPresent(Int.self, forKey: .outputItemCount) ?? 1
         timeToCraftMS = try values.decodeIfPresent(Int.self, forKey: .timeToCraftMS)
         disciplines = try values.decodeIfPresent([String].self, forKey: .disciplines) ?? []
         minRating = try values.decodeIfPresent(Int.self, forKey: .minRating) ?? 0
         flags = try values.decodeIfPresent([String].self, forKey: .flags) ?? []
-        let regular = try values.decodeIfPresent([RecipeIngredient].self, forKey: .ingredients) ?? []
-        let guild = try values.decodeIfPresent([RecipeIngredient].self, forKey: .guildIngredients) ?? []
+        let regular = values.decodeLossyArray(RecipeIngredient.self, forKey: .ingredients)
+        let guild = values.decodeLossyArray(RecipeIngredient.self, forKey: .guildIngredients)
         ingredients = regular + guild
         chatLink = try values.decodeIfPresent(String.self, forKey: .chatLink)
     }

@@ -205,9 +205,21 @@ private struct CraftableItemBrowserView: View {
     var body: some View {
         List {
             switch store.recipeState {
-            case let .loading(message): Section { ProgressView(message) }
-            case let .unavailable(message): Section { Label(message, systemImage: "exclamationmark.triangle") }
-            default: EmptyView()
+            case let .loading(message):
+                Section {
+                    ProgressView(message)
+                    if store.recipeIndex != nil {
+                        Text("Crafting catalog ready").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            case let .unavailable(message):
+                Section { Label(message, systemImage: "exclamationmark.triangle") }
+            case let .cached(message):
+                Section { Label(message, systemImage: "clock.arrow.circlepath") }
+            case .ready:
+                Section { Label("Crafting catalog ready", systemImage: "checkmark.circle") }
+            case .idle:
+                EmptyView()
             }
             ForEach(store.searchCraftableItems(query)) { item in
                 NavigationLink { CraftingGoalEditorView(item: item) } label: {
@@ -221,10 +233,13 @@ private struct CraftableItemBrowserView: View {
                     }
                 }
             }
-            if query.isEmpty, store.recipeState == .ready {
+            if query.isEmpty, store.recipeIndex != nil {
                 ContentUnavailableView(
                     "Search Craftable Items", systemImage: "magnifyingglass",
                     description: Text("Search runs locally over recipe-backed item metadata."))
+            }
+            if !query.isEmpty, store.searchCraftableItems(query).isEmpty, store.recipeIndex != nil {
+                ContentUnavailableView.search(text: query)
             }
         }
         .navigationTitle("Craft Item")

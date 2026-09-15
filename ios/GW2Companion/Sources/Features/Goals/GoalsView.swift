@@ -547,6 +547,7 @@ struct GoalDetailView: View {
             case .idle: Text("Waiting to load…")
             case let .loading(message): ProgressView(message)
             case .ready: Text("No data was returned.")
+            case let .cached(message): Label(message, systemImage: "clock.arrow.circlepath")
             case let .unavailable(message): Label(message, systemImage: "exclamationmark.triangle")
             }
         }

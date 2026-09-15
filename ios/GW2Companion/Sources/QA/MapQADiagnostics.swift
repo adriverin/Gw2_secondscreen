@@ -19,6 +19,9 @@ struct MapQADiagnosticsSnapshot: Codable, Equatable, Sendable {
     var coverageReason: TileCoverageReason
     var playerContinentX: Double?
     var playerContinentY: Double?
+    var visibleTileCount: Int?
+    var visibleMarkerCount: Int?
+    var sourceZoomBias: Int?
 
     init(
         mapID: Int? = nil,
@@ -37,7 +40,10 @@ struct MapQADiagnosticsSnapshot: Codable, Equatable, Sendable {
         artworkAvailable: Bool = false,
         coverageReason: TileCoverageReason = .mapMetadataMissing,
         playerContinentX: Double? = nil,
-        playerContinentY: Double? = nil
+        playerContinentY: Double? = nil,
+        visibleTileCount: Int? = nil,
+        visibleMarkerCount: Int? = nil,
+        sourceZoomBias: Int? = nil
     ) {
         self.mapID = mapID
         self.mapName = mapName
@@ -56,6 +62,9 @@ struct MapQADiagnosticsSnapshot: Codable, Equatable, Sendable {
         self.coverageReason = coverageReason
         self.playerContinentX = playerContinentX
         self.playerContinentY = playerContinentY
+        self.visibleTileCount = visibleTileCount
+        self.visibleMarkerCount = visibleMarkerCount
+        self.sourceZoomBias = sourceZoomBias
     }
 
     func redacted() -> MapQADiagnosticsSnapshot { self }
@@ -75,6 +84,9 @@ struct MapQADiagnosticsSnapshot: Codable, Equatable, Sendable {
         Artwork available: \(artworkAvailable ? "yes" : "no")
         Official tile artwork: \(artworkAvailable ? "Available" : "unavailable")
         Reason: \(coverageReason.title)
+        Visible tiles: \(visibleTileCount.map(String.init) ?? "—")
+        Visible markers: \(visibleMarkerCount.map(String.init) ?? "—")
+        Source zoom bias: \(sourceZoomBias.map(String.init) ?? "—")
         """
     }
 
@@ -92,6 +104,9 @@ enum MapQADiagnostics {
         userZoom: Int?,
         tileWorld: TileWorldCoordinate?,
         tile: TileIndex?,
+        visibleTileCount: Int? = nil,
+        visibleMarkerCount: Int? = nil,
+        sourceZoomBias: Int? = nil,
         projection: ArenaNetTileProjection = .shared
     ) -> MapQADiagnosticsSnapshot {
         let continentID = metadata?.continentId ?? 1
@@ -123,7 +138,10 @@ enum MapQADiagnostics {
             artworkAvailable: coverage.available,
             coverageReason: coverage.reason,
             playerContinentX: player?.x,
-            playerContinentY: player?.y)
+            playerContinentY: player?.y,
+            visibleTileCount: visibleTileCount,
+            visibleMarkerCount: visibleMarkerCount,
+            sourceZoomBias: sourceZoomBias)
     }
 
     static func coverage(metadata: GW2MapMetadata?, tile: TileIndex?) -> (available: Bool, reason: TileCoverageReason) {

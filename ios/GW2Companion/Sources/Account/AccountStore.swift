@@ -41,6 +41,12 @@ final class AccountStore: ObservableObject {
     @Published private(set) var isStale = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var liveCharacterName: String?
+    @Published private(set) var domainStates: [AccountLoadDomain: AccountDomainStatus] = Dictionary(
+        uniqueKeysWithValues: AccountLoadDomain.allCases.map { ($0, .idle($0)) })
+
+    var inventoryLive: Bool {
+        [.bank, .materials, .sharedInventory, .characterInventory].contains { domainStates[$0]?.phase == .live }
+    }
 
     private let api: GW2APIClient
     private let cache: MetadataDiskCache
@@ -61,8 +67,8 @@ final class AccountStore: ObservableObject {
             return "CACHED. Last updated \(date.formatted(date: .abbreviated, time: .shortened)). Quantities may have changed."
         }
         if isStale { return "CACHED. Quantities may have changed." }
-        if let date = accountLastRefreshedAt {
-            return "\(dataSource.qaLabel). Last updated \(date.formatted(date: .omitted, time: .shortened))"
+        if let date = inventoryUpdatedAt ?? accountLastRefreshedAt, inventoryLive || dataSource == .live {
+            return "\(AccountDataSource.live.qaLabel). Last updated \(date.formatted(date: .omitted, time: .shortened))"
         }
         return "Never loaded"
     }
@@ -91,6 +97,22 @@ final class AccountStore: ObservableObject {
 #endif
         await restoreSnapshot()
         await refresh()
+    }
+
+    func restoreCachedState() async {
+        guard !hasStarted else { return }
+        hasStarted = true
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--phase2-no-inventories") {
+            loadPhaseTwoLimitedInventoryFixtures()
+            return
+        }
+        if ProcessInfo.processInfo.arguments.contains("--phase2-fixtures") {
+            loadPhaseTwoFixtures()
+            return
+        }
+#endif
+        await restoreSnapshot()
     }
 
     func updateLiveCharacter(name: String?) { liveCharacterName = name }
@@ -132,6 +154,7 @@ final class AccountStore: ObservableObject {
         isStale = false
         dataSource = .unknown
         connectionState = .disconnected
+        domainStates = Dictionary(uniqueKeysWithValues: AccountLoadDomain.allCases.map { ($0, .idle($0)) })
     }
 
     func refresh() async {
@@ -149,53 +172,31 @@ final class AccountStore: ObservableObject {
             connectionState = .connected
             let allowed = PermissionSet(info.permissions)
 
-            if allowed.contains(.account) {
-                account = try await api.account()
-                accountMetadataUpdatedAt = Date()
-                if let worldID = account?.world { world = try? await api.world(id: worldID) }
-            }
-
-            if allowed.contains(.characters) {
-                characters = try await api.characters().sorted {
-                    if $0.level != $1.level { return $0.level > $1.level }
-                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                }
-                charactersUpdatedAt = Date()
-                professions = try await api.professions(ids: characters.map(\.profession))
-            }
+            async let accountLoad: Void = refreshAccountIdentity(allowed: allowed)
+            async let characterLoad: Void = refreshCharacters(allowed: allowed)
+            async let walletLoad: Void = refreshWallet(allowed: allowed)
+            _ = await (accountLoad, characterLoad, walletLoad)
 
             if allowed.contains(.inventories) {
                 await refreshInventories()
             } else {
-                characterInventories = [:]
-                bank = []
-                bankSlots = []
-                sharedInventory = []
-                sharedSlots = []
-                materials = []
-                holdings = []
-            }
-
-            if allowed.contains(.wallet) {
-                wallet = try await api.walletEntries()
-                currencies = try await api.currencies(ids: wallet.map(\.id))
-            } else {
-                wallet = []
-                currencies = [:]
+                markMissingPermission([.characterInventory, .bank, .materials, .sharedInventory])
             }
 
             await loadGoalAccountData(permissions: allowed)
 
-            errorMessage = nil
-            isStale = false
-            dataSource = .live
-            accountLastRefreshedAt = Date()
+            let failed = domainStates.values.filter { $0.phase == .failed }
+            let liveCount = domainStates.values.filter { $0.phase == .live }.count
+            errorMessage = liveCount == 0 ? failed.first?.message : nil
+            isStale = liveCount == 0 && (account != nil || !characters.isEmpty || !wallet.isEmpty)
+            dataSource = liveCount > 0 ? .live : (account != nil || !characters.isEmpty ? .cached : .unknown)
+            if liveCount > 0 { accountLastRefreshedAt = Date() }
             await saveSnapshot()
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.userFacingMessage(fallback: "Account data couldn’t be refreshed. Showing saved data where possible.")
-            isStale = !characters.isEmpty || account != nil || !holdings.isEmpty
+            isStale = !characters.isEmpty || account != nil || !holdings.isEmpty || !wallet.isEmpty
             if tokenInfo == nil { connectionState = .disconnected }
         }
     }
@@ -216,55 +217,86 @@ final class AccountStore: ObservableObject {
 
         var detail = characterDetails[character.name] ?? CharacterDetailData()
         let allowed = permissions
-        do {
-            if allowed.contains(.builds) {
+
+        if allowed.contains(.builds) {
+            do {
                 detail.equipmentTabs = try await api.equipmentTabs(character: character.name)
+                detail.equipmentError = nil
+                markDomain(.equipmentTabs, phase: .live, endpoint: "characters/{name}/equipmenttabs")
+            } catch {
+                detail.equipmentError = error.userFacingMessage(fallback: "Couldn't refresh equipment tabs.")
+                markDomain(.equipmentTabs, phase: .failed, endpoint: "characters/{name}/equipmenttabs", error: error)
+            }
+            do {
                 detail.buildTabs = try await api.buildTabs(character: character.name)
-            } else if let equipment = character.equipment {
+                detail.buildError = nil
+                markDomain(.buildTabs, phase: .live, endpoint: "characters/{name}/buildtabs")
+            } catch {
+                detail.buildError = error.userFacingMessage(fallback: "Couldn't refresh builds")
+                markDomain(.buildTabs, phase: .failed, endpoint: "characters/{name}/buildtabs", error: error)
+            }
+        } else {
+            markDomain(.buildTabs, phase: .missingPermission, endpoint: "characters/{name}/buildtabs")
+            if let equipment = character.equipment {
                 detail.equipmentTabs = [
                     EquipmentTab(tab: character.activeEquipmentTab ?? 1, name: "Equipment", isActive: true, equipment: equipment)
                 ]
             }
+        }
 
-            if allowed.contains(.inventories) {
+        if allowed.contains(.inventories) {
+            do {
                 if let cached = characterInventories[character.name] { detail.inventory = cached }
                 else { detail.inventory = try await api.characterInventoryResponse(name: character.name) }
+                detail.inventoryError = nil
+                markDomain(.characterInventory, phase: .live, endpoint: "characters/{name}/inventory")
+            } catch {
+                detail.inventoryError = error.userFacingMessage(fallback: "Couldn't refresh character inventory.")
+                markDomain(.characterInventory, phase: .failed, endpoint: "characters/{name}/inventory", error: error)
             }
-
-            let equipment = detail.equipmentTabs.flatMap(\.equipment)
-            var itemIDs: [Int] = []
-            for equipped in equipment {
-                itemIDs.append(equipped.itemID)
-                itemIDs.append(contentsOf: equipped.upgrades ?? [])
-                itemIDs.append(contentsOf: equipped.infusions ?? [])
-            }
-            if let bags = detail.inventory?.bags {
-                for bag in bags.compactMap({ $0 }) {
-                    if let bagID = bag.id { itemIDs.append(bagID) }
-                    itemIDs.append(contentsOf: (bag.inventory ?? []).compactMap { $0?.id })
-                }
-            }
-            detail.items = try await api.items(ids: itemIDs)
-            detail.skins = try await api.skins(ids: equipment.compactMap(\.skin))
-
-            let builds = detail.buildTabs.map(\.build)
-            let specializationIDs = builds.flatMap(\.specializations).compactMap(\.id)
-            detail.specializations = try await api.specializations(ids: specializationIDs)
-            let traitIDs = builds.flatMap(\.specializations).flatMap(\.traits).compactMap { $0 }
-            detail.traits = try await api.traits(ids: traitIDs)
-            let skillIDs = builds.flatMap { build -> [Int] in
-                [build.skills.terrestrial, build.skills.aquatic, build.skills.pve, build.skills.pvp, build.skills.wvw]
-                    .compactMap { $0 }.flatMap {
-                    [$0.heal, $0.elite].compactMap { $0 } + $0.utilities.compactMap { $0 }
-                }
-            }
-            detail.skills = try await api.skills(ids: skillIDs)
-            detail.errorMessage = nil
-        } catch is CancellationError {
-            return
-        } catch {
-            detail.errorMessage = error.userFacingMessage(fallback: "This character’s details couldn’t be refreshed. Showing saved data where possible.")
         }
+
+        let equipment = detail.equipmentTabs.flatMap(\.equipment)
+        var itemIDs: [Int] = []
+        for equipped in equipment {
+            itemIDs.append(equipped.itemID)
+            itemIDs.append(contentsOf: equipped.upgrades ?? [])
+            itemIDs.append(contentsOf: equipped.infusions ?? [])
+        }
+        if let bags = detail.inventory?.bags {
+            for bag in bags.compactMap({ $0 }) {
+                if let bagID = bag.id { itemIDs.append(bagID) }
+                itemIDs.append(contentsOf: (bag.inventory ?? []).compactMap { $0?.id })
+            }
+        }
+        if let resolved = try? await api.items(ids: itemIDs, priority: .high) {
+            detail.items = resolved
+        }
+        if let resolved = try? await api.skins(ids: equipment.compactMap(\.skin)) {
+            detail.skins = resolved
+        }
+
+        let builds = detail.buildTabs.map(\.build)
+        let specializationIDs = builds.flatMap(\.specializations).compactMap(\.id)
+        if let resolved = try? await api.specializations(ids: specializationIDs) {
+            detail.specializations.merge(resolved) { _, new in new }
+        }
+        let traitIDs = builds.flatMap(\.specializations).flatMap(\.traits).compactMap { $0 }
+        if let resolved = try? await api.traits(ids: traitIDs) {
+            detail.traits.merge(resolved) { _, new in new }
+        }
+        let skillIDs = builds.flatMap { build -> [Int] in
+            [build.skills.terrestrial, build.skills.aquatic, build.skills.pve, build.skills.pvp, build.skills.wvw]
+                .compactMap { $0 }.flatMap {
+                [$0.heal, $0.elite].compactMap { $0 } + $0.utilities.compactMap { $0 }
+            }
+        }
+        if let resolved = try? await api.skills(ids: skillIDs) {
+            detail.skills.merge(resolved) { _, new in new }
+        }
+
+        let parts = [detail.buildError, detail.equipmentError, detail.inventoryError].compactMap { $0 }
+        detail.errorMessage = parts.isEmpty ? nil : parts.first
         characterDetails[character.name] = detail
     }
 
@@ -365,27 +397,148 @@ final class AccountStore: ObservableObject {
     }
 #endif
 
+    private func refreshAccountIdentity(allowed: PermissionSet) async {
+        guard allowed.contains(.account) else {
+            markDomain(.account, phase: .missingPermission, endpoint: "account")
+            return
+        }
+        markDomain(.account, phase: .loading, endpoint: "account")
+        do {
+            account = try await api.account()
+            accountMetadataUpdatedAt = Date()
+            if let worldID = account?.world { world = try? await api.world(id: worldID) }
+            markDomain(.account, phase: .live, endpoint: "account")
+        } catch {
+            markDomain(.account, phase: .failed, endpoint: "account", error: error)
+        }
+    }
+
+    private func refreshCharacters(allowed: PermissionSet) async {
+        guard allowed.contains(.characters) else {
+            markDomain(.characters, phase: .missingPermission, endpoint: "characters")
+            return
+        }
+        markDomain(.characters, phase: .loading, endpoint: "characters")
+        do {
+            characters = try await api.characters().sorted {
+                if $0.level != $1.level { return $0.level > $1.level }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            charactersUpdatedAt = Date()
+            if let loaded = try? await api.professions(ids: characters.map(\.profession)) {
+                professions = loaded
+            }
+            markDomain(.characters, phase: .live, endpoint: "characters")
+        } catch {
+            markDomain(.characters, phase: .failed, endpoint: "characters", error: error)
+        }
+    }
+
+    private func refreshWallet(allowed: PermissionSet) async {
+        guard allowed.contains(.wallet) else {
+            markDomain(.wallet, phase: .missingPermission, endpoint: "account/wallet")
+            return
+        }
+        markDomain(.wallet, phase: .loading, endpoint: "account/wallet")
+        do {
+            wallet = try await api.walletEntries()
+            currencies = (try? await api.currencies(ids: wallet.map(\.id), priority: .high)) ?? currencies
+            markDomain(.wallet, phase: .live, endpoint: "account/wallet")
+        } catch {
+            markDomain(.wallet, phase: .failed, endpoint: "account/wallet", error: error)
+        }
+    }
+
+    private func markDomain(
+        _ domain: AccountLoadDomain, phase: AccountDomainPhase, endpoint: String,
+        error: Error? = nil, httpStatus: Int? = nil
+    ) {
+        let mapped = error.map(Self.mapAPIError)
+        let decode = Self.decodeInfo(error)
+        let schema = GW2Schema.version(for: endpoint)
+        domainStates[domain] = AccountDomainStatus(
+            domain: domain, phase: phase, endpoint: endpoint,
+            httpStatus: httpStatus ?? mapped?.status,
+            schemaVersion: schema,
+            source: phase == .cached ? .cached : (phase == .live ? .live : dataSource),
+            decodeSucceeded: decode.succeeded ?? (phase == .failed ? nil : true),
+            decodePath: decode.path,
+            message: error?.userFacingMessage(fallback: mapped?.message ?? phase.rawValue),
+            updatedAt: Date())
+        let result = QADomainRefreshResult(
+            domain: qaDomain(for: domain), success: phase == .live,
+            httpStatus: httpStatus ?? mapped?.status,
+            message: error?.userFacingMessage(fallback: mapped?.message ?? phase.rawValue) ?? phase.rawValue,
+            usedCache: phase == .cached, timestamp: Date())
+        DeveloperDiagnostics.shared.recordDomainRefresh(result)
+        DeveloperDiagnostics.shared.recordAPICall(
+            path: endpoint, statusCode: httpStatus ?? mapped?.status,
+            error: phase == .failed ? (error?.userFacingMessage(fallback: mapped?.message ?? "failed")) : nil,
+            usedCache: phase == .cached, schemaVersion: schema,
+            decodeSucceeded: decode.succeeded ?? true,
+            decodePath: decode.path)
+    }
+
+    private static func decodeInfo(_ error: Error?) -> (succeeded: Bool?, path: String?) {
+        guard let api = error as? GW2APIError else { return (nil, nil) }
+        if case let .decodeFailed(path) = api { return (false, path) }
+        return (nil, nil)
+    }
+
+    private func markMissingPermission(_ domains: [AccountLoadDomain]) {
+        for domain in domains {
+            markDomain(domain, phase: .missingPermission, endpoint: domain.rawValue)
+        }
+    }
+
+    private func qaDomain(for domain: AccountLoadDomain) -> QADomain {
+        switch domain {
+        case .account: .account
+        case .characters: .characters
+        case .characterInventory, .bank, .materials, .sharedInventory: .inventory
+        case .equipment, .equipmentTabs, .buildTabs: .builds
+        case .achievements, .recipesUnlocked: .achievements
+        case .today: .today
+        case .wallet: .account
+        }
+    }
+
     private func loadGoalAccountData(permissions: PermissionSet) async {
         if permissions.contains(.progression) {
-            if let values = try? await api.accountAchievements() {
+            markDomain(.achievements, phase: .loading, endpoint: "account/achievements")
+            do {
+                let values = try await api.accountAchievements()
                 achievementProgress = Dictionary(uniqueKeysWithValues: values.map { ($0.id, $0) })
+                markDomain(.achievements, phase: .live, endpoint: "account/achievements")
+            } catch {
+                markDomain(.achievements, phase: .failed, endpoint: "account/achievements", error: error)
             }
         } else {
             achievementProgress = [:]
+            markDomain(.achievements, phase: .missingPermission, endpoint: "account/achievements")
         }
 
         if permissions.contains(.unlocks) {
+            markDomain(.recipesUnlocked, phase: .loading, endpoint: "account/recipes")
             async let recipes = try? api.accountRecipeIDs()
             async let skins = try? api.accountSkinIDs()
             async let minis = try? api.accountMiniIDs()
             let resolved = await (recipes, skins, minis)
-            if let values = resolved.0 { unlockedRecipeIDs = Set(values) }
+            if let values = resolved.0 {
+                unlockedRecipeIDs = Set(values)
+                markDomain(.recipesUnlocked, phase: .live, endpoint: "account/recipes")
+            } else {
+                markDomain(
+                    .recipesUnlocked, phase: .failed, endpoint: "account/recipes",
+                    error: GW2APIError.invalidResponse)
+            }
             if let values = resolved.1 { unlockedSkinIDs = Set(values) }
             if let values = resolved.2 { unlockedMiniIDs = Set(values) }
         } else {
             unlockedRecipeIDs = []
             unlockedSkinIDs = []
             unlockedMiniIDs = []
+            markDomain(.recipesUnlocked, phase: .missingPermission, endpoint: "account/recipes")
         }
         goalsAccountLastRefreshedAt = Date()
     }
@@ -401,28 +554,16 @@ final class AccountStore: ObservableObject {
 #endif
 
     private func refreshInventories() async {
-        var loadedCharacters: [String: CharacterInventoryResponse] = [:]
-        await withTaskGroup(of: (String, CharacterInventoryResponse?).self) { group in
-            for character in characters {
-                group.addTask { [api] in
-                    let response = try? await api.characterInventoryResponse(name: character.name)
-                    return (character.name, response)
-                }
-            }
-            for await (name, response) in group {
-                if let response { loadedCharacters[name] = response }
-            }
-        }
-        characterInventories = loadedCharacters
+        markDomain(.characterInventory, phase: .loading, endpoint: "characters/{name}/inventory")
+        markDomain(.bank, phase: .loading, endpoint: "account/bank")
+        markDomain(.sharedInventory, phase: .loading, endpoint: "account/inventory")
+        markDomain(.materials, phase: .loading, endpoint: "account/materials")
 
-        async let loadedBank = api.bankSlots()
-        async let loadedShared = api.sharedInventorySlots()
-        async let loadedMaterials = api.accountMaterials()
-        bankSlots = (try? await loadedBank) ?? bankSlots
-        sharedSlots = (try? await loadedShared) ?? sharedSlots
-        bank = bankSlots.compactMap { $0 }
-        sharedInventory = sharedSlots.compactMap { $0 }
-        materials = (try? await loadedMaterials) ?? materials
+        async let characterLoad: Void = loadCharacterInventories()
+        async let bankLoad: Void = loadBank()
+        async let sharedLoad: Void = loadSharedInventory()
+        async let materialsLoad: Void = loadMaterials()
+        _ = await (characterLoad, bankLoad, sharedLoad, materialsLoad)
 
         var sources: [(ItemLocation, [InventorySlot])] = characterInventories.map { name, response in
             let slots = response.bags.compactMap { $0 }.flatMap { $0.inventory ?? [] }.compactMap { $0 }
@@ -434,11 +575,73 @@ final class AccountStore: ObservableObject {
             InventorySlot(id: $0.id, count: $0.count, binding: $0.binding)
         }))
         holdings = AccountHoldingAggregator.aggregate(sources)
-        if let resolvedItems = try? await api.items(ids: holdings.map(\.itemID)) {
-            itemMetadata = resolvedItems
+        if let resolvedItems = try? await api.items(ids: holdings.map(\.itemID), priority: .high) {
+            itemMetadata.merge(resolvedItems) { _, new in new }
+        }
+        for holding in holdings where itemMetadata[holding.itemID] == nil {
+            itemMetadata[holding.itemID] = ItemPlaceholder.metadata(id: holding.itemID)
         }
         materialCategories = (try? await api.materialCategories(ids: materials.map(\.category))) ?? materialCategories
         inventoryUpdatedAt = Date()
+    }
+
+    private func loadCharacterInventories() async {
+        var loadedCharacters: [String: CharacterInventoryResponse] = [:]
+        var inventoryFailures = 0
+        let names = characters.map(\.name)
+        for batch in stride(from: 0, to: names.count, by: 4) {
+            let slice = names[batch..<min(batch + 4, names.count)]
+            await withTaskGroup(of: (String, CharacterInventoryResponse?).self) { group in
+                for name in slice {
+                    group.addTask { [api] in
+                        let response = try? await api.characterInventoryResponse(name: name)
+                        return (name, response)
+                    }
+                }
+                for await (name, response) in group {
+                    if let response { loadedCharacters[name] = response }
+                    else { inventoryFailures += 1 }
+                }
+            }
+        }
+        if !loadedCharacters.isEmpty { characterInventories.merge(loadedCharacters) { _, new in new } }
+        if !names.isEmpty && loadedCharacters.isEmpty {
+            markDomain(
+                .characterInventory, phase: .failed, endpoint: "characters/{name}/inventory",
+                error: GW2APIError.invalidResponse)
+        } else if !names.isEmpty {
+            markDomain(.characterInventory, phase: .live, endpoint: "characters/{name}/inventory")
+        }
+        _ = inventoryFailures
+    }
+
+    private func loadBank() async {
+        do {
+            bankSlots = try await api.bankSlots()
+            bank = bankSlots.compactMap { $0 }
+            markDomain(.bank, phase: .live, endpoint: "account/bank")
+        } catch {
+            markDomain(.bank, phase: .failed, endpoint: "account/bank", error: error)
+        }
+    }
+
+    private func loadSharedInventory() async {
+        do {
+            sharedSlots = try await api.sharedInventorySlots()
+            sharedInventory = sharedSlots.compactMap { $0 }
+            markDomain(.sharedInventory, phase: .live, endpoint: "account/inventory")
+        } catch {
+            markDomain(.sharedInventory, phase: .failed, endpoint: "account/inventory", error: error)
+        }
+    }
+
+    private func loadMaterials() async {
+        do {
+            materials = try await api.accountMaterials()
+            markDomain(.materials, phase: .live, endpoint: "account/materials")
+        } catch {
+            markDomain(.materials, phase: .failed, endpoint: "account/materials", error: error)
+        }
     }
 
     private func restoreSnapshot() async {
@@ -471,6 +674,14 @@ final class AccountStore: ObservableObject {
         isStale = true
         dataSource = .cached
         connectionState = snapshot.tokenInfo == nil ? .disconnected : .connected
+        for domain in [AccountLoadDomain.account, .characters, .wallet, .bank, .materials, .sharedInventory, .characterInventory] {
+            if domainStates[domain]?.phase != .live {
+                var status = domainStates[domain] ?? .idle(domain)
+                status.phase = .cached
+                status.source = .cached
+                domainStates[domain] = status
+            }
+        }
     }
 
     private func saveSnapshot() async {
@@ -540,7 +751,7 @@ extension AccountStore {
                     if $0.level != $1.level { return $0.level > $1.level }
                     return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
                 }
-                professions = try await api.professions(ids: characters.map(\.profession))
+                professions = (try? await api.professions(ids: characters.map(\.profession))) ?? professions
                 charactersUpdatedAt = Date()
                 dataSource = .live
                 return qaSuccess(domain, status: 200, message: "OK", at: Date())
@@ -560,7 +771,7 @@ extension AccountStore {
                     return qaFailure(domain, status: nil, message: "No character available", at: started)
                 }
                 await loadCharacterDetails(character, force: true)
-                if let error = characterDetails[character.name]?.errorMessage {
+                if let error = characterDetails[character.name]?.buildError {
                     return qaFailure(domain, status: nil, message: error, at: Date())
                 }
                 return qaSuccess(domain, status: 200, message: "OK", at: Date())
@@ -594,7 +805,9 @@ extension AccountStore {
             switch api {
             case .invalidAPIKey: return (401, api.errorDescription ?? "Invalid API key")
             case let .missingPermission(permission): return (403, "Missing \(permission) permission")
-            case .rateLimited: return (429, "Rate limited")
+            case .rateLimited: return (429, "HTTP 429")
+            case let .decodeFailed(path): return (nil, "Decode failed at \(path)")
+            case let .server(code) where code == 403: return (403, "HTTP 403")
             case let .server(code): return (code, api.errorDescription ?? "Server error")
             default: return (nil, error.userFacingMessage(fallback: "Request failed"))
             }

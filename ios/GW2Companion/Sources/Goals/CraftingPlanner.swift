@@ -274,8 +274,8 @@ enum CraftingPlanner {
                     case .currency: return expand(.currency(ingredient.id), quantity: childQuantity, depth: depth + 1, path: childPath)
                     case .guildUpgrade:
                         return expand(.guildUpgrade(ingredient.id), quantity: childQuantity, depth: depth + 1, path: childPath)
-                    case nil:
-                        return expand(.unknown(type: ingredient.type, id: ingredient.id), quantity: childQuantity, depth: depth + 1, path: childPath)
+                    case let .unknown(type):
+                        return expand(.unknown(type: type, id: ingredient.id), quantity: childQuantity, depth: depth + 1, path: childPath)
                     }
                 }
                 return CraftRequirementNode(

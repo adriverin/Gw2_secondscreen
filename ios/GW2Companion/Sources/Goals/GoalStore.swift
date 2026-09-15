@@ -4,6 +4,7 @@ enum GoalMetadataLoadState: Equatable {
     case idle
     case loading(String)
     case ready
+    case cached(String)
     case unavailable(String)
 }
 
@@ -233,31 +234,58 @@ final class GoalStore: ObservableObject {
     func prepareRecipes() async {
         guard !didPrepareRecipes else { return }
         didPrepareRecipes = true
-        recipeState = .loading("Opening saved recipe index…")
+        recipeState = .loading("Preparing crafting catalog…")
         if let saved = await cache.load(RecipeOutputIndex.self, named: "recipe-output-index-v1"),
            saved.schemaVersion == RecipeOutputIndex.schemaVersion {
             recipeIndex = saved
+            recipeState = .ready
         }
         recipes = await api.cachedRecipes()
         if !recipes.isEmpty {
             recipeIndex = RecipeOutputIndex(recipes: recipes)
+            recipeState = .ready
             await loadCraftableItemMetadata()
         }
         do {
-            recipeState = .loading("Updating recipe index…")
             let ids = try await api.recipeIDs()
-            recipes = try await api.recipes(ids: ids)
-            let built = RecipeOutputIndex(recipes: recipes)
+            let batches = GW2APIClient.chunks(of: ids, size: 200)
+            var collected = recipes
+            for (index, batch) in batches.enumerated() {
+                let percent = batches.isEmpty ? 0 : Int((Double(index) / Double(max(batches.count, 1))) * 100)
+                if recipeIndex == nil {
+                    recipeState = .loading("Preparing crafting catalog… \(percent)%")
+                }
+                if let part = try? await api.recipes(ids: batch, priority: .low) {
+                    collected.merge(part) { _, new in new }
+                    recipes = collected
+                    recipeIndex = RecipeOutputIndex(recipes: collected)
+                    if index == 0 || index.isMultiple(of: 5) {
+                        await loadCraftableItemMetadata()
+                    }
+                }
+            }
+            recipes = collected
+            let built = RecipeOutputIndex(recipes: collected)
             recipeIndex = built
             await cache.save(built, named: "recipe-output-index-v1")
-            recipeState = .loading("Indexing craftable items…")
+            if recipeIndex == nil || (recipeIndex?.recipeIDsByOutputItem.isEmpty ?? true && collected.isEmpty) {
+                didPrepareRecipes = false
+                recipeState = .unavailable("Couldn't build the crafting catalog.")
+                return
+            }
+            recipeState = .loading("Preparing crafting catalog… indexing items")
             await loadCraftableItemMetadata()
             recipeState = .ready
         } catch {
-            if recipeIndex != nil { recipeState = .ready }
-            else {
+            if recipeIndex != nil {
+                if error as? GW2APIError == .networkUnavailable {
+                    recipeState = .cached("Offline — using saved catalog")
+                } else {
+                    recipeState = .cached("Couldn't update catalog — using saved catalog")
+                }
+            } else {
                 didPrepareRecipes = false
-                recipeState = .unavailable(error.userFacingMessage(fallback: "Recipe data couldn’t be loaded. Try again later."))
+                recipeState = .unavailable(error.userFacingMessage(fallback: "Couldn't build the crafting catalog."))
             }
         }
     }
@@ -383,13 +411,14 @@ final class GoalStore: ObservableObject {
 
     private func loadCraftableItemMetadata() async {
         guard let recipeIndex else { return }
-        do {
-            craftableItems = try await api.items(ids: Array(recipeIndex.recipeIDsByOutputItem.keys))
-        } catch {
-            if craftableItems.isEmpty {
-                recipeState = .unavailable(error.userFacingMessage(fallback: "Recipe data couldn’t be loaded. Try again later."))
-            }
+        let ids = Array(recipeIndex.recipeIDsByOutputItem.keys)
+        let loaded = (try? await api.items(ids: ids, priority: .low)) ?? [:]
+        var merged = craftableItems
+        merged.merge(loaded) { _, new in new }
+        for id in ids where merged[id] == nil {
+            merged[id] = ItemPlaceholder.metadata(id: id)
         }
+        craftableItems = merged
     }
 
     private func resolveAchievementBits(in values: [AchievementDefinition]) async {

@@ -88,36 +88,41 @@ struct AccountView: View {
     }
 
     private var walletCard: some View {
-        let values = store.wallet.filter { entry in
-            walletSearch.isEmpty || (store.currencies[entry.id]?.name.localizedCaseInsensitiveContains(walletSearch) ?? false)
-        }.sorted { lhs, rhs in
-            let left = store.currencies[lhs.id]?.order ?? lhs.id
-            let right = store.currencies[rhs.id]?.order ?? rhs.id
-            return left < right
-        }
+        let all = WalletPresentation.ordered(wallet: store.wallet, currencies: store.currencies, query: walletSearch)
+        let pinned = walletSearch.isEmpty
+            ? WalletPresentation.pinned(wallet: store.wallet, currencies: store.currencies) : []
         return GWCard {
             GWSectionHeader(title: "Wallet", subtitle: "\(store.wallet.count) currencies")
             TextField("Search currencies", text: $walletSearch)
                 .textFieldStyle(.roundedBorder).padding(.vertical, 8)
-            ForEach(values.prefix(walletSearch.isEmpty ? 8 : values.count)) { entry in
-                let currency = store.currencies[entry.id]
-                HStack(spacing: 11) {
-                    CachedAsyncImage(url: currency?.icon) { Circle().fill(.quaternary) }
-                        .frame(width: 32, height: 32)
-                    VStack(alignment: .leading) {
-                        Text(currency?.name ?? "Currency \(entry.id)")
-                        if !walletSearch.isEmpty, let description = currency?.description, !description.isEmpty {
-                            Text(description.gwPlainText).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                        }
-                    }
-                    Spacer()
-                    if entry.id == 1 { CoinAmountView(value: entry.value) }
-                    else { Text(entry.value.formatted()).monospacedDigit().bold() }
-                }
-                .padding(.vertical, 6)
-                .accessibilityElement(children: .combine)
+            if !pinned.isEmpty {
+                Text("PINNED / COMMON").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 4)
+                ForEach(pinned) { entry in walletRow(entry) }
             }
+            Text("ALL CURRENCIES").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 8)
+            ForEach(all) { entry in walletRow(entry) }
         }
+        .accessibilityIdentifier("account.wallet")
+    }
+
+    private func walletRow(_ entry: WalletEntry) -> some View {
+        let currency = store.currencies[entry.id]
+        return HStack(spacing: 11) {
+            CachedAsyncImage(url: currency?.icon) { Circle().fill(.quaternary) }
+                .frame(width: 32, height: 32)
+            VStack(alignment: .leading) {
+                Text(currency?.name ?? "Currency \(entry.id)")
+                if !walletSearch.isEmpty, let description = currency?.description, !description.isEmpty {
+                    Text(description.gwPlainText).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            Spacer()
+            if entry.id == 1 { CoinAmountView(value: entry.value) }
+            else { Text(entry.value.formatted()).monospacedDigit().bold() }
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("wallet.currency.\(entry.id)")
     }
 
     private var inventoryCard: some View {

@@ -37,7 +37,10 @@ struct TodayDashboardView: View {
             }
             .sheet(isPresented: $showingRewards) { VaultRewardsView() }
             .sheet(isPresented: $showingDiagnostics) { TodayDiagnosticsView() }
-            .task { await today.refreshIfNeeded() }
+            .task {
+                DeveloperDiagnostics.shared.recordTodayScreenAppeared()
+                await today.refreshIfNeeded()
+            }
         }
     }
 

@@ -25,6 +25,14 @@ struct LayerPanelView: View {
                     objectiveToggle(.adventure)
                 }
                 Section("Gathering") {
+                    if let message = GatheringCoverageCopy.layerMessage(
+                        availability: gathering.availability,
+                        mapName: objectives.mapMetadata?.name
+                    ) {
+                        Text(message).font(.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("layers.gathering.coverage")
+                    }
+                    LabeledContent("Gathering Data", value: GatheringCoverageCopy.coverageTitle(availability: gathering.availability))
                     objectiveToggle(.gatheringOre)
                     objectiveToggle(.gatheringWood)
                     objectiveToggle(.gatheringPlant)
