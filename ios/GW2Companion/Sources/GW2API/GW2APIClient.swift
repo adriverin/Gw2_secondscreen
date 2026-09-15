@@ -534,13 +534,11 @@ actor GW2APIClient {
     }
 
     private func send(path: String, apiKey: String?, attempt: Int) async throws -> Data {
-        guard let url = URL(string: path, relativeTo: baseURL) else { throw GW2APIError.invalidResponse }
+        let resolvedPath = GW2Schema.applyingQuery(to: path)
+        guard let url = URL(string: resolvedPath, relativeTo: baseURL) else { throw GW2APIError.invalidResponse }
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         if let apiKey { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
-        if let schema = GW2Schema.headerValue(for: path) {
-            request.setValue(schema, forHTTPHeaderField: "X-Schema-Version")
-        }
         let data: Data
         let response: URLResponse
         do {
@@ -569,7 +567,7 @@ actor GW2APIClient {
             return try await send(path: path, apiKey: apiKey, attempt: attempt + 1)
         }
         await scheduler.noteSuccess()
-        let schema = GW2Schema.headerValue(for: path)
+        let schema = GW2Schema.version(for: path)
         await Self.trace(
             path: path, statusCode: http.statusCode, error: nil, schemaVersion: schema)
         if http.statusCode == 206 {

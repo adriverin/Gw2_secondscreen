@@ -158,12 +158,29 @@ final class PhaseSevenMapDetailTests: XCTestCase {
 final class PhaseSevenSchemaTests: XCTestCase {
     func testCharacterEndpointsPinBuildTemplateSchema() {
         XCTAssertEqual(GW2Schema.characterTemplates, "2019-12-19T00:00:00.000Z")
-        XCTAssertEqual(GW2Schema.headerValue(for: "characters?page=0&page_size=200"), GW2Schema.characterTemplates)
-        XCTAssertEqual(GW2Schema.headerValue(for: "characters/Andrea/inventory"), GW2Schema.characterTemplates)
-        XCTAssertEqual(GW2Schema.headerValue(for: "characters/Andrea/buildtabs?tabs=all"), GW2Schema.characterTemplates)
-        XCTAssertNil(GW2Schema.headerValue(for: "account/bank"))
-        XCTAssertNil(GW2Schema.headerValue(for: "recipes"))
+        XCTAssertEqual(GW2Schema.version(for: "characters?page=0&page_size=200"), GW2Schema.characterTemplates)
+        XCTAssertEqual(GW2Schema.version(for: "characters/Andrea/inventory"), GW2Schema.characterTemplates)
+        XCTAssertEqual(GW2Schema.version(for: "characters/Andrea/buildtabs?tabs=all"), GW2Schema.characterTemplates)
+        XCTAssertNil(GW2Schema.version(for: "account/bank"))
+        XCTAssertNil(GW2Schema.version(for: "recipes"))
         XCTAssertNil(GW2Schema.account)
+        XCTAssertEqual(
+            GW2Schema.applyingQuery(to: "characters?page=0&page_size=200"),
+            "characters?page=0&page_size=200&v=2019-12-19T00:00:00.000Z")
+        XCTAssertEqual(
+            GW2Schema.applyingQuery(to: "characters/Andrea/inventory"),
+            "characters/Andrea/inventory?v=2019-12-19T00:00:00.000Z")
+        XCTAssertEqual(
+            GW2Schema.applyingQuery(to: "characters/Andrea/buildtabs?tabs=all"),
+            "characters/Andrea/buildtabs?tabs=all&v=2019-12-19T00:00:00.000Z")
+        XCTAssertEqual(
+            GW2Schema.applyingQuery(to: "characters/Andrea/equipmenttabs?tabs=all"),
+            "characters/Andrea/equipmenttabs?tabs=all&v=2019-12-19T00:00:00.000Z")
+        XCTAssertEqual(GW2Schema.applyingQuery(to: "account/bank"), "account/bank")
+        XCTAssertEqual(GW2Schema.applyingQuery(to: "recipes"), "recipes")
+        XCTAssertEqual(
+            GW2Schema.applyingQuery(to: "characters/Andrea/inventory?v=2019-12-19T00:00:00.000Z"),
+            "characters/Andrea/inventory?v=2019-12-19T00:00:00.000Z")
     }
 }
 
@@ -224,6 +241,9 @@ final class PhaseSevenDomainIsolationTests: XCTestCase {
         XCTAssertEqual(PhaseSevenAPIProtocol.lastSchema["characters"], GW2Schema.characterTemplates)
         XCTAssertEqual(PhaseSevenAPIProtocol.lastSchema["characters/Andrea/inventory"], GW2Schema.characterTemplates)
         XCTAssertNil(PhaseSevenAPIProtocol.lastSchema["account/bank"])
+        XCTAssertNil(PhaseSevenAPIProtocol.lastSchemaHeader["characters"])
+        XCTAssertNil(PhaseSevenAPIProtocol.lastSchemaHeader["characters/Andrea/inventory"])
+        XCTAssertNil(PhaseSevenAPIProtocol.lastSchemaHeader["account/bank"])
     }
 
     func testMaterialsRemainWhenBankFails() async throws {
@@ -449,10 +469,11 @@ private struct PhaseSevenRoute {
 private final class PhaseSevenAPIProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var routes: [String: PhaseSevenRoute] = [:]
     nonisolated(unsafe) static var lastSchema: [String: String] = [:]
+    nonisolated(unsafe) static var lastSchemaHeader: [String: String] = [:]
     private static let lock = NSLock()
 
     static func reset() {
-        lock.lock(); routes = [:]; lastSchema = [:]; lock.unlock()
+        lock.lock(); routes = [:]; lastSchema = [:]; lastSchemaHeader = [:]; lock.unlock()
     }
 
     static func installAccountSuccessRoutes() {
@@ -500,11 +521,16 @@ private final class PhaseSevenAPIProtocol: URLProtocol, @unchecked Sendable {
     override func startLoading() {
         let url = request.url!
         let path = url.path.replacingOccurrences(of: "/v2/", with: "")
-        if let schema = request.value(forHTTPHeaderField: "X-Schema-Version") {
-            Self.lock.lock()
-            Self.lastSchema[path] = schema
-            Self.lock.unlock()
+        let querySchema = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "v" })?
+            .value
+        Self.lock.lock()
+        if let querySchema { Self.lastSchema[path] = querySchema }
+        if let headerSchema = request.value(forHTTPHeaderField: "X-Schema-Version") {
+            Self.lastSchemaHeader[path] = headerSchema
         }
+        Self.lock.unlock()
         let route = Self.route(for: path, query: url.query)
         let response = HTTPURLResponse(
             url: url, statusCode: route.status, httpVersion: nil,
