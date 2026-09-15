@@ -124,6 +124,14 @@ actor GW2APIClient {
         try await authenticatedLossyArray("account/materials", priority: .high)
     }
 
+    func legendaryArmoryDefinitions() async throws -> [LegendaryArmoryDefinition] {
+        try await request("legendaryarmory?ids=all", priority: .low)
+    }
+
+    func accountLegendaryArmory() async throws -> [AccountLegendaryArmorySlot] {
+        try await authenticatedLossyArray("account/legendaryarmory", priority: .high)
+    }
+
     func materials() async throws -> [InventorySlot] {
         try await accountMaterials().filter { $0.count > 0 }.map {
             InventorySlot(id: $0.id, count: $0.count, binding: $0.binding)
@@ -320,7 +328,8 @@ actor GW2APIClient {
     /// Trading Post data is intentionally short-lived. Stale records remain usable as explicitly
     /// stale fallback data when the network is unavailable.
     func commercePrices(
-        ids: [Int], force: Bool = false, now: Date = Date(), ttl: TimeInterval = 300
+        ids: [Int], force: Bool = false, now: Date = Date(), ttl: TimeInterval = 300,
+        priority: APIRequestPriority = .normal
     ) async throws -> [Int: TimedCommercePrice] {
         commercePriceCache = await loadedIntCache(commercePriceCache, name: "commerce-prices-v1")
         let wanted = Array(Set(ids)).sorted()
@@ -329,10 +338,16 @@ actor GW2APIClient {
             return now.timeIntervalSince(cached.fetchedAt) > ttl
         }
         do {
-            for batch in Self.chunks(of: staleOrMissing, size: 200) {
-                let query = batch.map(String.init).joined(separator: ",")
-                let values: [CommercePrice] = try await request("commerce/prices?ids=\(query)")
-                values.forEach { commercePriceCache[$0.id] = TimedCommercePrice(price: $0, fetchedAt: now) }
+            if priority == .high, let first = staleOrMissing.first {
+                try await fetchCommerceBatch([first], now: now, priority: .high)
+                let rest = Array(staleOrMissing.dropFirst())
+                for batch in Self.chunks(of: rest, size: 200) {
+                    try await fetchCommerceBatch(batch, now: now, priority: .normal)
+                }
+            } else {
+                for batch in Self.chunks(of: staleOrMissing, size: 200) {
+                    try await fetchCommerceBatch(batch, now: now, priority: priority)
+                }
             }
             if !staleOrMissing.isEmpty {
                 await diskCache.save(commercePriceCache, named: "commerce-prices-v1")
@@ -341,7 +356,47 @@ actor GW2APIClient {
             let fallback = commercePriceCache.filter { Set(wanted).contains($0.key) }
             if fallback.isEmpty { throw error }
         }
+        for id in wanted where commercePriceCache[id] == nil {
+            commercePriceCache[id] = TimedCommercePrice(
+                price: CommercePrice(
+                    id: id, whitelisted: nil,
+                    buys: CommerceListingSummary(quantity: 0, unitPrice: 0),
+                    sells: CommerceListingSummary(quantity: 0, unitPrice: 0)),
+                fetchedAt: now)
+        }
         return commercePriceCache.filter { Set(wanted).contains($0.key) }
+    }
+
+    private func fetchCommerceBatch(_ batch: [Int], now: Date, priority: APIRequestPriority) async throws {
+        guard !batch.isEmpty else { return }
+        let query = batch.map(String.init).joined(separator: ",")
+        do {
+            let values: [CommercePrice] = try await request("commerce/prices?ids=\(query)", priority: priority)
+            values.forEach { commercePriceCache[$0.id] = TimedCommercePrice(price: $0, fetchedAt: now) }
+            let returned = Set(values.map(\.id))
+            for id in batch where !returned.contains(id) {
+                commercePriceCache[id] = TimedCommercePrice(
+                    price: CommercePrice(
+                        id: id, whitelisted: nil,
+                        buys: CommerceListingSummary(quantity: 0, unitPrice: 0),
+                        sells: CommerceListingSummary(quantity: 0, unitPrice: 0)),
+                    fetchedAt: now)
+            }
+        } catch {
+            if batch.count == 1 {
+                let id = batch[0]
+                commercePriceCache[id] = TimedCommercePrice(
+                    price: CommercePrice(
+                        id: id, whitelisted: nil,
+                        buys: CommerceListingSummary(quantity: 0, unitPrice: 0),
+                        sells: CommerceListingSummary(quantity: 0, unitPrice: 0)),
+                    fetchedAt: now)
+                return
+            }
+            for id in batch {
+                try await fetchCommerceBatch([id], now: now, priority: priority)
+            }
+        }
     }
 
     func materialCategories(ids: [Int]) async throws -> [Int: MaterialCategoryMetadata] {

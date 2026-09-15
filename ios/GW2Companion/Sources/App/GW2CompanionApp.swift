@@ -64,6 +64,7 @@ struct GW2CompanionApp: App {
                     async let todayRefresh: Void = today.setAccountScope(
                         account.account?.id, permissions: account.permissions)
                     _ = await (accountRefresh, todayRefresh)
+                    await goals.prepareLegendaries()
                     await sessions.prepare(recipes: goals.recipes, prices: goals.marketPrices)
                 }
                 .onChange(of: telemetry.latest?.character?.name, initial: true) { _, name in
@@ -99,13 +100,12 @@ private struct RootNavigationView: View {
     let api: GW2APIClient
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var navigation: AppNavigation
-    @State private var splitVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("onboarding.completed.v1") private var onboardingCompleted = false
 
     var body: some View {
         Group {
         if horizontalSizeClass == .regular {
-            NavigationSplitView(columnVisibility: $splitVisibility) {
+            NavigationSplitView(columnVisibility: splitVisibilityBinding) {
                 List {
                     ForEach(AppTab.iPadSidebar) { tab in
                         Button {
@@ -144,12 +144,19 @@ private struct RootNavigationView: View {
                     .tabItem { Label("More", systemImage: "ellipsis") }
                     .tag(PhoneRootTab.more)
             }
+            .toolbar(navigation.sidebarHidden && navigation.selectedTab == .map ? .hidden : .automatic, for: .tabBar)
         }
         }
         .fullScreenCover(isPresented: Binding(
             get: { !onboardingCompleted },
             set: { if !$0 { onboardingCompleted = true } }
         )) { OnboardingFlow() }
+    }
+
+    private var splitVisibilityBinding: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { navigation.splitColumnVisibility },
+            set: { navigation.splitColumnVisibility = $0 })
     }
 
     private var phoneTabBinding: Binding<PhoneRootTab> {

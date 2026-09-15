@@ -21,6 +21,8 @@ struct NativeTileMapView: View {
     var showTileDebugGrid: Bool = false
     var showTiles: Bool = true
     let onSelectObjective: (MapObjective) -> Void
+    var onBackgroundTap: (() -> Void)? = nil
+    var routeIDs: Set<MapObjectiveID> = []
     var onVisibleCoordinateChange: ((ContinentPoint, Int, TileWorldCoordinate?, TileIndex?, Int, Int) -> Void)? = nil
 
     private let projection = ArenaNetTileProjection.shared
@@ -54,8 +56,7 @@ struct NativeTileMapView: View {
             .gesture(panGesture.simultaneously(with: zoomGesture))
             .simultaneousGesture(
                 SpatialTapGesture().onEnded { value in
-                    guard let objective = markerScene.marker(at: value.location, in: transform)?.objective else { return }
-                    onSelectObjective(objective)
+                    handleTap(value.location, transform: transform)
                 })
             .onChange(of: sceneVersion, initial: true) { _, _ in
                 markerScene = MapMarkerScene(objectives: objectives)
@@ -127,9 +128,33 @@ struct NativeTileMapView: View {
         MapMarkerCanvas(
             markers: markers, transform: transform,
             visited: [], harvested: harvested, images: iconStore.images,
-            targetID: target?.id, onActivate: { marker in
+            targetID: target?.id, appearances: markerAppearances(markers),
+            onActivate: { marker in
                 if let objective = marker.objective { onSelectObjective(objective) }
             })
+    }
+
+    private func markerAppearances(_ markers: [MapSceneMarker]) -> [String: MapMarkerAppearance] {
+        Dictionary(uniqueKeysWithValues: markers.compactMap { marker in
+            guard let objective = marker.objective else { return nil }
+            return (marker.id, MapDetailPolicy.appearance(
+                for: objective, mode: mapDetail, displayZoom: zoom, targetID: target?.id, routeIDs: routeIDs))
+        })
+    }
+
+    private func handleTap(_ location: CGPoint, transform: MapViewportTransform) {
+        guard magnification == 1.0, dragOffset == .zero else { return }
+        if let objective = markerScene.marker(at: location, in: transform)?.objective {
+            onSelectObjective(objective)
+            return
+        }
+        if let player {
+            let playerPoint = transform.screenPosition(for: player)
+            if hypot(playerPoint.x - location.x, playerPoint.y - location.y) <= 28 {
+                return
+            }
+        }
+        onBackgroundTap?()
     }
 
     @ViewBuilder
@@ -197,18 +222,12 @@ struct NativeTileMapView: View {
     }
 
     private func renderableMarkers(_ markers: [MapSceneMarker]) -> [MapSceneMarker] {
-        let cullZoom = mapDetail.markerCullZoom
-        guard zoom <= cullZoom else { return Array(markers.prefix(700)) }
-        return markers.filter {
-            guard let objective = $0.objective else { return true }
-            if objective.id == target?.id { return true }
-            switch objective.type {
-            case .waypoint, .masteryInsight: return true
-            case .vista, .landmark, .heroChallenge, .gatheringOre, .gatheringWood, .gatheringPlant:
-                return mapDetail == .detailed
-            default: return false
-            }
-        }.prefix(250).map { $0 }
+        markers.filter { marker in
+            guard let objective = marker.objective else { return true }
+            return MapDetailPolicy.appearance(
+                for: objective, mode: mapDetail, displayZoom: zoom,
+                targetID: target?.id, routeIDs: routeIDs).visible
+        }.prefix(700).map { $0 }
     }
 
     private func focus(_ mode: MapFocusMode, size: CGSize) {

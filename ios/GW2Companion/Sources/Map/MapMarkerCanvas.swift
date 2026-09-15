@@ -7,6 +7,7 @@ struct MapMarkerCanvas: View {
     let harvested: Set<String>
     let images: [URL: Image]
     var targetID: MapObjectiveID? = nil
+    var appearances: [String: MapMarkerAppearance] = [:]
     let onActivate: (MapSceneMarker) -> Void
 
     var body: some View {
@@ -23,7 +24,10 @@ struct MapMarkerCanvas: View {
     }
 
     private func draw(_ marker: MapSceneMarker, in context: inout GraphicsContext, at point: CGPoint) {
-        let rect = CGRect(x: point.x - 15.5, y: point.y - 15.5, width: 31, height: 31)
+        let appearance = appearances[marker.id] ?? MapMarkerAppearance(visible: true, size: 31, showLabel: false, important: marker.objective?.id == targetID)
+        guard appearance.visible else { return }
+        let half = appearance.size / 2
+        let rect = CGRect(x: point.x - half, y: point.y - half, width: appearance.size, height: appearance.size)
         var markerContext = context
         markerContext.opacity = opacity(for: marker)
         markerContext.addFilter(.shadow(color: .black.opacity(0.75), radius: 2))
@@ -50,11 +54,25 @@ struct MapMarkerCanvas: View {
                     Path(ellipseIn: rect.insetBy(dx: 1, dy: 1)),
                     with: .color(objective.state == .manuallyCompleted ? .green : .yellow), lineWidth: 2)
             }
-            if targetID == objective.id {
+            if targetID == objective.id || appearance.important {
                 markerContext.stroke(
                     Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)),
                     with: .color(.cyan), lineWidth: 3)
             }
+        }
+        if appearance.showLabel, let title = label(for: marker) {
+            context.draw(
+                context.resolve(Text(title).font(.system(size: 9, weight: .semibold)).foregroundColor(.white)),
+                at: CGPoint(x: point.x, y: point.y + half + 7),
+                anchor: .top)
+        }
+    }
+
+    private func label(for marker: MapSceneMarker) -> String? {
+        switch marker {
+        case let .objective(objective): objective.name
+        case let .landmark(value): value.name
+        case let .gathering(value): value.name
         }
     }
 

@@ -56,7 +56,9 @@ final class SessionStore: ObservableObject {
         do {
             try await knowledgeStore.load(provider: provider)
             await knowledgeStore.replaceUserDeclared(with: userMethods)
-            await knowledgeStore.replaceAPIDerived(with: AcquisitionMethodFactory.apiDerived(recipes: recipes, prices: prices))
+            let legendaryMethods = legendaryAcquisitionMethods()
+            await knowledgeStore.replaceAPIDerived(
+                with: AcquisitionMethodFactory.apiDerived(recipes: recipes, prices: prices) + legendaryMethods)
             catalog = await knowledgeStore.catalogMetadata
             knowledgeMethods = await knowledgeStore.allMethods()
             knowledgeError = nil
@@ -64,14 +66,20 @@ final class SessionStore: ObservableObject {
             // User data and an existing plan remain usable offline even if the bundle is damaged.
             knowledgeError = error.userFacingMessage(fallback: "Acquisition data couldn’t be loaded. Your saved plans are still available.")
             await knowledgeStore.replaceUserDeclared(with: userMethods)
-            await knowledgeStore.replaceAPIDerived(with: AcquisitionMethodFactory.apiDerived(recipes: recipes, prices: prices))
+            await knowledgeStore.replaceAPIDerived(with: AcquisitionMethodFactory.apiDerived(recipes: recipes, prices: prices) + legendaryAcquisitionMethods())
             knowledgeMethods = await knowledgeStore.allMethods()
         }
     }
 
     func refreshAPIDerived(recipes: [Int: RecipeDefinition], prices: [Int: TimedCommercePrice]) async {
-        await knowledgeStore.replaceAPIDerived(with: AcquisitionMethodFactory.apiDerived(recipes: recipes, prices: prices))
+        await knowledgeStore.replaceAPIDerived(
+            with: AcquisitionMethodFactory.apiDerived(recipes: recipes, prices: prices) + legendaryAcquisitionMethods())
         await mergeKnowledge()
+    }
+
+    private func legendaryAcquisitionMethods() -> [AcquisitionMethod] {
+        guard let catalog = try? BundledLegendaryCatalogProvider().catalog() else { return [] }
+        return LegendaryPlanner.acquisitionMethods(from: catalog)
     }
 
     func methods(for target: AcquisitionTarget) -> [AcquisitionMethod] {
@@ -280,6 +288,33 @@ enum SessionPlanningAdapter {
                     id: goal.id, title: goal.title, priority: goal.priority, requirements: [],
                     linkedObjectives: goal.mapLinks.map(\.objective),
                     fallbackReason: "Continue the next incomplete user-declared checklist step.")
+            case let .legendary(itemID):
+                guard let plan = goalStore.legendaryPlan(for: goal, account: account) else {
+                    return PlanningGoal(
+                        id: goal.id, title: goal.title, priority: goal.priority, requirements: [],
+                        linkedObjectives: goal.mapLinks.map(\.objective),
+                        fallbackReason: "The curated legendary plan is not loaded yet.")
+                }
+                if plan.ownership != .notOwned {
+                    return PlanningGoal(
+                        id: goal.id, title: goal.title, priority: goal.priority, requirements: [],
+                        linkedObjectives: goal.mapLinks.map(\.objective),
+                        fallbackReason: plan.ownership == .armory
+                            ? "Owned in Legendary Armory ✓"
+                            : "Owned in account holdings ✓")
+                }
+                let requirements = plan.sessionNodes.map { node in
+                    PlanningRequirement(
+                        id: "legendary:\(itemID):\(node.itemID)",
+                        target: .item(id: node.itemID, quantity: node.requiredQuantity),
+                        requiredQuantity: node.requiredQuantity, name: node.name,
+                        provenance: [.companionObserved, .arenaNetAccount, .derived],
+                        craftReady: node.missingQuantity == 0 || node.status == .readyToCraft)
+                }
+                return PlanningGoal(
+                    id: goal.id, title: goal.title, priority: goal.priority,
+                    requirements: requirements, linkedObjectives: goal.mapLinks.map(\.objective),
+                    fallbackReason: requirements.isEmpty ? "Inspect the legendary plan for the next manual requirement." : nil)
             }
         }
     }

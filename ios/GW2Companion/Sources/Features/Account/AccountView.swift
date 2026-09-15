@@ -5,6 +5,7 @@ struct AccountView: View {
     @EnvironmentObject private var navigation: AppNavigation
     @State private var localError: String?
     @State private var walletSearch = ""
+    @State private var walletPinRevision = 0
     @State private var showingReplaceKey = false
     @State private var showingInventoryPermissionHelp = false
 
@@ -88,24 +89,49 @@ struct AccountView: View {
     }
 
     private var walletCard: some View {
-        let all = WalletPresentation.ordered(wallet: store.wallet, currencies: store.currencies, query: walletSearch)
-        let pinned = walletSearch.isEmpty
-            ? WalletPresentation.pinned(wallet: store.wallet, currencies: store.currencies) : []
+        let searching = !walletSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let pinned = WalletPresentation.pinned(
+            wallet: store.wallet, currencies: store.currencies, accountID: store.account?.id)
+        let remaining = WalletPresentation.remaining(
+            wallet: store.wallet, currencies: store.currencies, query: walletSearch,
+            accountID: store.account?.id)
+        let searchResults = searching
+            ? WalletPresentation.ordered(wallet: store.wallet, currencies: store.currencies, query: walletSearch)
+            : []
+        _ = walletPinRevision
         return GWCard {
             GWSectionHeader(title: "Wallet", subtitle: "\(store.wallet.count) currencies")
             TextField("Search currencies", text: $walletSearch)
                 .textFieldStyle(.roundedBorder).padding(.vertical, 8)
-            if !pinned.isEmpty {
+            if searching {
+                Text("SEARCH RESULTS").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 4)
+                ForEach(searchResults) { entry in walletRow(entry, allowPin: true) }
+            } else {
                 Text("PINNED / COMMON").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 4)
-                ForEach(pinned) { entry in walletRow(entry) }
+                if pinned.isEmpty {
+                    Text("Pin currencies you use often.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(pinned) { entry in walletRow(entry, allowPin: true) }
+                }
+                DisclosureGroup(isExpanded: allCurrenciesExpanded) {
+                    ForEach(remaining) { entry in walletRow(entry, allowPin: true) }
+                } label: {
+                    Text("ALL CURRENCIES")
+                        .font(.caption2.bold()).foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier("account.wallet.all")
             }
-            Text("ALL CURRENCIES").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 8)
-            ForEach(all) { entry in walletRow(entry) }
         }
         .accessibilityIdentifier("account.wallet")
     }
 
-    private func walletRow(_ entry: WalletEntry) -> some View {
+    private var allCurrenciesExpanded: Binding<Bool> {
+        Binding(
+            get: { WalletPresentation.isAllExpanded(accountID: store.account?.id) },
+            set: { WalletPresentation.setAllExpanded($0, accountID: store.account?.id) })
+    }
+
+    private func walletRow(_ entry: WalletEntry, allowPin: Bool) -> some View {
         let currency = store.currencies[entry.id]
         return HStack(spacing: 11) {
             CachedAsyncImage(url: currency?.icon) { Circle().fill(.quaternary) }
@@ -117,12 +143,41 @@ struct AccountView: View {
                 }
             }
             Spacer()
+            if allowPin {
+                Button {
+                    WalletPresentation.togglePin(entry.id, accountID: store.account?.id)
+                    walletPinRevision += 1
+                } label: {
+                    Image(systemName: WalletPresentation.isPinned(entry.id, accountID: store.account?.id) ? "pin.fill" : "pin")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(WalletPresentation.isPinned(entry.id, accountID: store.account?.id) ? "Unpin currency" : "Pin currency")
+            }
             if entry.id == 1 { CoinAmountView(value: entry.value) }
             else { Text(entry.value.formatted()).monospacedDigit().bold() }
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("wallet.currency.\(entry.id)")
+        .swipeActions(edge: .trailing) {
+            if allowPin {
+                let pinned = WalletPresentation.isPinned(entry.id, accountID: store.account?.id)
+                Button(pinned ? "Unpin" : "Pin") {
+                    WalletPresentation.togglePin(entry.id, accountID: store.account?.id)
+                    walletPinRevision += 1
+                }.tint(pinned ? .orange : GWPalette.accent)
+            }
+        }
+        .contextMenu {
+            if allowPin {
+                let pinned = WalletPresentation.isPinned(entry.id, accountID: store.account?.id)
+                Button(pinned ? "Unpin Currency" : "Pin Currency") {
+                    WalletPresentation.togglePin(entry.id, accountID: store.account?.id)
+                    walletPinRevision += 1
+                }
+            }
+        }
     }
 
     private var inventoryCard: some View {

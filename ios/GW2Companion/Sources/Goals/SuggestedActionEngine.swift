@@ -16,6 +16,7 @@ enum SuggestedActionEngine {
     static func actions(
         for goal: PlayerGoal, craftingPlan: CraftingPlan? = nil,
         achievement: AchievementTrackingState? = nil,
+        legendaryPlan: LegendaryProgressPlan? = nil,
         context: SuggestedActionContext
     ) -> [SuggestedAction] {
         let priority = switch goal.priority { case .high: 50; case .normal: 25; case .low: 0 }
@@ -64,20 +65,26 @@ enum SuggestedActionEngine {
                             objectiveIDs: matching.map { $0.id }))
                     }
                 }
-                if let timed = context.prices[itemID], timed.price.sells.quantity > 0,
-                   timed.price.sells.unitPrice > 0 {
-                    actions.append(SuggestedAction(
-                        type: .buy, title: "View \(name) buy-now price",
-                        reason: "You are missing \(missing.missingQuantity), and current sell offers are available.",
-                        goalID: goal.id, confidence: .derivedStrong,
-                        provenance: [.arenaNetPublic, .arenaNetAccount, .derived],
-                        score: priority + 20))
+                if let timed = context.prices[itemID] {
+                    let state = TradingPostPriceResolver.state(
+                        price: timed, item: nil)
+                    if let title = TradingPostPriceResolver.suggestedActionTitle(
+                        name: name, missingQuantity: missing.missingQuantity, state: state)
+                    {
+                        actions.append(SuggestedAction(
+                            type: .buy, title: title,
+                            reason: "You are missing \(missing.missingQuantity). Opening this shows the current Trading Post price state.",
+                            goalID: goal.id, confidence: .derivedStrong,
+                            provenance: [.arenaNetPublic, .arenaNetAccount, .derived],
+                            score: priority + 20, itemID: itemID))
+                    }
                 } else {
                     actions.append(SuggestedAction(
-                        type: .inspect, title: "Inspect \(name)",
-                        reason: "This unresolved requirement has no currently loaded acquisition price or navigable mapping.",
+                        type: .buy, title: "Check Trading Post price",
+                        reason: "You are missing \(missing.missingQuantity). A Trading Post lookup can be attempted for this item.",
                         goalID: goal.id, confidence: .limitedData,
-                        provenance: [.arenaNetPublic, .derived], score: priority + 5))
+                        provenance: [.arenaNetPublic, .derived],
+                        score: priority + 15, itemID: itemID))
                 }
             }
             if !plan.targetAlreadyOwned && !plan.flattenedRequirements.isEmpty &&
@@ -87,6 +94,85 @@ enum SuggestedActionEngine {
                     reason: "Current account holdings satisfy every flattened requirement.",
                     goalID: goal.id, confidence: .derivedStrong,
                     provenance: [.arenaNetPublic, .arenaNetAccount, .derived], score: priority + 40))
+            }
+        }
+
+        if let plan = legendaryPlan, plan.ownership == .notOwned {
+            for node in plan.sessionNodes where node.missingQuantity > 0 {
+                let name = node.name
+                if node.binding == .tradable {
+                    if let mapping = ValidatedGatheringMappings.mapping(itemID: node.itemID) {
+                        let matching = context.mapObjectives.filter { objective in
+                            let categoryMatches: Bool = switch mapping.gatheringCategory {
+                            case .ore: objective.type == .gatheringOre
+                            case .wood: objective.type == .gatheringWood
+                            case .plant: objective.type == .gatheringPlant
+                            case .other: objective.type == .custom
+                            }
+                            return categoryMatches && (mapping.markerSubtype.map {
+                                objective.name.localizedCaseInsensitiveContains($0)
+                            } ?? true)
+                        }.sorted { lhs, rhs in
+                            distance(to: lhs, player: context.playerPosition) < distance(to: rhs, player: context.playerPosition)
+                        }
+                        if let nearest = matching.first {
+                            let sameMap = nearest.mapId == context.currentMapID
+                            actions.append(SuggestedAction(
+                                type: .gather, title: "Find \(name) gathering locations",
+                                reason: "You need \(node.missingQuantity) more for this legendary plan. Node spawn and yield are not guaranteed.",
+                                goalID: goal.id, confidence: .derivedStrong,
+                                provenance: [.companionObserved, .arenaNetAccount, mapping.provenance, .derived] + (sameMap ? [.liveTelemetry] : []),
+                                score: priority + 80 + (sameMap ? 100 : 0) + distanceScore(to: nearest, player: context.playerPosition),
+                                objectiveIDs: matching.map(\.id)))
+                        }
+                    }
+                    if let timed = context.prices[node.itemID] {
+                        let state = TradingPostPriceResolver.state(price: timed, item: nil)
+                        if let title = TradingPostPriceResolver.suggestedActionTitle(
+                            name: name, missingQuantity: node.missingQuantity, state: state)
+                        {
+                            actions.append(SuggestedAction(
+                                type: .buy, title: title,
+                                reason: "Tradable missing material for this legendary. Opening this shows the current Trading Post price state.",
+                                goalID: goal.id, confidence: .derivedStrong,
+                                provenance: [.arenaNetPublic, .companionObserved, .derived],
+                                score: priority + 20, itemID: node.itemID))
+                        }
+                    } else {
+                        actions.append(SuggestedAction(
+                            type: .buy, title: "Check Trading Post price",
+                            reason: "You are missing \(node.missingQuantity) \(name). A Trading Post lookup can be attempted.",
+                            goalID: goal.id, confidence: .limitedData,
+                            provenance: [.companionObserved, .derived],
+                            score: priority + 15, itemID: node.itemID))
+                    }
+                } else if node.acquisition == .mysticForge || node.status == .readyToCraft {
+                    actions.append(SuggestedAction(
+                        type: .craft, title: "Create \(name) in the Mystic Forge",
+                        reason: node.status == .readyToCraft
+                            ? "Holdings satisfy the known ingredients for this component."
+                            : "This legendary component is created in the Mystic Forge.",
+                        goalID: goal.id, confidence: .derivedStrong,
+                        provenance: [.companionObserved, .derived], score: priority + 40, itemID: node.itemID))
+                } else if node.acquisition == .craft {
+                    actions.append(SuggestedAction(
+                        type: .craft, title: "Craft \(name)",
+                        reason: "This account-bound component is crafted after buying the recipe from a Mystic Forge vendor.",
+                        goalID: goal.id, confidence: .derivedStrong,
+                        provenance: [.companionObserved, .derived], score: priority + 35, itemID: node.itemID))
+                } else if node.acquisition == .vendor {
+                    actions.append(SuggestedAction(
+                        type: .inspect, title: "Get \(name) from a vendor",
+                        reason: node.notes ?? "This account-bound component is purchased from a vendor and cannot be priced on the Trading Post.",
+                        goalID: goal.id, confidence: .derivedStrong,
+                        provenance: [.companionObserved, .derived], score: priority + 25, itemID: node.itemID))
+                } else {
+                    actions.append(SuggestedAction(
+                        type: .markManually, title: "Resolve \(name) manually",
+                        reason: node.notes ?? "This requirement is account-bound or gameplay-gated and is not inferred from other holdings.",
+                        goalID: goal.id, confidence: .limitedData,
+                        provenance: [.companionObserved, .derived], score: priority + 10, itemID: node.itemID))
+                }
             }
         }
 
@@ -112,19 +198,24 @@ enum SuggestedActionEngine {
                         provenance: [.arenaNetPublic, .arenaNetAccount, .derived],
                         score: priority + 40, itemID: itemID))
                 }
-                if let price = context.prices[itemID], price.price.sells.quantity > 0 {
-                    actions.append(SuggestedAction(
-                        type: .buy, title: "View \(name) market price",
-                        reason: "This unfinished item objective has a current lowest sell offer.",
-                        goalID: goal.id, confidence: .derivedStrong,
-                        provenance: [.arenaNetPublic, .arenaNetAccount, .derived],
-                        score: priority + 20, itemID: itemID))
+                if let price = context.prices[itemID] {
+                    let state = TradingPostPriceResolver.state(price: price)
+                    if let title = TradingPostPriceResolver.suggestedActionTitle(
+                        name: name, missingQuantity: 1, state: state)
+                    {
+                        actions.append(SuggestedAction(
+                            type: .buy, title: title,
+                            reason: "This unfinished item objective can be looked up on the Trading Post.",
+                            goalID: goal.id, confidence: .derivedStrong,
+                            provenance: [.arenaNetPublic, .arenaNetAccount, .derived],
+                            score: priority + 20, itemID: itemID))
+                    }
                 } else if !context.craftableItemIDs.contains(itemID) {
                     actions.append(SuggestedAction(
-                        type: .inspect, title: "Inspect \(name)",
-                        reason: "ArenaNet identifies this unfinished objective as an item; no stronger loaded acquisition option is available.",
+                        type: .buy, title: "Check Trading Post price",
+                        reason: "ArenaNet identifies this unfinished objective as an item; a Trading Post lookup can be attempted.",
                         goalID: goal.id, confidence: .authoritative,
-                        provenance: [.arenaNetPublic, .arenaNetAccount], score: priority + 5,
+                        provenance: [.arenaNetPublic, .arenaNetAccount], score: priority + 15,
                         itemID: itemID))
                 }
             }

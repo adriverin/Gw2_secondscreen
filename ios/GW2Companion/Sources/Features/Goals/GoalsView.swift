@@ -35,7 +35,8 @@ struct GoalsView: View {
             async let achievements: Void = store.prepareAchievements()
             async let recipes: Void = store.prepareRecipes()
             async let progress: Void = account.refreshGoalAccountData()
-            _ = await (achievements, recipes, progress)
+            async let legendaries: Void = store.prepareLegendaries()
+            _ = await (achievements, recipes, progress, legendaries)
             await sessions.refreshAPIDerived(recipes: store.recipes, prices: store.marketPrices)
             for goal in store.activeGoals {
                 if case let .achievement(id) = goal.type { await store.loadAchievement(id: id) }
@@ -49,7 +50,7 @@ struct GoalsView: View {
                 if store.activeGoals.isEmpty {
                     ContentUnavailableView(
                         "No Active Goals", systemImage: "target",
-                        description: Text("Track an achievement, plan a craft, or add a custom checklist."))
+                        description: Text("Track an achievement, plan a craft, plan a legendary, or add a custom checklist."))
                 } else {
                     ForEach(store.activeGoals) { goal in
                         if sizeClass == .regular {
@@ -137,6 +138,7 @@ private struct GoalRow: View {
         switch goal.type {
         case .achievement: "trophy.fill"
         case .craftItem: "hammer.fill"
+        case .legendary: "sparkles.rectangle.stack"
         case .custom: "checklist"
         }
     }
@@ -154,6 +156,7 @@ struct GoalDetailView: View {
     @State private var linkBitIndex: Int?
     @State private var showingLinkPicker = false
     @State private var showingDiagnostics = false
+    @State private var priceInspection: PriceInspection?
 
     var body: some View {
         Group {
@@ -164,6 +167,10 @@ struct GoalDetailView: View {
                         switch goal.type {
                         case .achievement: achievementContent(goal)
                         case .craftItem: craftingContent(goal)
+                        case .legendary:
+                            LegendaryGoalContent(goal: goal) { item, quantity in
+                                priceInspection = PriceInspection(item: item, quantity: quantity)
+                            }
                         case .custom: customContent(goal)
                         }
                         actionsSection(goal)
@@ -176,6 +183,9 @@ struct GoalDetailView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { statusMenu(goal) }
                 .sheet(item: $selectedRequirement) { RequirementDetailView(requirement: $0, goalID: goal.id) }
+                .sheet(item: $priceInspection) { inspection in
+                    TradingPostPriceSheet(item: inspection.item, quantity: inspection.quantity)
+                }
                 .sheet(isPresented: $showingLinkPicker) {
                     ObjectiveLinkPicker(goalID: goal.id, achievementBitIndex: linkBitIndex)
                 }
@@ -187,6 +197,9 @@ struct GoalDetailView: View {
                         }
                     }
                     if let plan = store.craftingPlan(for: goal, account: account) {
+                        await store.refreshPrices(for: plan)
+                    }
+                    if let plan = store.legendaryPlan(for: goal, account: account) {
                         await store.refreshPrices(for: plan)
                     }
                     await sessions.refreshAPIDerived(recipes: store.recipes, prices: store.marketPrices)
@@ -444,6 +457,23 @@ struct GoalDetailView: View {
                     if [.navigate, .gather].contains(action.type), !action.objectiveIDs.isEmpty {
                         Button("Navigate") { navigate(action, goal: goal) }
                             .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                    } else if action.type == .buy, let itemID = action.itemID {
+                        Button("Price") {
+                            let item = store.craftableItems[itemID]
+                                ?? account.itemMetadata[itemID]
+                                ?? store.achievementItems[itemID]
+                                ?? ItemPlaceholder.metadata(id: itemID)
+                            let quantity = store.craftingPlan(for: goal, account: account)?
+                                .flattenedRequirements.first(where: {
+                                    if case let .item(id) = $0.requirement { return id == itemID }
+                                    return false
+                                })?.missingQuantity
+                                ?? store.legendaryPlan(for: goal, account: account)?
+                                .sessionNodes.first(where: { $0.itemID == itemID })?.missingQuantity
+                                ?? 1
+                            priceInspection = PriceInspection(item: item, quantity: max(1, quantity))
+                        }
+                        .buttonStyle(.borderedProminent).tint(GWPalette.accent)
                     } else if action.type == .craft, let itemID = action.itemID,
                               let item = store.craftableItems[itemID] ?? store.achievementItems[itemID] {
                         Button("Plan") { store.addCraftingGoal(item: item, quantity: 1, priority: goal.priority) }
@@ -506,6 +536,7 @@ struct GoalDetailView: View {
         return SuggestedActionEngine.actions(
             for: goal, craftingPlan: store.craftingPlan(for: goal, account: account),
             achievement: store.achievementTracking(for: goal, account: account),
+            legendaryPlan: store.legendaryPlan(for: goal, account: account),
             context: SuggestedActionContext(
                 currentMapID: telemetry.latest?.map?.id,
                 playerPosition: playerPoint, mapObjectives: objectives.objectives,
@@ -655,13 +686,23 @@ struct RequirementDetailView: View {
                         }
                     }
                 }
-                if case let .item(id) = requirement.requirement,
-                   let estimate = MarketCalculator.buyNow(price: store.marketPrices[id], quantity: requirement.missingQuantity) {
-                    Section("Market") {
-                        LabeledContent("Lowest sell offer", value: CoinAmount(copperValue: estimate.unitCopper).formatted)
-                        LabeledContent("Estimated buy-now cost", value: estimate.amount.formatted)
-                        Text("\(requirement.missingQuantity) × \(CoinAmount(copperValue: estimate.unitCopper).formatted), checked \(estimate.checkedAt.formatted(date: .omitted, time: .shortened)).")
-                            .font(.caption).foregroundStyle(.secondary)
+                if case let .item(id) = requirement.requirement {
+                    let item = store.craftableItems[id] ?? account.itemMetadata[id] ?? store.achievementItems[id]
+                    let state = TradingPostPriceResolver.state(
+                        price: store.marketPrices[id], item: item, failed: store.priceError)
+                    let presentation = TradingPostPriceResolver.presentation(
+                        itemID: id, itemName: displayName, missingQuantity: requirement.missingQuantity, state: state)
+                    Section("Trading Post") {
+                        LabeledContent("Status", value: presentation.detailStatus)
+                        if let unit = presentation.unitCopper {
+                            LabeledContent("Lowest sell offer", value: "\(CoinAmount(copperValue: unit).formatted) each")
+                        }
+                        if let buyNow = presentation.buyNowCopper {
+                            LabeledContent("Estimated buy-now", value: CoinAmount(copperValue: buyNow).formatted)
+                        }
+                        if let updated = presentation.updatedAt {
+                            LabeledContent("Updated", value: updated.formatted(date: .omitted, time: .shortened))
+                        }
                     }
                 }
                 Section("Ways To Get It") {
@@ -694,6 +735,11 @@ struct RequirementDetailView: View {
             }
             .navigationTitle(displayName)
             .toolbar { Button("Done") { dismiss() } }
+            .task {
+                if case let .item(id) = requirement.requirement, requirement.missingQuantity > 0 {
+                    await store.refreshPrice(itemID: id, force: true)
+                }
+            }
             .sheet(isPresented: $showingAddMethod) {
                 AddAcquisitionMethodView(target: target)
             }

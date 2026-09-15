@@ -102,7 +102,60 @@ struct AccountDomainStatus: Equatable, Sendable, Identifiable {
 }
 
 enum WalletPresentation {
-    static let pinnedIDs = [1, 4, 2, 3, 23, 63]
+    static let commonDefaultIDs = [1, 4, 2, 3, 23, 63]
+    static let pinnedKeyPrefix = "wallet.pinned.v1."
+    static let unpinnedKeyPrefix = "wallet.unpinnedDefaults.v1."
+    static let allExpandedKeyPrefix = "wallet.allExpanded.v1."
+
+    static func scope(_ accountID: String?) -> String {
+        let raw = accountID ?? "local-anonymous"
+        return raw.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "_" }.map(String.init).joined()
+    }
+
+    static func extraPinnedIDs(accountID: String?, defaults: UserDefaults = .standard) -> [Int] {
+        defaults.array(forKey: pinnedKeyPrefix + scope(accountID)) as? [Int] ?? []
+    }
+
+    static func unpinnedDefaultIDs(accountID: String?, defaults: UserDefaults = .standard) -> Set<Int> {
+        Set(defaults.array(forKey: unpinnedKeyPrefix + scope(accountID)) as? [Int] ?? [])
+    }
+
+    static func isAllExpanded(accountID: String?, defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: allExpandedKeyPrefix + scope(accountID))
+    }
+
+    static func setAllExpanded(_ expanded: Bool, accountID: String?, defaults: UserDefaults = .standard) {
+        defaults.set(expanded, forKey: allExpandedKeyPrefix + scope(accountID))
+    }
+
+    static func isPinned(_ id: Int, accountID: String?, defaults: UserDefaults = .standard) -> Bool {
+        pinnedIDs(accountID: accountID, defaults: defaults).contains(id)
+    }
+
+    static func togglePin(_ id: Int, accountID: String?, defaults: UserDefaults = .standard) {
+        var extra = extraPinnedIDs(accountID: accountID, defaults: defaults)
+        var unpinned = unpinnedDefaultIDs(accountID: accountID, defaults: defaults)
+        if isPinned(id, accountID: accountID, defaults: defaults) {
+            if Self.commonDefaultIDs.contains(id) {
+                unpinned.insert(id)
+            }
+            extra.removeAll { $0 == id }
+        } else {
+            unpinned.remove(id)
+            if !Self.commonDefaultIDs.contains(id) {
+                extra.append(id)
+            }
+        }
+        defaults.set(extra, forKey: pinnedKeyPrefix + scope(accountID))
+        defaults.set(Array(unpinned), forKey: unpinnedKeyPrefix + scope(accountID))
+    }
+
+    static func pinnedIDs(accountID: String?, defaults: UserDefaults = .standard) -> [Int] {
+        let unpinned = unpinnedDefaultIDs(accountID: accountID, defaults: defaults)
+        let extra = extraPinnedIDs(accountID: accountID, defaults: defaults)
+        let defaultsKept = commonDefaultIDs.filter { !unpinned.contains($0) && !extra.contains($0) }
+        return defaultsKept + extra.filter { !defaultsKept.contains($0) }
+    }
 
     static func ordered(
         wallet: [WalletEntry], currencies: [Int: CurrencyMetadata], query: String
@@ -125,10 +178,19 @@ enum WalletPresentation {
     }
 
     static func pinned(
-        wallet: [WalletEntry], currencies: [Int: CurrencyMetadata]
+        wallet: [WalletEntry], currencies: [Int: CurrencyMetadata],
+        accountID: String? = nil, defaults: UserDefaults = .standard
     ) -> [WalletEntry] {
-        pinnedIDs.compactMap { id in wallet.first(where: { $0.id == id }) }
-            .filter { currencies[$0.id] != nil || true }
+        let ids = pinnedIDs(accountID: accountID, defaults: defaults)
+        return ids.compactMap { id in wallet.first(where: { $0.id == id }) }
+    }
+
+    static func remaining(
+        wallet: [WalletEntry], currencies: [Int: CurrencyMetadata], query: String,
+        accountID: String? = nil, defaults: UserDefaults = .standard
+    ) -> [WalletEntry] {
+        let pinned = Set(pinnedIDs(accountID: accountID, defaults: defaults))
+        return ordered(wallet: wallet, currencies: currencies, query: query).filter { !pinned.contains($0.id) }
     }
 }
 

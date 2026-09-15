@@ -53,18 +53,19 @@ enum MapDetailMode: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Extra source zoom requested at moderate camera zooms. Far continent views stay unbiased.
+    /// Extra source zoom is Detailed-only. Balanced uses display zoom so the setting is visible.
     func sourceZoomBias(displayZoom: Int, referenceZoom: Int, visibleTileCountWithoutBias: Int) -> Int {
+        guard self == .detailed else { return 0 }
         guard displayZoom >= 5, displayZoom < referenceZoom else { return 0 }
         if visibleTileCountWithoutBias > 40 { return 0 }
         return 1
     }
 
-    /// Marker types remain visible until this zoom (inclusive). Lower means shown farther out.
+    /// Lowest zoom at which Detailed still keeps extra marker types that Balanced has already dropped.
     var markerCullZoom: Int {
         switch self {
-        case .balanced: 3
-        case .detailed: 2
+        case .balanced: 6
+        case .detailed: 4
         }
     }
 

@@ -67,6 +67,23 @@ final class AppNavigation: ObservableObject {
     @Published var characterPath: [CharacterRoute] = []
     @Published var inventorySection: InventoryHubSection = .all
     @Published var inventoryCharacterName: String?
+    @Published var sidebarHidden = false
+    @Published var navigatorHidden = false
+
+    var splitColumnVisibility: NavigationSplitViewVisibility {
+        get { sidebarHidden ? .detailOnly : .all }
+        set { sidebarHidden = newValue == .detailOnly }
+    }
+
+    var mapChromeHidden: Bool { sidebarHidden && navigatorHidden }
+
+    func toggleSidebar() { sidebarHidden.toggle() }
+    func toggleNavigator() { navigatorHidden.toggle() }
+    func toggleMapChrome() {
+        let hide = !mapChromeHidden
+        sidebarHidden = hide
+        navigatorHidden = hide
+    }
 
     var phoneRootTab: PhoneRootTab {
         get {

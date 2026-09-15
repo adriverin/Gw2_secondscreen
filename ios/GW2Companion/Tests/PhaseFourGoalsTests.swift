@@ -200,6 +200,41 @@ final class PhaseFourMarketAndActionTests: XCTestCase {
         XCTAssertEqual(MarketCalculator.buyState(price: nil), .noPriceRecord)
     }
 
+    func testPriceActionNeverPromisesABlankBuyNowScreen() throws {
+        let values = try fixture([CommercePrice].self, "prices-phase4")
+        let available = TimedCommercePrice(price: values[0], fetchedAt: Date())
+        let noSells = TimedCommercePrice(price: values[2], fetchedAt: Date())
+        let bound = ItemMetadata(id: 1, name: "Bound", icon: nil, rarity: "Basic", flags: ["AccountBound"])
+        XCTAssertEqual(
+            TradingPostPriceResolver.suggestedActionTitle(
+                name: "Cotton Scrap", missingQuantity: 37,
+                state: TradingPostPriceResolver.state(price: available)),
+            "Buy 37 • \(CoinAmount(copperValue: Int64(values[0].sells.unitPrice) * 37).formatted)")
+        XCTAssertEqual(
+            TradingPostPriceResolver.suggestedActionTitle(
+                name: "Cotton Scrap", missingQuantity: 37,
+                state: TradingPostPriceResolver.state(price: nil)),
+            "Check Trading Post price")
+        XCTAssertEqual(
+            TradingPostPriceResolver.suggestedActionTitle(
+                name: "Cotton Scrap", missingQuantity: 37,
+                state: TradingPostPriceResolver.state(price: noSells)),
+            "Check Trading Post price")
+        XCTAssertNil(
+            TradingPostPriceResolver.suggestedActionTitle(
+                name: "Bound", missingQuantity: 1,
+                state: TradingPostPriceResolver.state(price: nil, item: bound)))
+        XCTAssertNotEqual(
+            TradingPostPriceResolver.presentation(
+                itemID: 1, itemName: "Cotton Scrap", missingQuantity: 37,
+                state: .unavailable).detailStatus, "")
+        XCTAssertEqual(
+            TradingPostPriceResolver.presentation(
+                itemID: 1, itemName: "Cotton Scrap", missingQuantity: 37,
+                state: .noSellListings(noSells)).detailStatus,
+            "No current sell listings")
+    }
+
     func testCurrentMapGatheringOutranksInspectUsingExplicitScore() {
         let targetRecipe = RecipeDefinition(
             id: 50, type: "Weapon", outputItemID: 9000, outputItemCount: 1,

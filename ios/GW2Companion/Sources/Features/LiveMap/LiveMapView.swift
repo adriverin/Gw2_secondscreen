@@ -28,6 +28,9 @@ struct LiveMapView: View {
     @AppStorage("developer.mode.enabled") private var developerMode = false
     @AppStorage("developer.map.tileGrid") private var showTileDebugGrid = false
     @AppStorage(MapDetailMode.storageKey) private var mapDetailRaw = MapDetailMode.balanced.rawValue
+    @AppStorage("map.panel.todayExpanded") private var todayExpanded = false
+    @AppStorage("map.panel.goalsExpanded") private var goalsExpanded = false
+    @AppStorage("map.panel.sessionExpanded") private var sessionExpanded = false
 
     private var playerPoint: ContinentPoint? {
         guard telemetry.latest?.positionAvailable == true, let player = telemetry.latest?.player else { return nil }
@@ -45,22 +48,17 @@ struct LiveMapView: View {
                 if horizontalSizeClass == .regular {
                     HStack(spacing: 0) {
                         mapSurface
-                        Divider()
-                        VStack(spacing: 0) {
-                            if sessions.activeSession != nil {
-                                ActiveSessionCompactView()
-                                Divider()
-                            } else if today.snapshot != nil {
-                                TodayCompactView()
-                                Divider()
-                            } else if let goal = goals.activeGoals.first {
-                                mapGoalPanel(goal)
-                                Divider()
+                        if !navigation.navigatorHidden {
+                            Divider()
+                            VStack(spacing: 0) {
+                                if !navigation.mapChromeHidden {
+                                    mapSidePanels
+                                }
+                                NavigatorPanelView(player: playerPoint, onSelect: select)
                             }
-                            NavigatorPanelView(player: playerPoint, onSelect: select)
+                            .frame(minWidth: 280, idealWidth: 310, maxWidth: 340)
+                            .background(.regularMaterial)
                         }
-                        .frame(minWidth: 280, idealWidth: 310, maxWidth: 340)
-                        .background(.regularMaterial)
                     }
                 } else {
                     mapSurface
@@ -126,6 +124,8 @@ struct LiveMapView: View {
                 }(),
                 showTiles: artworkAvailable,
                 onSelectObjective: select,
+                onBackgroundTap: { navigation.toggleMapChrome() },
+                routeIDs: Set(objectives.route?.objectives ?? []),
                 onVisibleCoordinateChange: { center, zoom, tileWorld, tile, tileCount, markerCount in
                     viewportCenter = center
                     viewportZoom = zoom
@@ -148,42 +148,158 @@ struct LiveMapView: View {
                 .ignoresSafeArea(edges: .top)
 
             VStack(spacing: 10) {
-                header
+                HStack(alignment: .top, spacing: 8) {
+                    sidebarRestoreButton
+                    compactHUD
+                }
                 connectionBanner
                 if let notice = objectives.arrivalNotice { arrivalBanner(notice) }
                 if metadataFailed || !artworkAvailable { unavailableArtworkBanner }
-                if developerMode { calibrationHUD }
-                objectiveStatusBanner
+                if developerMode && !navigation.mapChromeHidden { calibrationHUD }
+                if !navigation.mapChromeHidden { objectiveStatusBanner }
                 Spacer()
-                if horizontalSizeClass != .regular, sessions.activeSession != nil {
-                    ActiveSessionCompactView()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
-                } else if horizontalSizeClass != .regular, let goal = goals.activeGoals.first { mapGoalPanel(goal) }
-                if let target = objectives.currentTarget { targetCard(target) }
-                currentCharacterPanel
-                controls
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if !navigation.mapChromeHidden {
+                            if horizontalSizeClass != .regular {
+                                mapSidePanels
+                            }
+                            if let target = objectives.currentTarget { targetCard(target) }
+                            currentCharacterPanel
+                            controls
+                        } else if let target = objectives.currentTarget {
+                            immersiveTargetHint(target)
+                        }
+                    }
+                    Spacer()
+                    navigatorRestoreButton.padding(.bottom, 4)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 8)
         }
     }
 
+    @ViewBuilder
+    private var mapSidePanels: some View {
+        if sessions.activeSession != nil {
+            ActiveSessionCompactView(isExpanded: $sessionExpanded)
+                .background(horizontalSizeClass == .regular ? AnyShapeStyle(.clear) : AnyShapeStyle(.regularMaterial),
+                            in: RoundedRectangle(cornerRadius: 15))
+        } else if today.snapshot != nil {
+            TodayCompactView(isExpanded: $todayExpanded)
+                .background(horizontalSizeClass == .regular ? AnyShapeStyle(.clear) : AnyShapeStyle(.regularMaterial),
+                            in: RoundedRectangle(cornerRadius: 15))
+        } else if let goal = goals.activeGoals.first {
+            mapGoalPanel(goal)
+        }
+    }
+
+    private var sidebarRestoreButton: some View {
+        Button(action: navigation.toggleSidebar) {
+            Image(systemName: "sidebar.left")
+                .font(.headline)
+                .padding(10)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(navigation.sidebarHidden ? "Show Navigation" : "Hide Navigation")
+        .accessibilityIdentifier("map.chrome.sidebar")
+    }
+
+    private var navigatorRestoreButton: some View {
+        Button {
+            if horizontalSizeClass == .regular {
+                navigation.toggleNavigator()
+            } else if showingNavigator {
+                showingNavigator = false
+                navigation.navigatorHidden = true
+            } else {
+                navigation.navigatorHidden = false
+                showingNavigator = true
+            }
+        } label: {
+            Image(systemName: "list.bullet.rectangle")
+                .font(.headline)
+                .padding(10)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            (horizontalSizeClass == .regular ? navigation.navigatorHidden : !showingNavigator)
+                ? "Show Navigator" : "Hide Navigator")
+        .accessibilityIdentifier("map.chrome.navigator")
+    }
+
+    private var chromeRestoreButtons: some View {
+        sidebarRestoreButton
+    }
+
+    private var compactHUD: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(telemetry.state == .connectedLive ? "LIVE" : telemetry.state.label)
+                        .font(.caption2.bold())
+                        .foregroundStyle(statusColor)
+                    Text(metadata?.name ?? telemetry.latest?.map.map { "Map ID \($0.id)" } ?? "Live Map")
+                        .font(.headline)
+                }
+                if let target = objectives.currentTarget {
+                    HStack(spacing: 6) {
+                        Text(target.name).font(.caption).lineLimit(1)
+                        if let playerPoint {
+                            Text(ObjectiveDistanceEngine.cardinalDirection(from: playerPoint, to: target.coordinate).rawValue)
+                                .font(.caption.bold())
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Button { if telemetry.state == .unpaired { showingPairing = true } } label: {
+                Text(telemetry.state.label).font(.caption2.bold()).foregroundStyle(statusColor)
+                    .padding(.horizontal, 9).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15)).padding(.top, 8)
+    }
+
+    private func immersiveTargetHint(_ target: MapObjective) -> some View {
+        HStack {
+            Image(systemName: "location.north.fill").foregroundStyle(.cyan)
+            Text(target.name).font(.caption.bold()).lineLimit(1)
+            Spacer()
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: Capsule())
+    }
+
     private func mapGoalPanel(_ goal: PlayerGoal) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ACTIVE GOAL").font(.caption2.bold()).foregroundStyle(.secondary)
-                    Text(goal.title).font(.subheadline.bold()).lineLimit(1)
+            Button { goalsExpanded.toggle() } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("GOALS").font(.caption2.bold()).foregroundStyle(.secondary)
+                        Text(goal.title).font(.subheadline.bold()).lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: goalsExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(goalsExpanded ? "Goals expanded" : "Goals collapsed")
+            if goalsExpanded {
                 Button("Open") { goals.selectedGoalID = goal.id; navigation.selectedTab = .goals }
                     .font(.caption.bold())
-            }
-            if let action = goalAction {
-                Text("Next useful: \(action.title)").font(.caption).lineLimit(2)
-                if [.navigate, .gather].contains(action.type), !action.objectiveIDs.isEmpty {
-                    Button("Show") { navigate(action, goal: goal) }
-                        .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                if let action = goalAction {
+                    Text("Next useful: \(action.title)").font(.caption).lineLimit(2)
+                    if [.navigate, .gather].contains(action.type), !action.objectiveIDs.isEmpty {
+                        Button("Show") { navigate(action, goal: goal) }
+                            .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                    }
                 }
             }
         }
@@ -203,6 +319,7 @@ struct LiveMapView: View {
         let actions = SuggestedActionEngine.actions(
             for: goal, craftingPlan: goals.craftingPlan(for: goal, account: account),
             achievement: goals.achievementTracking(for: goal, account: account),
+            legendaryPlan: goals.legendaryPlan(for: goal, account: account),
             context: SuggestedActionContext(
                 currentMapID: telemetry.latest?.map?.id, playerPosition: playerPoint,
                 mapObjectives: objectives.objectives, prices: goals.marketPrices, itemNames: names,
@@ -223,22 +340,7 @@ struct LiveMapView: View {
         selectedObjectiveID = objective.id
     }
 
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(metadata?.name ?? telemetry.latest?.map.map { "Map ID \($0.id)" } ?? "Live Map").font(.headline)
-                Text("\(objectives.visibleObjectives.count) visible objectives")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button { if telemetry.state == .unpaired { showingPairing = true } } label: {
-                Text(telemetry.state.label).font(.caption2.bold()).foregroundStyle(statusColor)
-                    .padding(.horizontal, 9).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15)).padding(.top, 8)
-    }
+    private var header: some View { compactHUD }
 
     private func targetCard(_ target: MapObjective) -> some View {
         Button { select(target) } label: {
@@ -267,8 +369,12 @@ struct LiveMapView: View {
             Button { showingLayers = true } label: { Label("Layers", systemImage: "square.3.layers.3d") }
                 .buttonStyle(MapControlButtonStyle())
             if horizontalSizeClass != .regular {
-                Button { showingNavigator = true } label: { Label("Nearby", systemImage: "list.bullet") }
+                Button {
+                    navigation.navigatorHidden = false
+                    showingNavigator = true
+                } label: { Label("Nearby", systemImage: "list.bullet") }
                     .buttonStyle(MapControlButtonStyle())
+                    .accessibilityLabel("Show Navigator")
             }
             Spacer()
             Button { focusRequest = MapFocusRequest(mode: .player) } label: { Image(systemName: "location.fill") }
@@ -427,6 +533,23 @@ struct LiveMapView: View {
             }
             Text("Map ID \(metadata?.id ?? telemetry.latest?.map?.id ?? -1)  continent \(continentID)  floor \(metadata?.defaultFloor ?? 1)")
             Text("API max zoom \(config.advertisedMaxZoom)  projection reference zoom \(config.referenceZoom)  user zoom \(viewportZoom)")
+            let mode = MapDetailMode(rawValue: mapDetailRaw) ?? .balanced
+            let viewport = MapViewportTransform(
+                center: viewportCenter, zoom: viewportZoom, magnification: 1, dragOffset: .zero,
+                size: CGSize(width: 390, height: 844), tileReferenceZoom: config.referenceZoom)
+                .visibleContinentRect(marginPoints: 256)
+            let sourceZoom = MapRasterDetail.sourceZoom(
+                displayZoom: viewportZoom, continentID: continentID, viewport: viewport, mode: mode)
+            Text("display zoom \(viewportZoom)  source artwork zoom \(sourceZoom)  mode \(mode.title)")
+            let comparison = MapDetailPolicy.comparison(
+                objectives: objectives.visibleObjectives, displayZoom: viewportZoom,
+                balancedSourceZoom: MapRasterDetail.sourceZoom(
+                    displayZoom: viewportZoom, continentID: continentID, viewport: viewport, mode: .balanced),
+                detailedSourceZoom: MapRasterDetail.sourceZoom(
+                    displayZoom: viewportZoom, continentID: continentID, viewport: viewport, mode: .detailed),
+                targetID: objectives.currentTargetID, routeIDs: Set(objectives.route?.objectives ?? []))
+            Text(comparison.balanced.diagnosticsText(mode: .balanced))
+            Text(comparison.detailed.diagnosticsText(mode: .detailed))
             Toggle("Tile debug grid", isOn: $showTileDebugGrid).font(.caption)
         }
         .font(.system(size: 11, design: .monospaced))

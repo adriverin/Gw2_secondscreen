@@ -21,6 +21,7 @@ final class AccountStore: ObservableObject {
     @Published private(set) var sharedSlots: [InventorySlot?] = []
     @Published private(set) var materials: [AccountMaterial] = []
     @Published private(set) var materialCategories: [Int: MaterialCategoryMetadata] = [:]
+    @Published private(set) var materialSnapshot: MaterialStorageSnapshot?
     @Published private(set) var wallet: [WalletEntry] = []
     @Published private(set) var currencies: [Int: CurrencyMetadata] = [:]
     @Published private(set) var itemMetadata: [Int: ItemMetadata] = [:]
@@ -29,6 +30,7 @@ final class AccountStore: ObservableObject {
     @Published private(set) var unlockedRecipeIDs: Set<Int> = []
     @Published private(set) var unlockedSkinIDs: Set<Int> = []
     @Published private(set) var unlockedMiniIDs: Set<Int> = []
+    @Published private(set) var legendaryArmory: [AccountLegendaryArmorySlot] = []
     @Published private(set) var accountLastRefreshedAt: Date?
     @Published private(set) var goalsAccountLastRefreshedAt: Date?
     @Published private(set) var accountMetadataUpdatedAt: Date?
@@ -51,6 +53,7 @@ final class AccountStore: ObservableObject {
     private let api: GW2APIClient
     private let cache: MetadataDiskCache
     private var hasStarted = false
+    private var materialSnapshotGeneration = 0
 
     init(api: GW2APIClient, cache: MetadataDiskCache = MetadataDiskCache()) {
         self.api = api
@@ -58,6 +61,9 @@ final class AccountStore: ObservableObject {
     }
 
     var permissions: PermissionSet { PermissionSet(tokenInfo?.permissions ?? []) }
+    var legendaryArmoryCounts: [Int: Int] {
+        Dictionary(uniqueKeysWithValues: legendaryArmory.filter { $0.count > 0 }.map { ($0.id, $0.count) })
+    }
     var currentCharacter: GW2Character? {
         CurrentCharacterMatcher.match(liveName: liveCharacterName, characters: characters)
     }
@@ -136,6 +142,7 @@ final class AccountStore: ObservableObject {
         sharedSlots = []
         materials = []
         materialCategories = [:]
+        materialSnapshot = nil
         wallet = []
         currencies = [:]
         itemMetadata = [:]
@@ -144,6 +151,7 @@ final class AccountStore: ObservableObject {
         unlockedRecipeIDs = []
         unlockedSkinIDs = []
         unlockedMiniIDs = []
+        legendaryArmory = []
         accountLastRefreshedAt = nil
         goalsAccountLastRefreshedAt = nil
         accountMetadataUpdatedAt = nil
@@ -184,6 +192,7 @@ final class AccountStore: ObservableObject {
             }
 
             await loadGoalAccountData(permissions: allowed)
+            await refreshLegendaryArmory(allowed: allowed)
 
             let failed = domainStates.values.filter { $0.phase == .failed }
             let liveCount = domainStates.values.filter { $0.phase == .live }.count
@@ -206,11 +215,12 @@ final class AccountStore: ObservableObject {
     func refreshGoalAccountData() async {
         guard connectionState == .connected else { return }
         await loadGoalAccountData(permissions: permissions)
+        await refreshLegendaryArmory(allowed: permissions)
         await saveSnapshot()
     }
 
     func loadCharacterDetails(_ character: GW2Character, force: Bool = false) async {
-        if !force, characterDetails[character.name] != nil { return }
+        if !force, let existing = characterDetails[character.name], existing.source == .live { return }
         guard !loadingCharacterNames.contains(character.name) else { return }
         loadingCharacterNames.insert(character.name)
         defer { loadingCharacterNames.remove(character.name) }
@@ -297,7 +307,26 @@ final class AccountStore: ObservableObject {
 
         let parts = [detail.buildError, detail.equipmentError, detail.inventoryError].compactMap { $0 }
         detail.errorMessage = parts.isEmpty ? nil : parts.first
+        if parts.isEmpty {
+            detail.source = .live
+            detail.updatedAt = Date()
+        } else if let previous = characterDetails[character.name],
+                  (!previous.equipmentTabs.isEmpty || !previous.buildTabs.isEmpty) {
+            if detail.equipmentTabs.isEmpty { detail.equipmentTabs = previous.equipmentTabs }
+            if detail.buildTabs.isEmpty { detail.buildTabs = previous.buildTabs }
+            if detail.inventory == nil { detail.inventory = previous.inventory }
+            if detail.items.isEmpty { detail.items = previous.items }
+            if detail.specializations.isEmpty { detail.specializations = previous.specializations }
+            if detail.traits.isEmpty { detail.traits = previous.traits }
+            if detail.skills.isEmpty { detail.skills = previous.skills }
+            detail.source = .cached
+            detail.updatedAt = previous.updatedAt ?? Date()
+        } else {
+            detail.source = connectionState == .connected ? .live : .cached
+            detail.updatedAt = Date()
+        }
         characterDetails[character.name] = detail
+        await saveSnapshot()
     }
 
     func eliteSpecializationName(for character: GW2Character) -> String? {
@@ -335,6 +364,7 @@ final class AccountStore: ObservableObject {
         itemMetadata = (try? decoder.decode([ItemMetadata].self, from: Data(Self.fixtureItems.utf8)))
             .map { Dictionary(uniqueKeysWithValues: $0.map { ($0.id, $0) }) } ?? [:]
         materialCategories = [5: MaterialCategoryMetadata(id: 5, name: "Basic Crafting Materials", items: [19697], order: 1)]
+        rebuildMaterialSnapshot()
         wallet = [WalletEntry(id: 1, value: 3_824_100), WalletEntry(id: 2, value: 1_423_443), WalletEntry(id: 23, value: 481)]
         currencies = [
             1: CurrencyMetadata(id: 1, name: "Coin", description: "Your liquid coin balance.", icon: nil, order: 1),
@@ -543,6 +573,19 @@ final class AccountStore: ObservableObject {
         goalsAccountLastRefreshedAt = Date()
     }
 
+    private func refreshLegendaryArmory(allowed: PermissionSet) async {
+        guard allowed.contains(.account), allowed.contains(.inventories), allowed.contains(.unlocks) else {
+            return
+        }
+        do {
+            legendaryArmory = try await api.accountLegendaryArmory()
+        } catch {
+            if legendaryArmory.isEmpty {
+                legendaryArmory = []
+            }
+        }
+    }
+
 #if DEBUG
     private static let fixtureCharacters = #"""
     [{"name":"Andrea","race":"Human","gender":"Female","profession":"Mesmer","level":80,"age":4467600,"created":"2018-05-18T17:42:00Z","deaths":83,"crafting":[{"discipline":"Tailor","rating":500,"active":true}]},{"name":"Test Mesmer","race":"Human","gender":"Female","profession":"Mesmer","level":80,"age":1241000,"created":"2025-01-01T12:00:00Z","deaths":14,"crafting":[]},{"name":"Sylvari Ranger","race":"Sylvari","gender":"Male","profession":"Ranger","level":35,"age":1537200,"created":"2024-01-04T12:00:00Z","deaths":12,"crafting":[]}]
@@ -583,6 +626,38 @@ final class AccountStore: ObservableObject {
         }
         materialCategories = (try? await api.materialCategories(ids: materials.map(\.category))) ?? materialCategories
         inventoryUpdatedAt = Date()
+        await refreshMaterialItemMetadata(priority: .high)
+        rebuildMaterialSnapshot()
+    }
+
+    private func refreshMaterialItemMetadata(priority: APIRequestPriority) async {
+        let ids = materials.map(\.id)
+        guard !ids.isEmpty else { return }
+        if let resolvedItems = try? await api.items(ids: ids, priority: priority) {
+            itemMetadata.merge(resolvedItems) { _, new in new }
+        }
+        for material in materials where itemMetadata[material.id] == nil {
+            itemMetadata[material.id] = ItemPlaceholder.metadata(id: material.id)
+        }
+    }
+
+    func rebuildMaterialSnapshot() {
+        materialSnapshotGeneration += 1
+        let generation = materialSnapshotGeneration
+        let materials = materials
+        let categories = materialCategories
+        let metadata = itemMetadata
+        let source = dataSource
+        let updatedAt = inventoryUpdatedAt ?? Date()
+        Task.detached(priority: .userInitiated) {
+            let snapshot = MaterialStorageSnapshotBuilder.build(
+                materials: materials, categories: categories, metadata: metadata,
+                source: source, updatedAt: updatedAt)
+            await MainActor.run {
+                guard self.materialSnapshotGeneration == generation else { return }
+                self.materialSnapshot = snapshot
+            }
+        }
     }
 
     private func loadCharacterInventories() async {
@@ -666,11 +741,17 @@ final class AccountStore: ObservableObject {
         unlockedRecipeIDs = Set(snapshot.unlockedRecipeIDs ?? [])
         unlockedSkinIDs = Set(snapshot.unlockedSkinIDs ?? [])
         unlockedMiniIDs = Set(snapshot.unlockedMiniIDs ?? [])
+        legendaryArmory = snapshot.legendaryArmory ?? []
         accountLastRefreshedAt = snapshot.accountLastRefreshedAt
         goalsAccountLastRefreshedAt = snapshot.goalsAccountLastRefreshedAt
         accountMetadataUpdatedAt = snapshot.accountMetadataUpdatedAt ?? snapshot.accountLastRefreshedAt
         charactersUpdatedAt = snapshot.charactersUpdatedAt ?? snapshot.accountLastRefreshedAt
         inventoryUpdatedAt = snapshot.inventoryUpdatedAt ?? snapshot.accountLastRefreshedAt
+        characterDetails = (snapshot.characterDetails ?? [:]).mapValues { detail in
+            var copy = detail
+            copy.source = .cached
+            return copy
+        }
         isStale = true
         dataSource = .cached
         connectionState = snapshot.tokenInfo == nil ? .disconnected : .connected
@@ -682,6 +763,7 @@ final class AccountStore: ObservableObject {
                 domainStates[domain] = status
             }
         }
+        rebuildMaterialSnapshot()
     }
 
     private func saveSnapshot() async {
@@ -692,11 +774,13 @@ final class AccountStore: ObservableObject {
             wallet: wallet, currencies: currencies, itemMetadata: itemMetadata, holdings: holdings,
             achievementProgress: achievementProgress, unlockedRecipeIDs: Array(unlockedRecipeIDs),
             unlockedSkinIDs: Array(unlockedSkinIDs), unlockedMiniIDs: Array(unlockedMiniIDs),
+            legendaryArmory: legendaryArmory,
             accountLastRefreshedAt: accountLastRefreshedAt,
             goalsAccountLastRefreshedAt: goalsAccountLastRefreshedAt,
             accountMetadataUpdatedAt: accountMetadataUpdatedAt,
             charactersUpdatedAt: charactersUpdatedAt,
-            inventoryUpdatedAt: inventoryUpdatedAt)
+            inventoryUpdatedAt: inventoryUpdatedAt,
+            characterDetails: characterDetails)
         await cache.save(snapshot, named: "account-snapshot")
     }
 }
@@ -722,11 +806,13 @@ private struct AccountSnapshot: Codable, Sendable {
     let unlockedRecipeIDs: [Int]?
     let unlockedSkinIDs: [Int]?
     let unlockedMiniIDs: [Int]?
+    var legendaryArmory: [AccountLegendaryArmorySlot]?
     let accountLastRefreshedAt: Date?
     let goalsAccountLastRefreshedAt: Date?
     var accountMetadataUpdatedAt: Date?
     var charactersUpdatedAt: Date?
     var inventoryUpdatedAt: Date?
+    var characterDetails: [String: CharacterDetailData]?
 }
 
 extension AccountStore {

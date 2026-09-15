@@ -47,6 +47,10 @@ final class GoalStore: ObservableObject {
     @Published private(set) var achievementState: GoalMetadataLoadState = .idle
     @Published private(set) var recipeState: GoalMetadataLoadState = .idle
     @Published private(set) var priceError: String?
+    @Published private(set) var legendaryCatalog: LegendaryCatalog?
+    @Published private(set) var legendaryArmoryDefinitions: [LegendaryArmoryDefinition] = []
+    @Published private(set) var legendaryItems: [Int: ItemMetadata] = [:]
+    @Published private(set) var legendaryState: GoalMetadataLoadState = .idle
     @Published var selectedGoalID: UUID?
 
     private let api: GW2APIClient
@@ -115,6 +119,19 @@ final class GoalStore: ObservableObject {
             title: item.name, type: .craftItem(itemID: item.id, quantity: max(1, quantity)),
             priority: priority, sourceReference: GoalSourceReference(
                 apiPath: "/v2/items/\(item.id)", apiID: item.id, provenance: .arenaNetPublic)))
+    }
+
+    func addLegendaryGoal(itemID: Int, name: String, priority: GoalPriority = .normal) {
+        if let existing = goals.first(where: {
+            $0.type == .legendary(itemID: itemID) && $0.status != .archived
+        }) {
+            selectedGoalID = existing.id
+            return
+        }
+        add(PlayerGoal(
+            title: name, type: .legendary(itemID: itemID), priority: priority,
+            sourceReference: GoalSourceReference(
+                apiPath: "/v2/legendaryarmory", apiID: itemID, provenance: .companionObserved)))
     }
 
     func addCustomGoal(
@@ -322,6 +339,56 @@ final class GoalStore: ObservableObject {
             calculatedAt: account.accountLastRefreshedAt ?? Date())
     }
 
+    func legendaryPlan(for goal: PlayerGoal, account: AccountStore) -> LegendaryProgressPlan? {
+        guard case let .legendary(itemID) = goal.type else { return nil }
+        if legendaryCatalog == nil {
+            legendaryCatalog = try? BundledLegendaryCatalogProvider().catalog()
+        }
+        guard let catalog = legendaryCatalog else { return nil }
+        var names = legendaryItems.mapValues(\.name)
+        catalog.components.forEach { names[$0.itemID] = $0.name }
+        account.itemMetadata.forEach { names[$0.key] = $0.value.name }
+        return LegendaryPlanner.plan(
+            itemID: itemID, catalog: catalog, holdings: account.holdings,
+            armoryCounts: account.legendaryArmoryCounts, prices: marketPrices, itemNames: names)
+    }
+
+    func prepareLegendaries() async {
+        if legendaryCatalog == nil {
+            legendaryCatalog = try? BundledLegendaryCatalogProvider().catalog()
+        }
+        legendaryState = .loading("Loading legendary armory…")
+        do {
+            let definitions = try await api.legendaryArmoryDefinitions()
+            legendaryArmoryDefinitions = definitions
+            let ids = Array(Set(definitions.map(\.id) + (legendaryCatalog?.plans.map(\.targetItemID) ?? [])))
+            if let items = try? await api.items(ids: ids, priority: .low) {
+                legendaryItems.merge(items) { _, new in new }
+            }
+            legendaryState = .ready
+        } catch {
+            if legendaryCatalog != nil {
+                legendaryState = .cached("Using curated legendary plans")
+            } else {
+                legendaryState = .unavailable(error.userFacingMessage(fallback: "Legendary plans couldn’t be loaded."))
+            }
+        }
+    }
+
+    func searchLegendaries(_ query: String, account: AccountStore) -> [LegendaryBrowserItem] {
+        guard let catalog = legendaryCatalog else { return [] }
+        let items = LegendaryPlanner.browserItems(
+            definitions: legendaryArmoryDefinitions, items: legendaryItems,
+            catalog: catalog, armoryCounts: account.legendaryArmoryCounts,
+            holdings: account.holdings)
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return items }
+        return items.filter {
+            $0.name.localizedCaseInsensitiveContains(needle) || String($0.itemID) == needle ||
+            ($0.weaponType?.localizedCaseInsensitiveContains(needle) ?? false)
+        }
+    }
+
     func achievementTracking(for goal: PlayerGoal, account: AccountStore) -> AchievementTrackingState? {
         guard case let .achievement(id) = goal.type, let definition = achievements[id] else { return nil }
         return AchievementTrackingEngine.merge(
@@ -340,6 +407,9 @@ final class GoalStore: ObservableObject {
         case .craftItem:
             return craftingPlan(for: goal, account: account)?.progress ?? GoalProgress(
                 ready: 0, total: 0, label: "Building recipe plan…", isAuthoritativeCompletion: false)
+        case .legendary:
+            return legendaryPlan(for: goal, account: account)?.progress ?? GoalProgress(
+                ready: 0, total: 0, label: "Building legendary plan…", isAuthoritativeCompletion: false)
         case .custom:
             let ready = goal.checklist.filter(\.isComplete).count
             let total = goal.checklist.count
@@ -356,9 +426,18 @@ final class GoalStore: ObservableObject {
             return id
         }
         ids.append(plan.targetItemID)
-        guard !ids.isEmpty else { return }
+        await refreshPrices(ids: ids, force: force, priority: .normal)
+    }
+
+    func refreshPrice(itemID: Int, force: Bool = true) async {
+        await refreshPrices(ids: [itemID], force: force, priority: .high)
+    }
+
+    func refreshPrices(ids: [Int], force: Bool = false, priority: APIRequestPriority = .normal) async {
+        let wanted = Array(Set(ids))
+        guard !wanted.isEmpty else { return }
         do {
-            let loaded = try await api.commercePrices(ids: ids, force: force)
+            let loaded = try await api.commercePrices(ids: wanted, force: force, priority: priority)
             marketPrices.merge(loaded) { _, new in new }
             pricesUpdatedAt = Date()
             priceError = nil
@@ -372,15 +451,15 @@ final class GoalStore: ObservableObject {
             guard bit.isComplete != true, case let .item(id) = bit.bit else { return nil }
             return id
         }
-        guard !ids.isEmpty else { return }
-        do {
-            let loaded = try await api.commercePrices(ids: ids, force: force)
-            marketPrices.merge(loaded) { _, new in new }
-            pricesUpdatedAt = Date()
-            priceError = nil
-        } catch {
-            priceError = error.userFacingMessage(fallback: "Trading Post prices couldn’t be refreshed. Showing saved prices where possible.")
-        }
+        await refreshPrices(ids: ids, force: force, priority: .normal)
+    }
+
+    func refreshPrices(for plan: LegendaryProgressPlan, force: Bool = false) async {
+        await refreshPrices(ids: plan.tradableMissing.map(\.itemID), force: force, priority: .normal)
+    }
+
+    func estimatedBuyNow(for plan: LegendaryProgressPlan) -> MarketEstimate? {
+        LegendaryPlanner.estimatedBuyNow(for: plan)
     }
 
     func estimatedBuyNow(for plan: CraftingPlan) -> MarketEstimate? {

@@ -84,6 +84,29 @@ final class PhaseSevenWalletTests: XCTestCase {
         let filtered = WalletPresentation.ordered(wallet: wallet, currencies: currencies, query: "Currency 7")
         XCTAssertEqual(filtered.map(\.id), [7])
     }
+
+    func testPinnedCommonDefaultsAndSearchReachCollapsedCurrencies() {
+        let defaults = UserDefaults(suiteName: "wallet-pref-\(UUID().uuidString)")!
+        let wallet = (1...12).map { WalletEntry(id: $0, value: $0 * 10) }
+        var currencies: [Int: CurrencyMetadata] = [:]
+        for entry in wallet {
+            currencies[entry.id] = CurrencyMetadata(
+                id: entry.id, name: "Currency \(entry.id)", description: "", icon: nil, order: entry.id)
+        }
+        XCTAssertFalse(WalletPresentation.isAllExpanded(accountID: "acct", defaults: defaults))
+        XCTAssertEqual(
+            WalletPresentation.pinned(wallet: wallet, currencies: currencies, accountID: "acct", defaults: defaults).map(\.id),
+            WalletPresentation.commonDefaultIDs.filter { $0 <= 12 })
+        WalletPresentation.togglePin(7, accountID: "acct", defaults: defaults)
+        XCTAssertTrue(WalletPresentation.isPinned(7, accountID: "acct", defaults: defaults))
+        XCTAssertFalse(
+            WalletPresentation.remaining(
+                wallet: wallet, currencies: currencies, query: "", accountID: "acct", defaults: defaults
+            ).contains { $0.id == 7 })
+        let searched = WalletPresentation.ordered(wallet: wallet, currencies: currencies, query: "Currency 11")
+        XCTAssertEqual(searched.map(\.id), [11])
+        XCTAssertFalse(WalletPresentation.pinnedIDs(accountID: "acct", defaults: defaults).contains(11))
+    }
 }
 
 final class PhaseSevenGatheringCoverageTests: XCTestCase {
@@ -137,8 +160,8 @@ final class PhaseSevenMapDetailTests: XCTestCase {
         let source = MapRasterDetail.sourceZoom(
             displayZoom: 2, continentID: 1, viewport: viewport, mode: .detailed)
         XCTAssertEqual(source, 2)
-        XCTAssertEqual(MapDetailMode.detailed.markerCullZoom, 2)
-        XCTAssertEqual(MapDetailMode.balanced.markerCullZoom, 3)
+        XCTAssertEqual(MapDetailMode.detailed.markerCullZoom, 4)
+        XCTAssertEqual(MapDetailMode.balanced.markerCullZoom, 6)
     }
 
     func testOfficialProviderReportsModernMapsUnavailable() {
@@ -152,6 +175,27 @@ final class PhaseSevenMapDetailTests: XCTestCase {
 
     func testDetailedMarkerCullKeepsObjectivesFartherOut() {
         XCTAssertLessThan(MapDetailMode.detailed.markerCullZoom, MapDetailMode.balanced.markerCullZoom)
+    }
+
+    func testKessexModerateZoomDetailedRetainsMoreMarkersAndLabels() {
+        let zoom = 6
+        let objectives = [
+            MapObjective(id: .init("wp"), mapId: 22, name: "Kessex Haven", type: .waypoint, continentX: 1, continentY: 1, source: .arenaNet, chatLink: nil, level: nil, description: nil, state: .unknown),
+            MapObjective(id: .init("vista"), mapId: 22, name: "Vista", type: .vista, continentX: 1, continentY: 1, source: .arenaNet, chatLink: nil, level: nil, description: nil, state: .unknown),
+            MapObjective(id: .init("hero"), mapId: 22, name: "Hero Challenge", type: .heroChallenge, continentX: 1, continentY: 1, source: .arenaNet, chatLink: nil, level: nil, description: nil, state: .unknown),
+            MapObjective(id: .init("poi"), mapId: 22, name: "Point of Interest", type: .landmark, continentX: 1, continentY: 1, source: .arenaNet, chatLink: nil, level: nil, description: nil, state: .unknown),
+            MapObjective(id: .init("ore"), mapId: 22, name: "Rich Mithril Vein", type: .gatheringOre, continentX: 1, continentY: 1, source: .bundledGathering, chatLink: nil, level: nil, description: nil, state: .unknown)
+        ]
+        let comparison = MapDetailPolicy.comparison(
+            objectives: objectives, displayZoom: zoom, balancedSourceZoom: zoom, detailedSourceZoom: zoom + 1)
+        XCTAssertGreaterThan(comparison.detailed.totalVisible, comparison.balanced.totalVisible)
+        XCTAssertGreaterThan(comparison.detailed.visibleLabels, comparison.balanced.visibleLabels)
+        XCTAssertEqual(comparison.detailed.sourceTileZoom, zoom + 1)
+        XCTAssertEqual(comparison.balanced.sourceTileZoom, zoom)
+        XCTAssertTrue(MapDetailPolicy.appearance(for: objectives[3], mode: .detailed, displayZoom: zoom, targetID: nil).visible)
+        XCTAssertFalse(MapDetailPolicy.appearance(for: objectives[3], mode: .balanced, displayZoom: zoom, targetID: nil).visible)
+        XCTAssertTrue(MapDetailPolicy.appearance(for: objectives[4], mode: .detailed, displayZoom: zoom, targetID: nil).visible)
+        XCTAssertFalse(MapDetailPolicy.appearance(for: objectives[4], mode: .balanced, displayZoom: zoom, targetID: nil).visible)
     }
 }
 

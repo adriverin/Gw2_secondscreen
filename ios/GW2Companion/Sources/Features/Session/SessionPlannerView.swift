@@ -409,20 +409,35 @@ private struct SessionHistoryView: View {
 struct ActiveSessionCompactView: View {
     @EnvironmentObject private var sessions: SessionStore
     @EnvironmentObject private var navigation: AppNavigation
+    @Binding var isExpanded: Bool
 
     var body: some View {
         if let active = sessions.activeSession {
             VStack(alignment: .leading, spacing: 8) {
-                Text("SESSION").font(.caption2.bold()).foregroundStyle(.secondary)
-                if let next = active.tasks.first(where: { $0.state == .pending }) {
-                    Text("Next: \(next.title)").font(.subheadline.bold()).lineLimit(2)
-                    Text("Helps \(next.relatedGoalIDs.count) goal\(next.relatedGoalIDs.count == 1 ? "" : "s")")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Label("Plan complete", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                Button { isExpanded.toggle() } label: {
+                    HStack {
+                        Text("Session").font(.subheadline.bold())
+                        if let next = active.tasks.first(where: { $0.state == .pending }) {
+                            Text(next.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                Button("Open Session") { navigation.selectedTab = .session }
-                    .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                .buttonStyle(.plain)
+                .accessibilityLabel(isExpanded ? "Session expanded" : "Session collapsed")
+                if isExpanded {
+                    if let next = active.tasks.first(where: { $0.state == .pending }) {
+                        Text("Next: \(next.title)").font(.subheadline.bold()).lineLimit(2)
+                        Text("Helps \(next.relatedGoalIDs.count) goal\(next.relatedGoalIDs.count == 1 ? "" : "s")")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Label("Plan complete", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    }
+                    Button("Open Session") { navigation.selectedTab = .session }
+                        .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                }
             }.padding(12)
         }
     }

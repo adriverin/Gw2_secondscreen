@@ -3,12 +3,14 @@ import Foundation
 enum PlayerGoalType: Codable, Hashable, Sendable {
     case achievement(Int)
     case craftItem(itemID: Int, quantity: Int)
+    case legendary(itemID: Int)
     case custom
 
     var title: String {
         switch self {
         case .achievement: "Achievement"
         case .craftItem: "Crafting"
+        case .legendary: "Legendary"
         case .custom: "Custom"
         }
     }

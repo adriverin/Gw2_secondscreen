@@ -12,6 +12,9 @@ struct AddGoalView: View {
                 NavigationLink { CraftableItemBrowserView() } label: {
                     Label("Craft Item", systemImage: "hammer.fill")
                 }
+                NavigationLink { LegendaryBrowserView() } label: {
+                    Label("Legendary", systemImage: "sparkles.rectangle.stack")
+                }
                 NavigationLink { CustomGoalEditorView() } label: {
                     Label("Custom Goal", systemImage: "checklist")
                 }

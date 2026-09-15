@@ -1,0 +1,1101 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "2026.09.15.1",
+  "lastReviewedAt": "2026-09-15T00:00:00Z",
+  "coverage": "partial",
+  "components": [
+    {
+      "itemID": 24357,
+      "name": "Vicious Fang",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Vicious_Fang",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24289,
+      "name": "Armored Scale",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Armored_Scale",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24351,
+      "name": "Vicious Claw",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Vicious_Claw",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24358,
+      "name": "Ancient Bone",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Ancient_Bone",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24295,
+      "name": "Vial of Powerful Blood",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Vial_of_Powerful_Blood",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24283,
+      "name": "Powerful Venom Sac",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Powerful_Venom_Sac",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24300,
+      "name": "Elaborate Totem",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Elaborate_Totem",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24277,
+      "name": "Pile of Crystalline Dust",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Pile_of_Crystalline_Dust",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24274,
+      "name": "Pile of Radiant Dust",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Pile_of_Radiant_Dust",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24275,
+      "name": "Pile of Luminous Dust",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Pile_of_Luminous_Dust",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24276,
+      "name": "Pile of Incandescent Dust",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Pile_of_Incandescent_Dust",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 19721,
+      "name": "Glob of Ectoplasm",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Glob_of_Ectoplasm",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 19685,
+      "name": "Orichalcum Ingot",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Orichalcum_Ingot",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 19684,
+      "name": "Mithril Ingot",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Mithril_Ingot",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 19681,
+      "name": "Darksteel Ingot",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Darksteel_Ingot",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 19686,
+      "name": "Platinum Ingot",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Platinum_Ingot",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 19737,
+      "name": "Cured Hardened Leather Square",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Cured_Hardened_Leather_Square",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24305,
+      "name": "Charged Lodestone",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Charged_Lodestone",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24310,
+      "name": "Onyx Lodestone",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Onyx_Lodestone",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24315,
+      "name": "Molten Lodestone",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Molten_Lodestone",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24325,
+      "name": "Destroyer Lodestone",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Destroyer_Lodestone",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 12544,
+      "name": "Ghost Pepper",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Ghost_Pepper",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 20323,
+      "name": "Unidentified Dye",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Unidentified_Dye",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24522,
+      "name": "Opal Orb",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Opal_Orb",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24562,
+      "name": "Superior Sigil of Strength",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Superior_Sigil_of_Strength",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24570,
+      "name": "Superior Sigil of Blood",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Superior_Sigil_of_Blood",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24572,
+      "name": "Superior Sigil of Nullification",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Superior_Sigil_of_Nullification",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 24548,
+      "name": "Superior Sigil of Fire",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Superior_Sigil_of_Fire",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable on the Trading Post."
+    },
+    {
+      "itemID": 29169,
+      "name": "Dawn",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Dawn",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable precursor. Other drop and collection sources exist."
+    },
+    {
+      "itemID": 29185,
+      "name": "Dusk",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Dusk",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable precursor. Other drop and collection sources exist."
+    },
+    {
+      "itemID": 29167,
+      "name": "Spark",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Spark_(weapon)",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable precursor. Other drop and collection sources exist."
+    },
+    {
+      "itemID": 29180,
+      "name": "The Legend",
+      "binding": "tradable",
+      "acquisition": "tradingPost",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/The_Legend",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Tradable precursor. Other drop and collection sources exist."
+    },
+    {
+      "itemID": 19675,
+      "name": "Mystic Clover",
+      "binding": "accountBound",
+      "acquisition": "gameplayManual",
+      "ingredients": [],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Mystic_Clover",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Vendors, reward tracks, and Mystic Forge can produce clovers; yield is not deterministic."
+    },
+    {
+      "itemID": 19925,
+      "name": "Obsidian Shard",
+      "binding": "accountBound",
+      "acquisition": "vendor",
+      "ingredients": [],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Obsidian_Shard",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Purchased from laurel, fractal, mastery, and quartermaster vendors. No single market price."
+    },
+    {
+      "itemID": 19676,
+      "name": "Icy Runestone",
+      "binding": "accountBound",
+      "acquisition": "vendor",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Icy_Runestone",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Purchased from Rojan the Penitent after the Claw of Jormag event.",
+      "vendorCoinCopper": 10000
+    },
+    {
+      "itemID": 20797,
+      "name": "Bloodstone Shard",
+      "binding": "accountBound",
+      "acquisition": "vendor",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Bloodstone_Shard",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Purchased from Mystic Forge vendors for 200 Spirit Shards.",
+      "vendorCurrencyID": 23,
+      "vendorCurrencyQuantity": 200
+    },
+    {
+      "itemID": 19677,
+      "name": "Gift of Exploration",
+      "binding": "accountBound",
+      "acquisition": "gameplayManual",
+      "ingredients": [],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Exploration",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Awarded for world completion. World completion is not inferred from other holdings."
+    },
+    {
+      "itemID": 19678,
+      "name": "Gift of Battle",
+      "binding": "accountBound",
+      "acquisition": "gameplayManual",
+      "ingredients": [],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Battle",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Awarded from the WvW Gift of Battle Item Reward Track. Reward-track progress is not available from the public API."
+    },
+    {
+      "itemID": 19664,
+      "name": "Gift of Ascalon",
+      "binding": "accountBound",
+      "acquisition": "vendor",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Ascalon",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Purchased from dungeon vendors for 500 Tales of Dungeon Delving after Ascalonian Catacombs explorable completions.",
+      "vendorCurrencyID": 69,
+      "vendorCurrencyQuantity": 500
+    },
+    {
+      "itemID": 19669,
+      "name": "Gift of Zhaitan",
+      "binding": "accountBound",
+      "acquisition": "vendor",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Zhaitan",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Purchased from dungeon vendors for 500 Tales of Dungeon Delving.",
+      "vendorCurrencyID": 69,
+      "vendorCurrencyQuantity": 500
+    },
+    {
+      "itemID": 19668,
+      "name": "Gift of Baelfire",
+      "binding": "accountBound",
+      "acquisition": "vendor",
+      "ingredients": [],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Baelfire",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Account bound. Purchased from dungeon vendors for 500 Tales of Dungeon Delving.",
+      "vendorCurrencyID": 69,
+      "vendorCurrencyQuantity": 500
+    },
+    {
+      "itemID": 19672,
+      "name": "Gift of Might",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 24357,
+          "quantity": 250
+        },
+        {
+          "itemID": 24289,
+          "quantity": 250
+        },
+        {
+          "itemID": 24351,
+          "quantity": 250
+        },
+        {
+          "itemID": 24358,
+          "quantity": 250
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Might",
+      "reviewedAt": "2026-09-15T00:00:00Z"
+    },
+    {
+      "itemID": 19673,
+      "name": "Gift of Magic",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 24295,
+          "quantity": 250
+        },
+        {
+          "itemID": 24283,
+          "quantity": 250
+        },
+        {
+          "itemID": 24300,
+          "quantity": 250
+        },
+        {
+          "itemID": 24277,
+          "quantity": 250
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Magic",
+      "reviewedAt": "2026-09-15T00:00:00Z"
+    },
+    {
+      "itemID": 19626,
+      "name": "Gift of Fortune",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 19675,
+          "quantity": 77
+        },
+        {
+          "itemID": 19721,
+          "quantity": 250
+        },
+        {
+          "itemID": 19673,
+          "quantity": 1
+        },
+        {
+          "itemID": 19672,
+          "quantity": 1
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Fortune",
+      "reviewedAt": "2026-09-15T00:00:00Z"
+    },
+    {
+      "itemID": 19674,
+      "name": "Gift of Mastery",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 20797,
+          "quantity": 1
+        },
+        {
+          "itemID": 19925,
+          "quantity": 250
+        },
+        {
+          "itemID": 19677,
+          "quantity": 1
+        },
+        {
+          "itemID": 19678,
+          "quantity": 1
+        }
+      ],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Mastery",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Requires Gift of Exploration and Gift of Battle, which are not inferred from other progress APIs."
+    },
+    {
+      "itemID": 19621,
+      "name": "Gift of Metal",
+      "binding": "accountBound",
+      "acquisition": "craft",
+      "ingredients": [
+        {
+          "itemID": 19685,
+          "quantity": 250
+        },
+        {
+          "itemID": 19684,
+          "quantity": 250
+        },
+        {
+          "itemID": 19681,
+          "quantity": 250
+        },
+        {
+          "itemID": 19686,
+          "quantity": 250
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Metal",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "craftDiscipline": "Weaponsmith",
+      "craftRating": 400
+    },
+    {
+      "itemID": 19632,
+      "name": "Gift of Light",
+      "binding": "accountBound",
+      "acquisition": "craft",
+      "ingredients": [
+        {
+          "itemID": 19664,
+          "quantity": 1
+        },
+        {
+          "itemID": 19685,
+          "quantity": 250
+        },
+        {
+          "itemID": 19737,
+          "quantity": 250
+        },
+        {
+          "itemID": 24305,
+          "quantity": 100
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Light",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "craftDiscipline": "Armorsmith",
+      "craftRating": 400
+    },
+    {
+      "itemID": 19631,
+      "name": "Gift of Darkness",
+      "binding": "accountBound",
+      "acquisition": "craft",
+      "ingredients": [
+        {
+          "itemID": 19664,
+          "quantity": 1
+        },
+        {
+          "itemID": 19685,
+          "quantity": 250
+        },
+        {
+          "itemID": 19737,
+          "quantity": 250
+        },
+        {
+          "itemID": 24310,
+          "quantity": 100
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Darkness",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "craftDiscipline": "Armorsmith",
+      "craftRating": 400
+    },
+    {
+      "itemID": 19623,
+      "name": "Gift of Energy",
+      "binding": "accountBound",
+      "acquisition": "craft",
+      "ingredients": [
+        {
+          "itemID": 24274,
+          "quantity": 250
+        },
+        {
+          "itemID": 24275,
+          "quantity": 250
+        },
+        {
+          "itemID": 24276,
+          "quantity": 250
+        },
+        {
+          "itemID": 24277,
+          "quantity": 250
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Energy",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "craftDiscipline": "Artificer",
+      "craftRating": 400
+    },
+    {
+      "itemID": 19638,
+      "name": "Gift of Color",
+      "binding": "accountBound",
+      "acquisition": "craft",
+      "ingredients": [
+        {
+          "itemID": 19669,
+          "quantity": 1
+        },
+        {
+          "itemID": 20323,
+          "quantity": 100
+        },
+        {
+          "itemID": 24277,
+          "quantity": 250
+        },
+        {
+          "itemID": 24522,
+          "quantity": 100
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Color",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "craftDiscipline": "Chef",
+      "craftRating": 400
+    },
+    {
+      "itemID": 19634,
+      "name": "Vial of Liquid Flame",
+      "binding": "accountBound",
+      "acquisition": "craft",
+      "ingredients": [
+        {
+          "itemID": 12544,
+          "quantity": 250
+        },
+        {
+          "itemID": 19668,
+          "quantity": 1
+        },
+        {
+          "itemID": 24315,
+          "quantity": 100
+        },
+        {
+          "itemID": 24325,
+          "quantity": 100
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Vial_of_Liquid_Flame",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "craftDiscipline": "Chef",
+      "craftRating": 400
+    },
+    {
+      "itemID": 19647,
+      "name": "Gift of Sunrise",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 19621,
+          "quantity": 1
+        },
+        {
+          "itemID": 19632,
+          "quantity": 1
+        },
+        {
+          "itemID": 19676,
+          "quantity": 100
+        },
+        {
+          "itemID": 24562,
+          "quantity": 1
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Sunrise",
+      "reviewedAt": "2026-09-15T00:00:00Z"
+    },
+    {
+      "itemID": 19648,
+      "name": "Gift of Twilight",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 19621,
+          "quantity": 1
+        },
+        {
+          "itemID": 19631,
+          "quantity": 1
+        },
+        {
+          "itemID": 19676,
+          "quantity": 100
+        },
+        {
+          "itemID": 24570,
+          "quantity": 1
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Twilight",
+      "reviewedAt": "2026-09-15T00:00:00Z"
+    },
+    {
+      "itemID": 19654,
+      "name": "Gift of The Bifrost",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 19623,
+          "quantity": 1
+        },
+        {
+          "itemID": 19638,
+          "quantity": 1
+        },
+        {
+          "itemID": 19676,
+          "quantity": 100
+        },
+        {
+          "itemID": 24572,
+          "quantity": 1
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_The_Bifrost",
+      "reviewedAt": "2026-09-15T00:00:00Z"
+    },
+    {
+      "itemID": 19645,
+      "name": "Gift of Incinerator",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 19621,
+          "quantity": 1
+        },
+        {
+          "itemID": 19634,
+          "quantity": 1
+        },
+        {
+          "itemID": 19676,
+          "quantity": 100
+        },
+        {
+          "itemID": 24548,
+          "quantity": 1
+        }
+      ],
+      "coverage": "complete",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Gift_of_Incinerator",
+      "reviewedAt": "2026-09-15T00:00:00Z"
+    },
+    {
+      "itemID": 30703,
+      "name": "Sunrise",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 29169,
+          "quantity": 1
+        },
+        {
+          "itemID": 19647,
+          "quantity": 1
+        },
+        {
+          "itemID": 19626,
+          "quantity": 1
+        },
+        {
+          "itemID": 19674,
+          "quantity": 1
+        }
+      ],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Sunrise",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Generation 1 mystic-forge recipe is curated. Gift of Exploration, Gift of Battle, and clover sources remain manual."
+    },
+    {
+      "itemID": 30704,
+      "name": "Twilight",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 29185,
+          "quantity": 1
+        },
+        {
+          "itemID": 19648,
+          "quantity": 1
+        },
+        {
+          "itemID": 19626,
+          "quantity": 1
+        },
+        {
+          "itemID": 19674,
+          "quantity": 1
+        }
+      ],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Twilight",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Generation 1 mystic-forge recipe is curated. Gift of Exploration, Gift of Battle, and clover sources remain manual."
+    },
+    {
+      "itemID": 30698,
+      "name": "The Bifrost",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 29180,
+          "quantity": 1
+        },
+        {
+          "itemID": 19654,
+          "quantity": 1
+        },
+        {
+          "itemID": 19626,
+          "quantity": 1
+        },
+        {
+          "itemID": 19674,
+          "quantity": 1
+        }
+      ],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/The_Bifrost",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Generation 1 mystic-forge recipe is curated. Gift of Exploration, Gift of Battle, and clover sources remain manual."
+    },
+    {
+      "itemID": 30687,
+      "name": "Incinerator",
+      "binding": "accountBound",
+      "acquisition": "mysticForge",
+      "ingredients": [
+        {
+          "itemID": 29167,
+          "quantity": 1
+        },
+        {
+          "itemID": 19645,
+          "quantity": 1
+        },
+        {
+          "itemID": 19626,
+          "quantity": 1
+        },
+        {
+          "itemID": 19674,
+          "quantity": 1
+        }
+      ],
+      "coverage": "partial",
+      "sourceURL": "https://wiki.guildwars2.com/wiki/Incinerator",
+      "reviewedAt": "2026-09-15T00:00:00Z",
+      "notes": "Generation 1 mystic-forge recipe is curated. Gift of Exploration, Gift of Battle, and clover sources remain manual."
+    }
+  ],
+  "plans": [
+    {
+      "targetItemID": 30703,
+      "name": "Sunrise",
+      "category": "weapons",
+      "weaponType": "Greatsword",
+      "topLevelRequirements": [
+        {
+          "itemID": 29169,
+          "quantity": 1
+        },
+        {
+          "itemID": 19647,
+          "quantity": 1
+        },
+        {
+          "itemID": 19626,
+          "quantity": 1
+        },
+        {
+          "itemID": 19674,
+          "quantity": 1
+        }
+      ],
+      "source": {
+        "type": "companionCurated",
+        "sourceID": "legendary-plans-v1",
+        "sourceURL": "https://wiki.guildwars2.com/wiki/Sunrise",
+        "reviewedAt": "2026-09-15T00:00:00Z",
+        "notes": "Structured wiki infobox facts. World completion, WvW reward-track, and clover yield are not inferred."
+      },
+      "coverage": "partial"
+    },
+    {
+      "targetItemID": 30704,
+      "name": "Twilight",
+      "category": "weapons",
+      "weaponType": "Greatsword",
+      "topLevelRequirements": [
+        {
+          "itemID": 29185,
+          "quantity": 1
+        },
+        {
+          "itemID": 19648,
+          "quantity": 1
+        },
+        {
+          "itemID": 19626,
+          "quantity": 1
+        },
+        {
+          "itemID": 19674,
+          "quantity": 1
+        }
+      ],
+      "source": {
+        "type": "companionCurated",
+        "sourceID": "legendary-plans-v1",
+        "sourceURL": "https://wiki.guildwars2.com/wiki/Twilight",
+        "reviewedAt": "2026-09-15T00:00:00Z",
+        "notes": "Structured wiki infobox facts. World completion, WvW reward-track, and clover yield are not inferred."
+      },
+      "coverage": "partial"
+    },
+    {
+      "targetItemID": 30698,
+      "name": "The Bifrost",
+      "category": "weapons",
+      "weaponType": "Staff",
+      "topLevelRequirements": [
+        {
+          "itemID": 29180,
+          "quantity": 1
+        },
+        {
+          "itemID": 19654,
+          "quantity": 1
+        },
+        {
+          "itemID": 19626,
+          "quantity": 1
+        },
+        {
+          "itemID": 19674,
+          "quantity": 1
+        }
+      ],
+      "source": {
+        "type": "companionCurated",
+        "sourceID": "legendary-plans-v1",
+        "sourceURL": "https://wiki.guildwars2.com/wiki/The_Bifrost",
+        "reviewedAt": "2026-09-15T00:00:00Z",
+        "notes": "Structured wiki infobox facts. World completion, WvW reward-track, and clover yield are not inferred."
+      },
+      "coverage": "partial"
+    },
+    {
+      "targetItemID": 30687,
+      "name": "Incinerator",
+      "category": "weapons",
+      "weaponType": "Dagger",
+      "topLevelRequirements": [
+        {
+          "itemID": 29167,
+          "quantity": 1
+        },
+        {
+          "itemID": 19645,
+          "quantity": 1
+        },
+        {
+          "itemID": 19626,
+          "quantity": 1
+        },
+        {
+          "itemID": 19674,
+          "quantity": 1
+        }
+      ],
+      "source": {
+        "type": "companionCurated",
+        "sourceID": "legendary-plans-v1",
+        "sourceURL": "https://wiki.guildwars2.com/wiki/Incinerator",
+        "reviewedAt": "2026-09-15T00:00:00Z",
+        "notes": "Structured wiki infobox facts. World completion, WvW reward-track, and clover yield are not inferred."
+      },
+      "coverage": "partial"
+    }
+  ]
+}

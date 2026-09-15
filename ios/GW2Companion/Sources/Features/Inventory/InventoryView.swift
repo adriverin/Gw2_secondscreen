@@ -6,7 +6,6 @@ struct InventoryView: View {
     @State private var search = ""
     @State private var sort: HoldingSort = .name
     @State private var inspected: InspectedItem?
-    @State private var showAllMaterials = false
     @State private var showingReplaceKey = false
 
     var body: some View {
@@ -76,7 +75,7 @@ struct InventoryView: View {
             case .all: allSearch
             case .characters: charactersList
             case .bank: BankStorageView(inspected: $inspected)
-            case .materials: MaterialStorageView(search: $search, showAll: $showAllMaterials, inspected: $inspected)
+            case .materials: MaterialStorageView(inspected: $inspected)
             case .shared: SharedInventoryView(inspected: $inspected)
             }
         }
@@ -291,82 +290,91 @@ struct SharedInventoryView: View {
 
 struct MaterialStorageView: View {
     @EnvironmentObject private var account: AccountStore
-    @Binding var search: String
-    @Binding var showAll: Bool
     @Binding var inspected: InspectedItem?
+    @AppStorage(MaterialStoragePreferences.showAllKey) private var showAll = false
+    @State private var search = ""
 
     var body: some View {
-        let categories = account.materialCategories.values.sorted { $0.order < $1.order }
-        let materialsByID = Dictionary(uniqueKeysWithValues: account.materials.map { ($0.id, $0) })
-        let uncategorized = account.materials.filter { material in
-            !categories.contains { $0.items.contains(material.id) } && (showAll || material.count > 0)
-        }
+        let presented = presentedSnapshot
         List {
             Section {
-                Toggle("Show owned only", isOn: Binding(get: { !showAll }, set: { showAll = !$0 }))
+                Toggle("Show All Materials", isOn: $showAll)
+                    .accessibilityIdentifier("inventory.materials.showAll")
+                TextField("Search materials", text: $search)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("inventory.materials.search")
             } header: {
                 Text("Material Storage")
+            } footer: {
+                Text(summaryText(presented))
             }
-            ForEach(categories) { category in
-                let values = category.items.compactMap { itemID -> (AccountMaterial, ItemMetadata)? in
-                    guard let material = materialsByID[itemID] else { return nil }
-                    if !showAll && material.count <= 0 { return nil }
-                    let item = account.itemMetadata[itemID] ?? ItemPlaceholder.metadata(id: itemID)
-                    if !search.isEmpty && !item.name.localizedCaseInsensitiveContains(search) { return nil }
-                    return (material, item)
-                }
-                if !values.isEmpty {
-                    Section(category.name) {
-                        ForEach(values, id: \.0.id) { material, item in
+            if let presented {
+                ForEach(presented.sections) { section in
+                    Section(section.name) {
+                        ForEach(section.rows) { row in
                             Button {
-                                inspected = InspectedItem(item: item, quantity: material.count)
+                                inspected = InspectedItem(
+                                    item: account.itemMetadata[row.id] ?? ItemPlaceholder.metadata(id: row.id, name: row.name),
+                                    quantity: row.count)
                             } label: {
-                                HStack {
-                                    GWItemIcon(item: item, size: 40)
-                                    Text(item.name)
-                                    Spacer()
-                                    Text(material.count.formatted()).monospacedDigit().bold()
-                                }
+                                MaterialStorageRowView(row: row, item: account.itemMetadata[row.id])
                             }
                             .buttonStyle(.plain)
-                            .accessibilityIdentifier("inventory.material.\(item.name)")
-                            .accessibilityIdentifier("inventory.item.\(item.name)")
+                            .accessibilityIdentifier("inventory.material.\(row.name)")
+                            .accessibilityIdentifier("inventory.item.\(row.name)")
                         }
                     }
                 }
-            }
-            if !uncategorized.isEmpty {
-                Section("Uncategorized") {
-                    ForEach(uncategorized, id: \.id) { material in
-                        let item = account.itemMetadata[material.id] ?? ItemPlaceholder.metadata(id: material.id)
-                        if search.isEmpty || item.name.localizedCaseInsensitiveContains(search) {
-                            Button {
-                                inspected = InspectedItem(item: item, quantity: material.count)
-                            } label: {
-                                HStack {
-                                    GWItemIcon(item: item, size: 40)
-                                    Text(item.name)
-                                    Spacer()
-                                    Text(material.count.formatted()).monospacedDigit().bold()
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("inventory.material.\(item.name)")
-                        }
-                    }
+            } else if account.domainStates[.materials]?.phase == .loading || account.isRefreshing {
+                Section {
+                    ProgressView("Preparing material storage…")
                 }
             }
         }
         .accessibilityIdentifier("inventory.materials")
         .refreshable { await account.refresh() }
         .overlay {
-            if categories.isEmpty && account.materials.isEmpty {
+            if account.materialCategories.isEmpty && account.materials.isEmpty {
                 ContentUnavailableView(
                     "No material categories", systemImage: "cube.box",
                     description: Text(account.domainStates[.materials]?.phase == .failed
                         ? (account.domainStates[.materials]?.message ?? "Material storage could not be refreshed.")
                         : "Material storage has not been loaded yet."))
+            } else if let presented, presented.visibleRowCount == 0, !search.isEmpty {
+                ContentUnavailableView.search(text: search)
             }
+        }
+        .task(id: account.inventoryUpdatedAt) {
+            if account.materialSnapshot == nil, !account.materials.isEmpty || !account.materialCategories.isEmpty {
+                account.rebuildMaterialSnapshot()
+            }
+        }
+    }
+
+    private var presentedSnapshot: MaterialStoragePresentedSnapshot? {
+        guard let snapshot = account.materialSnapshot else { return nil }
+        return MaterialStoragePresentation.present(snapshot: snapshot, showAll: showAll, query: search)
+    }
+
+    private func summaryText(_ presented: MaterialStoragePresentedSnapshot?) -> String {
+        guard let presented else { return "Owned Only is the default view." }
+        if presented.showAll {
+            return "Showing all \(presented.totalRowCount.formatted()) materials. \(presented.ownedRowCount.formatted()) owned."
+        }
+        return "Owned Only • \(presented.visibleRowCount.formatted()) of \(presented.totalRowCount.formatted()) materials"
+    }
+}
+
+private struct MaterialStorageRowView: View {
+    let row: MaterialRowSnapshot
+    let item: ItemMetadata?
+
+    var body: some View {
+        HStack {
+            GWItemIcon(item: item ?? ItemPlaceholder.metadata(id: row.id, name: row.name), size: 40)
+            Text(row.name)
+            Spacer()
+            Text(row.count.formatted()).monospacedDigit().bold()
         }
     }
 }

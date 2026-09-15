@@ -143,6 +143,11 @@ struct CharacterDetailView: View {
                         Task { await account.loadCharacterDetails(character, force: true) }
                     }
                 }
+                if detail.source == .cached, let updated = detail.updatedAt {
+                    GWErrorBanner(
+                        message: "Saved data. Updated \(updated.formatted(date: .abbreviated, time: .shortened)). Not current.",
+                        stale: true)
+                }
 
                 Group {
                     switch section {
@@ -283,7 +288,9 @@ private struct EquipmentSection: View {
                         }
                     }
                 }
-                EquipmentStatsView(equipment: selectedTab.equipment, items: detail.items)
+                EquipmentStatsView(
+                    character: character, equipment: selectedTab.equipment, items: detail.items,
+                    source: detail.source, updatedAt: detail.updatedAt)
             } else if detail.errorMessage == nil {
                 ProgressView("Loading equipment…").frame(maxWidth: .infinity).padding(30)
             }
@@ -325,31 +332,108 @@ private struct EquipmentRow: View {
 }
 
 private struct EquipmentStatsView: View {
+    let character: GW2Character
     let equipment: [CharacterEquipment]
     let items: [Int: ItemMetadata]
-    private var stats: CharacterEquipmentStats {
-        CharacterStatEngine.equipmentAttributes(equipment: equipment, items: items, upgrades: items)
+    let source: AccountDataSource?
+    let updatedAt: Date?
+    @State private var inspectedStat: String?
+
+    private var stats: CharacterStaticStats {
+        CharacterStatEngine.calculate(character: character, equipment: equipment, items: items)
     }
 
     var body: some View {
-        if !stats.attributes.isEmpty {
-            GWCard {
-                GWSectionHeader(title: "Equipment Attributes", subtitle: "Deterministic bonuses from resolved equipment data")
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 135))], alignment: .leading, spacing: 10) {
-                    ForEach(CharacterStatEngine.displayOrder.filter { stats.attributes[$0] != nil }, id: \.self) { key in
-                        LabeledContent(display(key), value: "+\(stats.attributes[key] ?? 0)").font(.subheadline)
+        GWCard {
+            GWSectionHeader(
+                title: "Estimated Static Stats",
+                subtitle: source == .cached
+                    ? "Saved data\(updatedAt.map { " • Updated \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "")"
+                    : "Calculated from your character and equipment data")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145))], alignment: .leading, spacing: 10) {
+                ForEach(CharacterStatEngine.displayOrder, id: \.self) { key in
+                    let total = stats.total(for: key)
+                    Button { inspectedStat = key } label: {
+                        LabeledContent(CharacterStatEngine.displayName(key), value: total.formatted())
+                            .font(.subheadline)
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.top, 12)
-                Text("These values use account and equipment data and may differ from the in-game Hero Panel because temporary and conditional effects are unavailable through the API.")
-                    .font(.caption2).foregroundStyle(.secondary).padding(.top, 10)
             }
+            .padding(.top, 12)
+            if stats.derived.availableForLevel {
+                Divider().padding(.vertical, 8)
+                GWSectionHeader(title: "Derived", subtitle: "Level 80 formulas")
+                if let value = stats.derived.criticalChancePercent {
+                    LabeledContent("Critical Chance", value: percent(value))
+                }
+                if let value = stats.derived.criticalDamagePercent {
+                    LabeledContent("Critical Damage", value: percent(value))
+                }
+                if let value = stats.derived.boonDurationPercent {
+                    LabeledContent("Boon Duration", value: percent(value))
+                }
+                if let value = stats.derived.conditionDurationPercent {
+                    LabeledContent("Condition Duration", value: percent(value))
+                }
+                if let armor = stats.derived.armor {
+                    LabeledContent("Armor", value: armor.formatted())
+                }
+                if let health = stats.derived.health {
+                    LabeledContent("Health", value: health.formatted())
+                }
+            } else {
+                Text("Derived stats currently available for level 80 characters.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.top, 8)
+            }
+            Text("Estimated Static Stats\n\nCalculated from your character and equipment data. Conditional traits, temporary buffs, food, utility effects and some profession modifiers may differ from the in-game Hero Panel.")
+                .font(.caption2).foregroundStyle(.secondary).padding(.top, 10)
+        }
+        .sheet(item: Binding(
+            get: { inspectedStat.map { StatInspection(id: $0) } },
+            set: { inspectedStat = $0?.id }
+        )) { inspection in
+            StatSourceSheet(name: inspection.id, breakdown: stats.attributes[inspection.id] ?? CharacterStatBreakdown())
         }
     }
 
-    private func display(_ key: String) -> String {
-        key.replacingOccurrences(of: "ConditionDamage", with: "Condition")
-            .replacingOccurrences(of: "HealingPower", with: "Healing")
+    private func percent(_ value: Double) -> String {
+        "\(value.formatted(.number.precision(.fractionLength(1))))%"
+    }
+}
+
+private struct StatInspection: Identifiable {
+    let id: String
+}
+
+private struct StatSourceSheet: View {
+    let name: String
+    let breakdown: CharacterStatBreakdown
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent(CharacterStatEngine.displayName(name), value: breakdown.total.formatted())
+                        .font(.headline)
+                }
+                if breakdown.base != 0 {
+                    LabeledContent("Base", value: breakdown.base.formatted())
+                }
+                if breakdown.equipment != 0 {
+                    LabeledContent("Equipment", value: "+\(breakdown.equipment.formatted())")
+                }
+                if breakdown.upgrades != 0 {
+                    LabeledContent("Upgrades", value: "+\(breakdown.upgrades.formatted())")
+                }
+                if breakdown.infusions != 0 {
+                    LabeledContent("Infusions", value: "+\(breakdown.infusions.formatted())")
+                }
+            }
+            .navigationTitle(CharacterStatEngine.displayName(name))
+            .toolbar { Button("Done") { dismiss() } }
+        }
     }
 }
 

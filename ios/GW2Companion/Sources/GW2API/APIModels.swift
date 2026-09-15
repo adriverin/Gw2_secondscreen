@@ -362,6 +362,29 @@ struct AccountMaterial: Codable, Sendable, Equatable {
     var binding: String? = nil
 }
 
+struct LegendaryArmoryDefinition: Codable, Sendable, Identifiable, Equatable {
+    let id: Int
+    let maxCount: Int
+
+    enum CodingKeys: String, CodingKey { case id; case maxCount = "max_count" }
+
+    init(id: Int, maxCount: Int = 1) {
+        self.id = id
+        self.maxCount = maxCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        maxCount = try values.decodeIfPresent(Int.self, forKey: .maxCount) ?? 1
+    }
+}
+
+struct AccountLegendaryArmorySlot: Codable, Sendable, Identifiable, Equatable {
+    let id: Int
+    let count: Int
+}
+
 struct WalletEntry: Codable, Sendable, Equatable, Identifiable { let id: Int; let value: Int }
 
 struct CoinAmount: Equatable, Sendable {

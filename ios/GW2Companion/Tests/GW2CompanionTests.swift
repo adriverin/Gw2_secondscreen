@@ -1,4 +1,5 @@
 import Combine
+import os
 import SwiftUI
 import UIKit
 import XCTest
@@ -274,6 +275,64 @@ final class PhaseTwoAccountDomainTests: XCTestCase {
         let result = CharacterStatEngine.equipmentAttributes(equipment: equipment, items: metadata, upgrades: metadata)
         XCTAssertEqual(result.attributes["Power"], 130)
         XCTAssertEqual(result.attributes["Precision"], 20)
+    }
+
+    func testLevel80DerivedStatsUseVerifiedFormulasAndDiscloseLowerLevels() {
+        let level80 = GW2Character(
+            name: "Andrea", race: "Human", gender: "Female", profession: "Warrior", level: 80, age: 1)
+        let equipment = [
+            CharacterEquipment(
+                itemID: 101, slot: "Helm",
+                stats: SelectedItemStats(id: 1, attributes: ["Precision": 147, "Toughness": 200, "Vitality": 50]))
+        ]
+        let stats = CharacterStatEngine.calculate(character: level80, equipment: equipment, items: [:])
+        XCTAssertEqual(stats.total(for: "Power"), 1_000)
+        XCTAssertEqual(stats.total(for: "Precision"), 1_147)
+        XCTAssertEqual(stats.derived.availableForLevel, true)
+        XCTAssertEqual(stats.derived.criticalChancePercent ?? 0, 5 + 147.0 / 21.0, accuracy: 0.01)
+        XCTAssertEqual(stats.derived.armor, 1_200)
+        XCTAssertEqual(stats.derived.health, 9_212 + 1_050 * 10)
+
+        let low = GW2Character(
+            name: "Sylvari Ranger", race: "Sylvari", gender: "Male", profession: "Ranger", level: 35, age: 1)
+        let lowStats = CharacterStatEngine.calculate(character: low, equipment: [], items: [:])
+        XCTAssertEqual(lowStats.attributes["Power"]?.base ?? 0, 0)
+        XCTAssertFalse(lowStats.derived.availableForLevel)
+        XCTAssertNil(lowStats.derived.criticalChancePercent)
+        XCTAssertNil(lowStats.derived.health)
+    }
+
+    func testHighPriorityAPIRequestsAreDequeuedBeforeNormalBulk() async throws {
+        let scheduler = APIRequestScheduler(maxConcurrent: 1)
+        let order = OSAllocatedUnfairLock(initialState: [String]())
+        async let runningNormal: Void = scheduler.perform(priority: .normal) {
+            try await Task.sleep(for: .milliseconds(40))
+            order.withLock { $0.append("running-normal") }
+        }
+        try await Task.sleep(for: .milliseconds(8))
+        async let queuedHigh: Void = scheduler.perform(priority: .high) {
+            order.withLock { $0.append("high") }
+        }
+        async let queuedNormal: Void = scheduler.perform(priority: .normal) {
+            order.withLock { $0.append("queued-normal") }
+        }
+        _ = try await (runningNormal, queuedHigh, queuedNormal)
+        XCTAssertEqual(order.withLock { $0 }, ["running-normal", "high", "queued-normal"])
+    }
+
+    func testCachedCharacterDetailsStayLabeledSavedNotCurrent() throws {
+        var detail = CharacterDetailData()
+        detail.equipmentTabs = [
+            EquipmentTab(tab: 1, name: "Raid DPS", isActive: true, equipment: [])
+        ]
+        detail.source = .live
+        detail.updatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let encoded = try JSONEncoder().encode(detail)
+        var decoded = try JSONDecoder().decode(CharacterDetailData.self, from: encoded)
+        decoded.source = .cached
+        XCTAssertEqual(decoded.source, .cached)
+        XCTAssertEqual(decoded.updatedAt, detail.updatedAt)
+        XCTAssertFalse(decoded.equipmentTabs.isEmpty)
     }
 
     func testLimitedPermissionsRemainIndependent() throws {

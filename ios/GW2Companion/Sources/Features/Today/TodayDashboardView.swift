@@ -431,21 +431,35 @@ private struct TodayDiagnosticsView: View {
 struct TodayCompactView: View {
     @EnvironmentObject private var today: TodayStore
     @EnvironmentObject private var navigation: AppNavigation
+    @Binding var isExpanded: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("TODAY").font(.caption2.bold()).foregroundStyle(.secondary)
-            if let daily = today.snapshot?.dailyMeta {
-                Text("Daily Vault \(daily.progress.current) / \(daily.progress.complete)").font(.subheadline.bold())
+            Button { isExpanded.toggle() } label: {
+                HStack {
+                    Text("Today")
+                    if let daily = today.snapshot?.dailyMeta {
+                        Text("\(daily.progress.current)/\(daily.progress.complete) Daily")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .font(.subheadline.bold())
             }
-            if let weekly = today.snapshot?.weeklyMeta {
-                Text("Weekly \(weekly.progress.current) / \(weekly.progress.complete)").font(.caption)
+            .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Today expanded" : "Today collapsed")
+            if isExpanded {
+                if let weekly = today.snapshot?.weeklyMeta {
+                    Text("Weekly \(weekly.progress.current) / \(weekly.progress.complete)").font(.caption)
+                }
+                if let claimable = today.snapshot?.diagnostics.claimableCount, claimable > 0 {
+                    Text("\(claimable) ready to claim in game").font(.caption).foregroundStyle(.orange)
+                }
+                Button("Plan Session") { navigation.selectedTab = .session }
+                    .buttonStyle(.borderedProminent).tint(GWPalette.accent)
             }
-            if let claimable = today.snapshot?.diagnostics.claimableCount, claimable > 0 {
-                Text("\(claimable) ready to claim in game").font(.caption).foregroundStyle(.orange)
-            }
-            Button("Plan Session") { navigation.selectedTab = .session }
-                .buttonStyle(.borderedProminent).tint(GWPalette.accent)
         }.padding(12)
     }
 }

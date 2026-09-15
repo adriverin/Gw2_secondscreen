@@ -162,39 +162,7 @@ struct CharacterEquipmentStats: Equatable, Sendable {
     let attributes: [String: Int]
 }
 
-enum CharacterStatEngine {
-    static let displayOrder = [
-        "Power", "Precision", "Ferocity", "Toughness", "Vitality",
-        "ConditionDamage", "Expertise", "Concentration", "HealingPower"
-    ]
-
-    static func equipmentAttributes(
-        equipment: [CharacterEquipment], items: [Int: ItemMetadata], upgrades: [Int: ItemMetadata]
-    ) -> CharacterEquipmentStats {
-        var totals: [String: Int] = [:]
-        for equipped in equipment {
-            let selected = equipped.stats?.attributes ?? [:]
-            selected.forEach { totals[$0.key, default: 0] += $0.value }
-            items[equipped.itemID]?.details?.infixUpgrade?.attributes.forEach {
-                guard selected[$0.attribute] == nil else { return }
-                totals[$0.attribute, default: 0] += $0.modifier
-            }
-            for upgradeID in equipped.upgrades ?? [] {
-                upgrades[upgradeID]?.details?.infixUpgrade?.attributes.forEach {
-                    totals[$0.attribute, default: 0] += $0.modifier
-                }
-            }
-            for infusionID in equipped.infusions ?? [] {
-                upgrades[infusionID]?.details?.infixUpgrade?.attributes.forEach {
-                    totals[$0.attribute, default: 0] += $0.modifier
-                }
-            }
-        }
-        return CharacterEquipmentStats(attributes: totals)
-    }
-}
-
-struct CharacterDetailData: Equatable, Sendable {
+struct CharacterDetailData: Equatable, Sendable, Codable {
     var equipmentTabs: [EquipmentTab] = []
     var buildTabs: [BuildTab] = []
     var inventory: CharacterInventoryResponse?
@@ -207,6 +175,8 @@ struct CharacterDetailData: Equatable, Sendable {
     var equipmentError: String?
     var buildError: String?
     var inventoryError: String?
+    var updatedAt: Date? = nil
+    var source: AccountDataSource? = nil
 }
 
 extension GW2Character {
