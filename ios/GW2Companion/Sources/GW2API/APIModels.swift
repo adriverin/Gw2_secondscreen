@@ -468,6 +468,7 @@ struct ItemMetadata: Codable, Sendable, Identifiable, Equatable {
 }
 
 struct ItemDetails: Codable, Sendable, Equatable {
+    var attributeAdjustment: Double? = nil
     var type: String? = nil
     var weightClass: String? = nil
     var defense: Int? = nil
@@ -483,6 +484,7 @@ struct ItemDetails: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case type, defense, bonuses
+        case attributeAdjustment = "attribute_adjustment"
         case weightClass = "weight_class"
         case damageType = "damage_type"
         case minPower = "min_power"
@@ -499,7 +501,7 @@ struct ItemDetails: Codable, Sendable, Equatable {
         damageType: String? = nil, minPower: Int? = nil, maxPower: Int? = nil,
         infusionSlots: [InfusionSlot]? = nil, infixUpgrade: InfixUpgrade? = nil,
         suffixItemID: Int? = nil, secondarySuffixItemID: Int? = nil,
-        statChoices: [Int]? = nil, bonuses: [String]? = nil
+        statChoices: [Int]? = nil, bonuses: [String]? = nil, attributeAdjustment: Double? = nil
     ) {
         self.type = type
         self.weightClass = weightClass
@@ -513,6 +515,7 @@ struct ItemDetails: Codable, Sendable, Equatable {
         self.secondarySuffixItemID = secondarySuffixItemID
         self.statChoices = statChoices
         self.bonuses = bonuses
+        self.attributeAdjustment = attributeAdjustment
     }
 
     init(from decoder: Decoder) throws {
@@ -531,12 +534,34 @@ struct ItemDetails: Codable, Sendable, Equatable {
         secondarySuffixItemID = values.decodeFlexibleInt(forKey: .secondarySuffixItemID)
         statChoices = values.decodeCompactInts(forKey: .statChoices)
         bonuses = try values.decodeIfPresent([String].self, forKey: .bonuses)
+        attributeAdjustment = try values.decodeIfPresent(Double.self, forKey: .attributeAdjustment)
+    }
+}
+
+struct ItemStatMetadata: Codable, Equatable, Sendable, Identifiable {
+    let id: Int
+    let name: String
+    let attributes: [Coefficient]
+    struct Coefficient: Codable, Equatable, Sendable {
+        let attribute: String
+        let multiplier: Double
+        let value: Double
+    }
+
+    func attributes(adjustment: Double) -> [String: Int]? {
+        guard adjustment.isFinite, adjustment > 0, !attributes.isEmpty,
+              attributes.allSatisfy({ $0.multiplier.isFinite && $0.value.isFinite && $0.multiplier >= 0 })
+        else { return nil }
+        // ArenaNet prefix equation: round(attribute_adjustment × multiplier + value).
+        let values = attributes.map { ($0.attribute, adjustment * $0.multiplier + $0.value) }
+        guard values.allSatisfy({ $0.1 >= 0 && $0.1 < Double(Int.max) }) else { return nil }
+        return Dictionary(values.map { ($0.0, Int($0.1.rounded())) }, uniquingKeysWith: +)
     }
 }
 
 extension ItemMetadata {
     var requiresEquipmentDetails: Bool {
-        ["Armor", "Weapon", "Trinket", "Back", "UpgradeComponent", "Relic"].contains(type ?? "")
+        ["Armor", "Weapon", "Trinket", "Back", "UpgradeComponent"].contains(type ?? "")
     }
 }
 

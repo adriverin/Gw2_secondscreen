@@ -61,8 +61,10 @@ struct MapMarkerCanvas: View {
             }
         }
         if appearance.showLabel, let title = label(for: marker) {
-            context.draw(
-                context.resolve(Text(title).font(.system(size: 9, weight: .semibold)).foregroundColor(.white)),
+            var labelContext = context
+            labelContext.opacity = appearance.labelOpacity
+            labelContext.draw(
+                labelContext.resolve(Text(title).font(.system(size: 9, weight: .semibold)).foregroundColor(.white)),
                 at: CGPoint(x: point.x, y: point.y + half + 7),
                 anchor: .top)
         }

@@ -38,6 +38,8 @@ final class AccountStore: ObservableObject {
     @Published private(set) var inventoryUpdatedAt: Date?
     @Published private(set) var dataSource: AccountDataSource = .unknown
     @Published private(set) var characterDetails: [String: CharacterDetailData] = [:]
+    @Published private(set) var resolvingStatCharacters: Set<String> = []
+    @Published private(set) var statResolutionMessages: [String: String] = [:]
     @Published private(set) var loadingCharacterNames: Set<String> = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var isStale = false
@@ -285,6 +287,10 @@ final class AccountStore: ObservableObject {
         if let resolved = try? await api.items(ids: itemIDs, priority: .high) {
             detail.items.merge(resolved) { _, new in new }
         }
+        let missingPrefixes = Set(equipment.filter { $0.stats?.attributes?.isEmpty ?? true }.compactMap { $0.stats?.id })
+        if !missingPrefixes.isEmpty, let resolved = try? await api.itemStats(ids: missingPrefixes.sorted()) {
+            detail.itemStats = (detail.itemStats ?? [:]).merging(resolved) { _, new in new }
+        }
         if let resolved = try? await api.skins(ids: equipment.compactMap(\.skin)) {
             detail.skins = resolved
         }
@@ -331,6 +337,92 @@ final class AccountStore: ObservableObject {
             detail.updatedAt = Date()
         }
         characterDetails[character.name] = detail
+        await saveSnapshot()
+    }
+
+    /// QA-only targeted repair. Never requests account, inventory, wallet or
+    /// unrelated characters, and never marks a cached account snapshot current.
+    func resolveMissingStatSources(character: GW2Character, equipmentTab: Int, weaponSet: String) async {
+        guard !resolvingStatCharacters.contains(character.name), var detail = characterDetails[character.name],
+              let tab = detail.equipmentTabs.first(where: { $0.tab == equipmentTab }) else { return }
+        resolvingStatCharacters.insert(character.name)
+        defer { resolvingStatCharacters.remove(character.name) }
+        let accountID = account?.id
+        let build = (detail.buildTabs.first(where: \.isActive) ?? detail.buildTabs.first)?.build
+        var errors: [String] = []
+        var repairedItems: [Int: ItemMetadata] = [:]
+        var repairedPrefixes: [Int: ItemStatMetadata] = [:]
+        var repairedTraits: [Int: TraitMetadata] = [:]
+        var repairedSpecializations: [Int: SpecializationMetadata] = [:]
+        func plan() -> StatSourceResolutionPlan {
+            StatSourceResolutionPlan(equipment: detail.equipmentTabs.first(where: { $0.tab == tab.tab })?.equipment ?? tab.equipment,
+                items: detail.items, itemStats: detail.itemStats ?? [:], build: build, traits: detail.traits,
+                specializations: detail.specializations, weaponSet: weaponSet)
+        }
+        func publish() {
+            guard account?.id == accountID else { return }
+            // Merge only repaired fields into the latest value to preserve any
+            // concurrent inventory/build loading and its outage state.
+            guard var latest = characterDetails[character.name] else { return }
+            latest.items.merge(repairedItems) { _, repaired in repaired }
+            latest.itemStats = (latest.itemStats ?? [:]).merging(repairedPrefixes) { _, repaired in repaired }
+            latest.traits.merge(repairedTraits) { _, repaired in repaired }
+            latest.specializations.merge(repairedSpecializations) { _, repaired in repaired }
+            latest.equipmentTabs = latest.equipmentTabs.map { candidate in
+                guard candidate.tab == tab.tab, let repaired = detail.equipmentTabs.first(where: { $0.tab == tab.tab }),
+                      candidate.equipment.map(\.id) == repaired.equipment.map(\.id) else { return candidate }
+                return EquipmentStatInputResolver.hydratedTabs([candidate], from: CharacterEquipmentResponse(equipment: repaired.equipment))[0]
+            }
+            characterDetails[character.name] = latest
+        }
+        let initial = plan()
+        if initial.needsEquipmentAttributes {
+            do {
+                let response = try await api.characterEquipment(name: character.name)
+                detail.equipmentTabs = EquipmentStatInputResolver.hydratedTabs(detail.equipmentTabs, from: response)
+                publish()
+            } catch { errors.append(error.userFacingMessage(fallback: "Equipment attributes unavailable")) }
+        }
+        guard account?.id == accountID, !Task.isCancelled else { return }
+        let itemPlan = plan()
+        if !itemPlan.itemIDs.isEmpty {
+            do {
+                repairedItems = try await api.items(ids: itemPlan.itemIDs.sorted(), priority: .high, force: true)
+                detail.items.merge(repairedItems) { _, new in new }; publish()
+            }
+            catch { errors.append(error.userFacingMessage(fallback: "Item metadata unavailable")) }
+        }
+        guard account?.id == accountID, !Task.isCancelled else { return }
+        let prefixPlan = plan()
+        if !prefixPlan.itemStatIDs.isEmpty {
+            do {
+                repairedPrefixes = try await api.itemStats(ids: prefixPlan.itemStatIDs.sorted(), force: true)
+                detail.itemStats = (detail.itemStats ?? [:]).merging(repairedPrefixes) { _, new in new }; publish()
+            }
+            catch { errors.append(error.userFacingMessage(fallback: "Itemstat metadata unavailable")) }
+        }
+        guard account?.id == accountID, !Task.isCancelled else { return }
+        let specPlan = plan()
+        if !specPlan.specializationIDs.isEmpty {
+            do {
+                repairedSpecializations = try await api.specializations(ids: specPlan.specializationIDs.sorted(), priority: .high, force: true)
+                detail.specializations.merge(repairedSpecializations) { _, new in new }; publish()
+            }
+            catch { errors.append(error.userFacingMessage(fallback: "Specialization metadata unavailable")) }
+        }
+        guard account?.id == accountID, !Task.isCancelled else { return }
+        let traitPlan = plan()
+        if !traitPlan.traitIDs.isEmpty {
+            do {
+                repairedTraits = try await api.traits(ids: traitPlan.traitIDs.sorted(), priority: .high, force: true)
+                detail.traits.merge(repairedTraits) { _, new in new }; publish()
+            }
+            catch { errors.append(error.userFacingMessage(fallback: "Trait metadata unavailable")) }
+        }
+        guard account?.id == accountID else { return }
+        statResolutionMessages[character.name] = errors.isEmpty
+            ? "Targeted repair complete. Any remaining sources are listed below; cached account freshness is unchanged."
+            : errors.joined(separator: "\n")
         await saveSnapshot()
     }
 

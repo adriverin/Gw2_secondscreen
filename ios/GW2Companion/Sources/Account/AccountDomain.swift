@@ -163,6 +163,8 @@ struct CharacterEquipmentStats: Equatable, Sendable {
 }
 
 struct CharacterDetailData: Equatable, Sendable, Codable {
+    // Optional for compatibility with pre-itemstats account snapshots.
+    var itemStats: [Int: ItemStatMetadata]? = nil
     var equipmentTabs: [EquipmentTab] = []
     var buildTabs: [BuildTab] = []
     var inventory: CharacterInventoryResponse?

@@ -6,6 +6,7 @@ struct MapMarkerAppearance: Equatable, Sendable {
     var size: CGFloat
     var showLabel: Bool
     var important: Bool
+    var labelOpacity: Double = 1
 
     static let hidden = MapMarkerAppearance(visible: false, size: 0, showLabel: false, important: false)
 }
@@ -40,6 +41,21 @@ struct MapDetailViewportCounts: Equatable, Sendable {
 }
 
 enum MapDetailPolicy {
+    static func appearance(
+        for objective: MapObjective, mode: MapDetailMode, cameraZoom: Double,
+        targetID: MapObjectiveID?, routeIDs: Set<MapObjectiveID> = []
+    ) -> MapMarkerAppearance {
+        var result = appearance(for: objective, mode: mode, displayZoom: Int(cameraZoom.rounded(.down)),
+                                targetID: targetID, routeIDs: routeIDs)
+        // Keep icon sizes stable during a pinch. Only the geographical transform scales.
+        result.size = result.important ? 30 : (mode == .detailed ? 26 : 22)
+        if !result.important && mode == .detailed && [.waypoint, .heroChallenge, .vista, .masteryInsight].contains(objective.type) {
+            result.labelOpacity = min(1, max(0, (cameraZoom - 5.2) / 0.8))
+            result.showLabel = result.visible && result.labelOpacity > 0
+        }
+        return result
+    }
+
     static func appearance(
         for objective: MapObjective,
         mode: MapDetailMode,

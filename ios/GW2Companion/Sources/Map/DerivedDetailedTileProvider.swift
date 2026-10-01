@@ -4,7 +4,7 @@ import Foundation
 import UIKit
 
 struct DerivedDetailedTileRequest: Hashable, Sendable {
-    static let projectionVersion = "current-continent-z7-whole-canvas-v2"
+    static let projectionVersion = "current-continent-z7-recursive-2x2-v3"
 
     let continent: Int
     let floor: Int
@@ -43,6 +43,15 @@ struct DerivedDetailedTileRequest: Hashable, Sendable {
             }
         }
         return result
+    }
+
+    func pyramidChildren(projection: ArenaNetTileProjection = .shared) -> [TileIndex]? {
+        guard (4...6).contains(displayTile.zoom), sourceZoom == 7, continent == 1 else { return nil }
+        let children = (0..<4).map { index in
+            TileIndex(zoom: displayTile.zoom + 1, x: displayTile.x * 2 + index % 2,
+                      y: displayTile.y * 2 + index / 2)
+        }
+        return children.allSatisfy { projection.tileWorldRect(for: $0, continentID: continent) != nil } ? children : nil
     }
 }
 
@@ -100,11 +109,14 @@ actor DerivedDetailedTileProvider {
     static let maximumDerivedGenerationTasks = 2
     static let memoryCountLimit = 32
     static let memoryCostLimit = 12 * 1_024 * 1_024
-    static let diskFileLimit = 256
+    // A 48-parent z4 viewport needs up to 48 × (1 + 4 + 16) =
+    // 1008 derived nodes. Preserve that reusable pyramid, not just its leaves.
+    static let diskFileLimit = 1_024
 
     private var memory = BoundedMemoryCache<DerivedDetailedTileRequest, UIImage>(
         countLimit: memoryCountLimit, totalCostLimit: memoryCostLimit)
     private var inFlight: [DerivedDetailedTileRequest: Task<DerivedDetailedTileResult?, Never>] = [:]
+    private var consumers: [DerivedDetailedTileRequest: Set<UUID>] = [:]
     private let sourceLoader: SourceLoader
     private let tileProvider: MapTileProvider
     private let projection: ArenaNetTileProjection
@@ -121,7 +133,7 @@ actor DerivedDetailedTileProvider {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         self.directory = directory
-            ?? caches.appending(path: "GW2DerivedMapTiles-v2", directoryHint: .isDirectory)
+            ?? caches.appending(path: "GW2DerivedMapTiles-v3", directoryHint: .isDirectory)
         self.projection = projection
         self.tileProvider = tileProvider
         self.sourceLoader = sourceLoader ?? { url in
@@ -130,9 +142,9 @@ actor DerivedDetailedTileProvider {
     }
 
     func image(for request: DerivedDetailedTileRequest) async -> DerivedDetailedTileResult? {
-        guard request.displayTile.zoom == 5 || request.displayTile.zoom == 6,
+        guard !Task.isCancelled, (4...6).contains(request.displayTile.zoom),
               request.sourceZoom == projection.configuration(continentID: request.continent).referenceZoom,
-              let sourceTiles = request.sourceTiles(projection: projection)
+              let sourceTiles = request.pyramidChildren(projection: projection)
         else { return nil }
 
         let byteCost = Int(ArenaNetTileProjection.tileSize * ArenaNetTileProjection.tileSize * 4)
@@ -151,16 +163,31 @@ actor DerivedDetailedTileProvider {
                     request: request, sourceTileCount: sourceTiles.count, cacheState: .diskHit,
                     generationMilliseconds: 0, imageMemoryBytes: byteCost))
         }
-        if let existing = inFlight[request] { return await existing.value }
-
-        let task = Task { await self.generate(request, sourceTiles: sourceTiles, byteCost: byteCost) }
-        inFlight[request] = task
-        let result = await task.value
-        inFlight[request] = nil
-        if let result {
+        let consumer = UUID()
+        consumers[request, default: []].insert(consumer)
+        let task: Task<DerivedDetailedTileResult?, Never>
+        if let existing = inFlight[request] { task = existing }
+        else {
+            task = Task { await self.generate(request, sourceTiles: sourceTiles, byteCost: byteCost) }
+            inFlight[request] = task
+        }
+        let result = await withTaskCancellationHandler { await task.value } onCancel: {
+            Task { await self.releaseConsumer(consumer, request: request) }
+        }
+        releaseConsumer(consumer, request: request)
+        if let result, !Task.isCancelled {
             memory.set(result.image, for: request, cost: byteCost)
         }
-        return result
+        return Task.isCancelled ? nil : result
+    }
+
+    private func releaseConsumer(_ consumer: UUID, request: DerivedDetailedTileRequest) {
+        guard consumers[request]?.remove(consumer) != nil else { return }
+        if consumers[request]?.isEmpty == true {
+            inFlight[request]?.cancel()
+            inFlight[request] = nil
+            consumers[request] = nil
+        }
     }
 
     func cancel(_ request: DerivedDetailedTileRequest) {
@@ -177,11 +204,7 @@ actor DerivedDetailedTileProvider {
         sourceTiles: [TileIndex],
         byteCost: Int
     ) async -> DerivedDetailedTileResult? {
-        await generationLimiter.acquire()
-        if Task.isCancelled {
-            await generationLimiter.release()
-            return nil
-        }
+        guard !Task.isCancelled else { return nil }
         let started = ContinuousClock.now
         let urls = sourceTiles.compactMap { tile in
             tileProvider.tileURL(
@@ -189,7 +212,6 @@ actor DerivedDetailedTileProvider {
                 zoom: tile.zoom, x: tile.x, y: tile.y)
         }
         guard urls.count == sourceTiles.count else {
-            await generationLimiter.release()
             return nil
         }
 
@@ -199,6 +221,12 @@ actor DerivedDetailedTileProvider {
         await withTaskGroup(of: (Int, UIImage?).self) { group in
             for (index, url) in urls.enumerated() {
                 group.addTask {
+                    if sourceTiles[index].zoom < request.sourceZoom {
+                        let child = DerivedDetailedTileRequest(continent: request.continent, floor: request.floor,
+                                                               displayTile: sourceTiles[index], sourceZoom: request.sourceZoom,
+                                                               projectionVersion: request.projectionVersion)
+                        return (index, await self.image(for: child)?.image)
+                    }
                     await limiter.acquire()
                     if Task.isCancelled {
                         await limiter.release()
@@ -213,8 +241,12 @@ actor DerivedDetailedTileProvider {
                 loaded[index] = image
             }
         }
-        guard !Task.isCancelled, loaded.allSatisfy({ $0 != nil }),
-              let image = Self.composite(loaded.compactMap { $0 }, sourceCount: sourceTiles.count)
+        guard !Task.isCancelled, loaded.allSatisfy({ $0 != nil }) else { return nil }
+        // Never hold a generation permit while awaiting recursively generated
+        // children: doing so would deadlock the two-permit pyramid.
+        await generationLimiter.acquire()
+        guard !Task.isCancelled,
+              let image = Self.composite(loaded.compactMap { $0 }, sourceCount: 4)
         else {
             await generationLimiter.release()
             return nil
@@ -232,7 +264,7 @@ actor DerivedDetailedTileProvider {
                 generationMilliseconds: milliseconds, imageMemoryBytes: byteCost))
     }
 
-    /// QA/reference only; live maps use direct z7 tiles. Child rows have a
+    /// Every live pyramid level uses four immediate children. Child rows have a
     /// top-left origin, while an untransformed CGContext has a bottom-left origin.
     /// Position rows explicitly, keeping each CGImage upright, then resize once.
     static func composite(_ images: [UIImage], sourceCount: Int) -> UIImage? {
@@ -273,7 +305,7 @@ actor DerivedDetailedTileProvider {
     }
 
     private func persist(_ image: UIImage, for request: DerivedDetailedTileRequest) {
-        guard let data = image.jpegData(compressionQuality: 0.94) else { return }
+        guard let data = image.pngData() else { return }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? data.write(to: diskURL(for: request), options: .atomic)
         DiskCachePruner.prune(directory: directory, maxFiles: Self.diskFileLimit)
@@ -282,7 +314,7 @@ actor DerivedDetailedTileProvider {
     private func diskURL(for request: DerivedDetailedTileRequest) -> URL {
         let digest = SHA256.hash(data: Data(request.cacheKey.utf8))
             .map { String(format: "%02x", $0) }.joined()
-        return directory.appending(path: digest + ".jpg")
+        return directory.appending(path: digest + ".png")
     }
 }
 

@@ -23,6 +23,7 @@ struct LiveMapView: View {
     @State private var goalAction: SuggestedAction?
     @State private var viewportCenter = ContinentPoint(x: 0, y: 0)
     @State private var viewportZoom = 6
+    @State private var viewportCameraZoom = 6.0
     @State private var viewportTileWorld: TileWorldCoordinate?
     @State private var viewportTile: TileIndex?
     @AppStorage("developer.mode.enabled") private var developerMode = false
@@ -126,9 +127,10 @@ struct LiveMapView: View {
                 onSelectObjective: select,
                 onBackgroundTap: { navigation.toggleMapChrome() },
                 routeIDs: Set(objectives.route?.objectives ?? []),
-                onVisibleCoordinateChange: { center, zoom, tileWorld, tile, tileCount, markerCount in
+                onVisibleCoordinateChange: { center, zoom, tileWorld, tile, tileCount, markerCount, cameraZoom in
                     viewportCenter = center
                     viewportZoom = zoom
+                    viewportCameraZoom = cameraZoom
                     viewportTileWorld = tileWorld
                     viewportTile = tile
                     DeveloperDiagnostics.shared.mapSnapshot = MapQADiagnostics.snapshot(
@@ -545,7 +547,7 @@ struct LiveMapView: View {
                 .visibleContinentRect(marginPoints: 256)
             let sourceZoom = MapRasterDetail.sourceZoom(
                 displayZoom: viewportZoom, continentID: continentID, viewport: viewport, mode: mode)
-            Text("display zoom \(viewportZoom)  source artwork zoom \(sourceZoom)  mode \(mode.title)")
+            Text("camera zoom \(viewportCameraZoom.formatted(.number.precision(.fractionLength(2))))  tile source \(viewportZoom)  source artwork zoom \(sourceZoom)  mode \(mode.title)")
             let comparison = MapDetailPolicy.comparison(
                 objectives: objectives.visibleObjectives, displayZoom: viewportZoom,
                 balancedSourceZoom: MapRasterDetail.sourceZoom(

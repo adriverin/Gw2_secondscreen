@@ -33,6 +33,7 @@ actor GW2APIClient {
     private let baseURL = URL(string: "https://api.guildwars2.com/v2/")!
 
     private var itemCache: [Int: ItemMetadata] = [:]
+    private var itemStatCache: [Int: ItemStatMetadata] = [:]
     private var currencyCache: [Int: CurrencyMetadata] = [:]
     private var professionCache: [String: ProfessionMetadata] = [:]
     private var specializationCache: [Int: SpecializationMetadata] = [:]
@@ -162,11 +163,12 @@ actor GW2APIClient {
         .sorted { $0.metadata.name.localizedCaseInsensitiveCompare($1.metadata.name) == .orderedAscending }
     }
 
-    func items(ids: [Int], priority: APIRequestPriority = .normal) async throws -> [Int: ItemMetadata] {
+    func items(ids: [Int], priority: APIRequestPriority = .normal, force: Bool = false) async throws -> [Int: ItemMetadata] {
         itemCache = await loadedIntCache(itemCache, name: "items")
         // Recover persistent entries from the old all-or-nothing details decoder.
         // They otherwise looked resolved and were never requested again.
         for id in ids {
+            if force { itemCache[id] = nil }
             if let item = itemCache[id], item.requiresEquipmentDetails && item.details == nil {
                 itemCache[id] = nil
             }
@@ -174,6 +176,13 @@ actor GW2APIClient {
         itemCache = try await filledIntCache(
             itemCache, ids: ids, endpoint: "items", name: "items", priority: priority)
         return itemCache.filter { Set(ids).contains($0.key) }
+    }
+
+    func itemStats(ids: [Int], priority: APIRequestPriority = .high, force: Bool = false) async throws -> [Int: ItemStatMetadata] {
+        itemStatCache = await loadedIntCache(itemStatCache, name: "itemstats")
+        if force { for id in ids { itemStatCache[id] = nil } }
+        itemStatCache = try await filledIntCache(itemStatCache, ids: ids, endpoint: "itemstats", name: "itemstats", priority: priority)
+        return itemStatCache.filter { Set(ids).contains($0.key) }
     }
 
     func characterEquipment(name: String) async throws -> CharacterEquipmentResponse {
@@ -204,16 +213,18 @@ actor GW2APIClient {
         return professionCache.filter { Set(wanted).contains($0.key) }
     }
 
-    func specializations(ids: [Int]) async throws -> [Int: SpecializationMetadata] {
+    func specializations(ids: [Int], priority: APIRequestPriority = .normal, force: Bool = false) async throws -> [Int: SpecializationMetadata] {
         specializationCache = await loadedIntCache(specializationCache, name: "specializations")
+        if force { for id in ids { specializationCache[id] = nil } }
         specializationCache = try await filledIntCache(
-            specializationCache, ids: ids, endpoint: "specializations", name: "specializations")
+            specializationCache, ids: ids, endpoint: "specializations", name: "specializations", priority: priority)
         return specializationCache.filter { Set(ids).contains($0.key) }
     }
 
-    func traits(ids: [Int]) async throws -> [Int: TraitMetadata] {
+    func traits(ids: [Int], priority: APIRequestPriority = .normal, force: Bool = false) async throws -> [Int: TraitMetadata] {
         traitCache = await loadedIntCache(traitCache, name: "traits")
-        traitCache = try await filledIntCache(traitCache, ids: ids, endpoint: "traits", name: "traits")
+        if force { for id in ids { traitCache[id] = nil } }
+        traitCache = try await filledIntCache(traitCache, ids: ids, endpoint: "traits", name: "traits", priority: priority)
         return traitCache.filter { Set(ids).contains($0.key) }
     }
 

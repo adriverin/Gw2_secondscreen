@@ -23,7 +23,7 @@ struct NativeTileMapView: View {
     let onSelectObjective: (MapObjective) -> Void
     var onBackgroundTap: (() -> Void)? = nil
     var routeIDs: Set<MapObjectiveID> = []
-    var onVisibleCoordinateChange: ((ContinentPoint, Int, TileWorldCoordinate?, TileIndex?, Int, Int) -> Void)? = nil
+    var onVisibleCoordinateChange: ((ContinentPoint, Int, TileWorldCoordinate?, TileIndex?, Int, Int, Double) -> Void)? = nil
 
     private let projection = ArenaNetTileProjection.shared
     private let tileProvider: MapArtworkProvider = ArenaNetOfficialTileProvider()
@@ -31,12 +31,16 @@ struct NativeTileMapView: View {
     @AppStorage(MapDetailMode.storageKey) private var mapDetailRaw = MapDetailMode.balanced.rawValue
     @State private var center = ContinentPoint(x: 44_615.5, y: 29_863.7)
     @State private var zoom = 6
+    @State private var cameraZoom = 6.0
+    @State private var pinch: ContinuousMapCamera.Pinch?
     @State private var markerScene = MapMarkerScene(objectives: [])
-    @GestureState private var dragOffset: CGSize = .zero
-    @GestureState private var magnification = 1.0
+    @State private var dragOffset: CGSize = .zero
     @State private var lastVisibleTileCount = 0
     @State private var lastViewportSize = CGSize(width: 390, height: 844)
-    @State private var detailedFrame: DirectDetailedTileFrame?
+    @State private var layers = MapRasterLayerHandoff()
+    private var activeFrame: MapRasterLayerFrame? { layers.active }
+    private var outgoingFrame: MapRasterLayerFrame? { layers.outgoing }
+    @State private var replacementOpacity = 1.0
 
     private var mapDetail: MapDetailMode { MapDetailMode(rawValue: mapDetailRaw) ?? .balanced }
 
@@ -54,11 +58,34 @@ struct NativeTileMapView: View {
             }
             .clipped()
             .contentShape(Rectangle())
-            .gesture(panGesture.simultaneously(with: zoomGesture))
-            .simultaneousGesture(
-                SpatialTapGesture().onEnded { value in
-                    handleTap(value.location, transform: transform)
-                })
+            .overlay {
+                MapGestureSurface(
+                    cameraZoom: cameraZoom, sourceZoom: zoom,
+                    onPan: { translation, ended in
+                        guard pinch == nil else { dragOffset = .zero; return }
+                        followPlayer = false
+                        if ended {
+                            center = ContinentPoint(x: center.x - translation.width * worldUnitsPerPixel,
+                                                    y: center.y - translation.height * worldUnitsPerPixel)
+                            dragOffset = .zero
+                        } else { dragOffset = translation }
+                    },
+                    onPinch: { scale, anchor, began, ended in
+                        if began || pinch == nil {
+                            pinch = ContinuousMapCamera.Pinch(startZoom: cameraZoom, screenAnchor: anchor,
+                                                             continentAnchor: viewportTransform(size: geometry.size).continentPoint(for: anchor))
+                            dragOffset = .zero
+                        }
+                        followPlayer = false
+                        if let update = pinch?.update(magnification: scale, size: geometry.size,
+                                                      referenceZoom: tileReferenceZoom, movingAnchor: anchor) {
+                            cameraZoom = update.zoom
+                            center = update.center
+                        }
+                        if ended { pinch = nil }
+                    },
+                    onTap: { handleTap($0, transform: viewportTransform(size: geometry.size)) })
+            }
             .onChange(of: sceneVersion, initial: true) { _, _ in
                 markerScene = MapMarkerScene(objectives: objectives)
             }
@@ -68,6 +95,8 @@ struct NativeTileMapView: View {
                 center = newPlayer
             }
             .onChange(of: metadata?.id) { _, _ in
+                cameraZoom = min(Double(tileReferenceZoom), max(2, cameraZoom))
+                zoom = min(tileReferenceZoom, max(2, zoom))
                 if let metadata, let bounds = metadata.continentBounds {
                     if followPlayer, let player {
                         center = player
@@ -77,11 +106,18 @@ struct NativeTileMapView: View {
                 }
                 Task { await MapTileImageCache.shared.handleMemoryPressure() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                Task { await DerivedDetailedTileProvider.shared.handleMemoryPressure() }
+            }
             .onChange(of: focusRequest) { _, request in
                 if let request { focus(request.mode, size: geometry.size) }
             }
             .onChange(of: center) { _, _ in reportVisibleCoordinate() }
             .onChange(of: zoom) { _, _ in reportVisibleCoordinate() }
+            .onChange(of: cameraZoom) { _, value in
+                zoom = ContinuousMapCamera.sourceZoom(cameraZoom: value, current: zoom, maximum: tileReferenceZoom)
+                reportVisibleCoordinate()
+            }
             .onChange(of: mapDetailRaw) { _, _ in reportVisibleCoordinate() }
             .onChange(of: geometry.size) { _, size in
                 lastViewportSize = size
@@ -96,63 +132,93 @@ struct NativeTileMapView: View {
 
     @ViewBuilder
     private func tileLayer(transform: MapViewportTransform) -> some View {
-        // Prefetch one source-tile border. At z5 a 256-point border would
-        // quadruple the work and spend the detail budget outside the viewport.
-        let margin = mapDetail == .detailed && (zoom == 5 || zoom == 6)
-            ? DirectDetailedTileLayout.screenSide(displayZoom: zoom, magnification: magnification)
-            : 256 * magnification
+        // One source-level border, bounded by the cold leaf budget. The request
+        // changes only at a source threshold or tile boundary, not each frame.
+        let margin = zoom == 4 ? 0 : 256 * ContinuousMapCamera.scale(cameraZoom: cameraZoom, sourceZoom: zoom)
         let viewport = transform.visibleContinentRect(marginPoints: margin)
         let continentID = metadata?.continentId ?? 1
         let floor = metadata?.defaultFloor ?? 1
-        let tileIDs = projection.tiles(
+        let paddedTiles = projection.tiles(
             coveringContinentRect: viewport, zoom: zoom, continentID: continentID, mapFloor: floor)
-        let source = MapRasterDetail.renderingSource(
-            displayZoom: zoom, continentID: continentID, mode: mapDetail,
-            visibleDisplayTileCount: tileIDs.count,
-            artworkAvailable: metadata.map { tileProvider.coverage(for: $0).isOfficial } ?? true)
-        // Do not enumerate the entire z7 continent when the budget chose native.
-        let sourceTiles: [TileIndex] = if case .overzoom = source {
-            projection.tiles(
-                coveringContinentRect: viewport, zoom: 7, continentID: continentID, mapFloor: floor)
-        } else { [] }
-        let request: DirectDetailedTileRequest? = if case .overzoom = source,
-            sourceTiles.count <= DirectDetailedTileProvider.maximumSourceTiles {
-            DirectDetailedTileRequest(continent: continentID, floor: floor, tiles: sourceTiles)
-        } else { nil }
-        let frame = detailedFrame.flatMap { $0.request == request && $0.isComplete ? $0 : nil }
-        let renderedTiles = frame?.request.tiles ?? tileIDs
-        let screenSize = frame == nil
-            ? tileScreenSize * magnification
-            : DirectDetailedTileLayout.screenSide(displayZoom: zoom, magnification: magnification)
-
-        Group {
-            ForEach(renderedTiles, id: \.self) { tile in
-                if let url = tileProvider.tileURL(
-                    continent: continentID, floor: floor, zoom: tile.zoom, x: tile.x, y: tile.y),
-                   let worldRect = projection.tileWorldRect(for: tile, continentID: continentID),
-                   let continent = projection.continentCoordinate(
-                    from: TileWorldCoordinate(x: worldRect.midX, y: worldRect.midY),
-                    continentID: continentID, mapFloor: floor) {
-                    Group {
-                        if let image = frame?.images[tile] {
-                            Image(uiImage: image).resizable().interpolation(.high)
-                        } else {
-                            MapTileImage(url: url, index: tile, showDebug: showTileDebugGrid)
-                        }
-                    }
-                        .frame(width: screenSize, height: screenSize)
-                        .position(transform.screenPosition(for: continent))
-                }
+        let paddedRequest = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: paddedTiles, detailed: true)
+        // Shed the prefetch ring before sacrificing visible Detailed coverage.
+        let tileIDs = paddedTiles.count > MapRasterLayerRequest.maximumParentTiles
+            || (mapDetail == .detailed && !paddedRequest.permitsDetailed)
+            ? projection.tiles(coveringContinentRect: transform.visibleContinentRect(), zoom: zoom,
+                               continentID: continentID, mapFloor: floor) : paddedTiles
+        let candidate = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: tileIDs, detailed: true)
+        let request = MapRasterLayerRequest(
+            continent: continentID, floor: floor, tiles: tileIDs,
+            detailed: mapDetail == .detailed && candidate.permitsDetailed)
+        ZStack {
+            // A cold viewport always starts rendering native tiles immediately.
+            // While replacing a frame, fill uncovered areas at the OLD source
+            // level, so no mixed-level grid appears underneath retained artwork.
+            let fallbackZoom = activeFrame?.request.continent == continentID
+                ? (activeFrame?.request.tiles.first?.zoom ?? zoom) : zoom
+            let fallbackTiles = projection.tiles(coveringContinentRect: viewport, zoom: fallbackZoom,
+                                                continentID: continentID, mapFloor: floor)
+            // Bound emergency fill work during a very rapid multi-level pinch.
+            // Never create thousands of old-source image tasks on the main actor.
+            rasterTiles(Array(fallbackTiles.prefix(96)), images: [:], continentID: continentID, floor: floor, transform: transform)
+            if let outgoingFrame, outgoingFrame.request.continent == continentID && outgoingFrame.request.floor == floor {
+                rasterTiles(outgoingFrame.request.tiles, images: outgoingFrame.images,
+                            continentID: continentID, floor: floor, transform: transform)
+            }
+            if let activeFrame, activeFrame.request.continent == continentID && activeFrame.request.floor == floor {
+                rasterTiles(activeFrame.request.tiles, images: activeFrame.images,
+                            continentID: continentID, floor: floor, transform: transform)
+                    .opacity(replacementOpacity)
             }
         }
         .task(id: request) {
-            guard let request else { detailedFrame = nil; return }
-            let frame = await DirectDetailedTileProvider.shared.frame(for: request)
-            guard !Task.isCancelled else { return }
-            detailedFrame = frame
+            if request.detailed {
+                // Native readiness and pyramid generation proceed independently.
+                // A slow cold z4 build cannot hold the camera at an obsolete level.
+                async let detailed = MapRasterLayerLoader.frame(for: request)
+                if activeFrame == nil || activeFrame?.request.tiles.first?.zoom != zoom
+                    || activeFrame?.request.continent != continentID || activeFrame?.request.floor != floor {
+                    let native = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: tileIDs, detailed: false)
+                    if let frame = await MapRasterLayerLoader.frame(for: native), !Task.isCancelled { await display(frame) }
+                }
+                if let frame = await detailed, !Task.isCancelled { await display(frame) }
+            } else if let frame = await MapRasterLayerLoader.frame(for: request), !Task.isCancelled {
+                await display(frame)
+            }
         }
         .onAppear { lastVisibleTileCount = tileIDs.count }
         .onChange(of: tileIDs.count) { _, count in lastVisibleTileCount = count }
+    }
+
+    @MainActor
+    private func display(_ frame: MapRasterLayerFrame) async {
+        guard !Task.isCancelled, layers.accept(frame) else { return }
+        replacementOpacity = 0
+        withAnimation(.linear(duration: ContinuousMapCamera.crossfadeSeconds)) { replacementOpacity = 1 }
+        // Cleanup must survive cancellation of the loading viewport task.
+        // Request identity prevents an older fade from clearing a newer layer.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            layers.finish(frame.request)
+        }
+    }
+
+    private func rasterTiles(_ tiles: [TileIndex], images: [TileIndex: UIImage], continentID: Int,
+                             floor: Int, transform: MapViewportTransform) -> some View {
+        ForEach(tiles, id: \.self) { tile in
+            if let url = tileProvider.tileURL(continent: continentID, floor: floor, zoom: tile.zoom, x: tile.x, y: tile.y),
+               let rect = projection.tileWorldRect(for: tile, continentID: continentID),
+               let point = projection.continentCoordinate(from: TileWorldCoordinate(x: rect.midX, y: rect.midY),
+                                                          continentID: continentID, mapFloor: floor) {
+                let side = 256 * ContinuousMapCamera.scale(cameraZoom: cameraZoom, sourceZoom: tile.zoom)
+                Group {
+                    if let image = images[tile] { Image(uiImage: image).resizable().interpolation(.high) }
+                    else { MapTileImage(url: url, index: tile, showDebug: showTileDebugGrid) }
+                }
+                .frame(width: side + 0.5, height: side + 0.5)
+                .position(transform.screenPosition(for: point))
+            }
+        }
     }
 
     private var tileScreenSize: CGFloat { CGFloat(ArenaNetTileProjection.tileSize + 1) }
@@ -171,12 +237,12 @@ struct NativeTileMapView: View {
         Dictionary(uniqueKeysWithValues: markers.compactMap { marker in
             guard let objective = marker.objective else { return nil }
             return (marker.id, MapDetailPolicy.appearance(
-                for: objective, mode: mapDetail, displayZoom: zoom, targetID: target?.id, routeIDs: routeIDs))
+                for: objective, mode: mapDetail, cameraZoom: cameraZoom, targetID: target?.id, routeIDs: routeIDs))
         })
     }
 
     private func handleTap(_ location: CGPoint, transform: MapViewportTransform) {
-        guard magnification == 1.0, dragOffset == .zero else { return }
+        guard pinch == nil, dragOffset == .zero else { return }
         if let objective = markerScene.marker(at: location, in: transform)?.objective {
             onSelectObjective(objective)
             return
@@ -240,8 +306,8 @@ struct NativeTileMapView: View {
 
     private func viewportTransform(size: CGSize) -> MapViewportTransform {
         MapViewportTransform(
-            center: center, zoom: zoom, magnification: magnification, dragOffset: dragOffset, size: size,
-            tileReferenceZoom: tileReferenceZoom)
+            center: center, zoom: zoom, magnification: 1, dragOffset: pinch == nil ? dragOffset : .zero, size: size,
+            tileReferenceZoom: tileReferenceZoom, cameraZoom: cameraZoom)
     }
 
     private var tileReferenceZoom: Int {
@@ -251,14 +317,14 @@ struct NativeTileMapView: View {
     private var iconRequestKey: String { markerScene.iconURLs.map(\.absoluteString).sorted().joined(separator: "|") }
 
     private var worldUnitsPerPixel: Double {
-        projection.worldUnitsPerTilePixel(zoom: zoom, continentID: metadata?.continentId ?? 1)
+        pow(2, Double(tileReferenceZoom) - cameraZoom)
     }
 
     private func renderableMarkers(_ markers: [MapSceneMarker]) -> [MapSceneMarker] {
         markers.filter { marker in
             guard let objective = marker.objective else { return true }
             return MapDetailPolicy.appearance(
-                for: objective, mode: mapDetail, displayZoom: zoom,
+                for: objective, mode: mapDetail, cameraZoom: cameraZoom,
                 targetID: target?.id, routeIDs: routeIDs).visible
         }.prefix(700).map { $0 }
     }
@@ -283,6 +349,7 @@ struct NativeTileMapView: View {
                 let units = projection.worldUnitsPerTilePixel(zoom: candidate, continentID: metadata?.continentId ?? 1)
                 if dx <= Double(size.width) * units * 0.72 && dy <= Double(size.height) * units * 0.62 {
                     zoom = candidate
+                    cameraZoom = Double(candidate)
                     break
                 }
             }
@@ -302,10 +369,12 @@ struct NativeTileMapView: View {
             let units = projection.worldUnitsPerTilePixel(zoom: candidate, continentID: metadata?.continentId ?? 1)
             if bounds.width <= Double(size.width) * units * 0.92 && bounds.height <= Double(size.height) * units * 0.92 {
                 zoom = candidate
+                cameraZoom = Double(candidate)
                 return
             }
         }
         zoom = 2
+        cameraZoom = 2
     }
 
     private func reportVisibleCoordinate() {
@@ -315,37 +384,15 @@ struct NativeTileMapView: View {
         let tile = tileWorld.flatMap { projection.tileIndex(from: $0, zoom: zoom, continentID: continentID) }
         let transform = MapViewportTransform(
             center: center, zoom: zoom, magnification: 1, dragOffset: .zero, size: lastViewportSize,
-            tileReferenceZoom: tileReferenceZoom)
-        let margin = mapDetail == .detailed && (zoom == 5 || zoom == 6)
-            ? DirectDetailedTileLayout.screenSide(displayZoom: zoom) : 256
+            tileReferenceZoom: tileReferenceZoom, cameraZoom: cameraZoom)
+        let margin = zoom == 4 ? 0 : 256 * ContinuousMapCamera.scale(cameraZoom: cameraZoom, sourceZoom: zoom)
         let viewport = transform.visibleContinentRect(marginPoints: margin)
-        let sourceZoom = MapRasterDetail.sourceZoom(
-            displayZoom: zoom, continentID: continentID, viewport: viewport, mode: mapDetail)
         lastVisibleTileCount = projection.tiles(
-            coveringContinentRect: viewport, zoom: sourceZoom, continentID: continentID, mapFloor: floor).count
+            coveringContinentRect: viewport, zoom: zoom, continentID: continentID, mapFloor: floor).count
         let markerCount = renderableMarkers(markerScene.visibleMarkers(in: transform)).count
-        onVisibleCoordinateChange?(center, zoom, tileWorld, tile, lastVisibleTileCount, markerCount)
+        onVisibleCoordinateChange?(center, zoom, tileWorld, tile, lastVisibleTileCount, markerCount, cameraZoom)
     }
 
-    private var panGesture: some Gesture {
-        DragGesture()
-            .updating($dragOffset) { value, state, _ in state = value.translation }
-            .onChanged { _ in followPlayer = false }
-            .onEnded { value in
-                center = ContinentPoint(
-                    x: center.x - value.translation.width * worldUnitsPerPixel / magnification,
-                    y: center.y - value.translation.height * worldUnitsPerPixel / magnification)
-            }
-    }
-
-    private var zoomGesture: some Gesture {
-        MagnifyGesture()
-            .updating($magnification) { value, state, _ in state = value.magnification }
-            .onEnded { value in
-                if value.magnification > 1.25 { zoom = min(tileReferenceZoom, zoom + 1) }
-                if value.magnification < 0.8 { zoom = max(2, zoom - 1) }
-            }
-    }
 }
 
 private struct MapTileImage: View {

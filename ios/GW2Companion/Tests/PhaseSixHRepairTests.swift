@@ -136,7 +136,7 @@ final class PhaseSixHMapTests: XCTestCase {
         XCTAssertEqual(DirectDetailedTileLayout.screenSide(displayZoom: 6), 128)
         XCTAssertEqual(DirectDetailedTileLayout.screenSide(displayZoom: 5), 64)
         XCTAssertEqual(MapRasterDetail.renderingSource(displayZoom: 4, continentID: 1,
-            mode: .detailed, visibleDisplayTileCount: 1), .native(zoom: 4))
+            mode: .detailed, visibleDisplayTileCount: 1), .overzoom(sourceZoom: 7))
         XCTAssertEqual(MapRasterDetail.renderingSource(displayZoom: 5, continentID: 1,
             mode: .detailed, visibleDisplayTileCount: 100), .native(zoom: 5))
     }
@@ -325,7 +325,7 @@ final class PhaseSixHStatTests: XCTestCase {
         XCTAssertTrue(stats.equipmentSources.suffix(4).allSatisfy { $0.sources.allSatisfy { $0.state == .ignored } })
     }
 
-    func testFlashonderObservedInputRegressionTotalsAndDerivedFormulas() {
+    func testObservedTotalsArithmeticOnlyNotFlashonderSourceFidelity() {
         // Reconstructed regression input, NOT an account equipment dump. The
         // physical recording supplies totals, not the character's item records.
         let selected = ["Power": 873, "Precision": 170, "Toughness": 868, "Vitality": 1051,

@@ -9,12 +9,13 @@ struct MapViewportTransform: Equatable {
     let size: CGSize
     /// Tile imagery reference zoom. Isolated from API continent `max_zoom`.
     var tileReferenceZoom: Int = 7
+    var cameraZoom: Double? = nil
 
     /// Continent Y increases south, matching UIKit/CoreGraphics Y (down).
     /// Overlay math therefore does not invert Y; inversion exists only in
     /// map-local ↔ continent conversion inside `GW2CoordinateTransformer`.
     var worldUnitsPerScreenPoint: Double {
-        pow(2, Double(tileReferenceZoom - zoom)) / magnification
+        pow(2, Double(tileReferenceZoom) - (cameraZoom ?? Double(zoom))) / magnification
     }
 
     func screenPosition(for point: ContinentPoint) -> CGPoint {

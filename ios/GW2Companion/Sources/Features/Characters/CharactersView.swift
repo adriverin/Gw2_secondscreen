@@ -293,7 +293,7 @@ private struct EquipmentSection: View {
                     build: detail.buildTabs.first(where: \.isActive)?.build ?? detail.buildTabs.first?.build,
                     traits: detail.traits, specializations: detail.specializations,
                     equipmentTabName: selectedTab.name,
-                    source: detail.source, updatedAt: detail.updatedAt)
+                    source: detail.source, updatedAt: detail.updatedAt, itemStats: detail.itemStats ?? [:], equipmentTabID: selectedTab.tab)
             } else if detail.errorMessage == nil {
                 ProgressView("Loading equipment…").frame(maxWidth: .infinity).padding(30)
             }
@@ -344,12 +344,14 @@ private struct EquipmentStatsView: View {
     let equipmentTabName: String
     let source: AccountDataSource?
     let updatedAt: Date?
+    var itemStats: [Int: ItemStatMetadata] = [:]
+    var equipmentTabID: Int? = nil
     @State private var inspectedStat: String?
 
     private var stats: CharacterStaticStats {
         CharacterStatEngine.calculate(
             character: character, equipment: equipment, items: items,
-            build: build, traits: traits, specializations: specializations)
+            build: build, traits: traits, specializations: specializations, itemStats: itemStats)
     }
 
     var body: some View {
@@ -396,13 +398,18 @@ private struct EquipmentStatsView: View {
                     .font(.caption).foregroundStyle(.secondary).padding(.top, 8)
             }
             Divider().padding(.vertical, 8)
+            let coverage = StatCoverageReport(stats: stats, build: build, traits: traits, specializations: specializations)
+            Text(coverage.isComplete ? "Static Stats complete" : "Static Stats incomplete").font(.caption.bold())
+            Text(coverage.summary).font(.caption)
+            let missingEquipment = stats.equipmentSources.filter { $0.included && $0.equipment.slot != "Relic" && $0.baseAttributes.isEmpty }.count
+            if missingEquipment > 0 { Text("\(missingEquipment) equipment sources still unresolved").font(.caption).foregroundStyle(.orange) }
             HStack {
                 Text("STAT COVERAGE").font(.caption2.bold()).foregroundStyle(.secondary)
                 Spacer()
                 GWBadge(
-                    text: stats.coverage.rawValue.uppercased(),
-                    color: stats.coverage == .high ? .green : .orange,
-                    symbol: stats.coverage == .high ? "checkmark.circle" : "exclamationmark.circle")
+                    text: coverage.isComplete ? "COMPLETE" : "INCOMPLETE",
+                    color: coverage.isComplete ? .green : .orange,
+                    symbol: coverage.isComplete ? "checkmark.circle" : "exclamationmark.circle")
             }
             Text("\(stats.modeledTraitCount) trait modifiers modeled • \(stats.excludedTraitCount) excluded/conditional")
                 .font(.caption).foregroundStyle(.secondary)
@@ -413,7 +420,7 @@ private struct EquipmentStatsView: View {
                 CharacterStatAuditView(
                     character: character, equipment: equipment, items: items,
                     build: build, traits: traits, specializations: specializations,
-                    equipmentTabName: equipmentTabName)
+                    equipmentTabName: equipmentTabName, equipmentTabID: equipmentTabID)
             }
             .buttonStyle(.bordered)
             .padding(.top, 6)
@@ -460,6 +467,8 @@ private struct StatSourceSheet: View {
 }
 
 struct CharacterStatAuditView: View {
+    @EnvironmentObject private var account: AccountStore
+    @AppStorage(EarlyBeta.developerModeKey) private var developerMode = false
     let character: GW2Character
     let equipment: [CharacterEquipment]
     let items: [Int: ItemMetadata]
@@ -467,13 +476,27 @@ struct CharacterStatAuditView: View {
     let traits: [Int: TraitMetadata]
     let specializations: [Int: SpecializationMetadata]
     let equipmentTabName: String
+    var equipmentTabID: Int? = nil
     @State private var observed: [String: String] = [:]
     @State private var weaponSet = "A"
 
+    private var currentDetail: CharacterDetailData? { account.characterDetails[character.name] }
+    private var currentTab: EquipmentTab? { currentDetail?.equipmentTabs.first { tab in
+        if let equipmentTabID { return tab.tab == equipmentTabID }
+        return tab.name == equipmentTabName && tab.equipment.map(\.id) == equipment.map(\.id)
+    } }
+    private var currentBuild: CharacterBuild? { (currentDetail?.buildTabs.first(where: \.isActive) ?? currentDetail?.buildTabs.first)?.build ?? build }
+    private var currentTraits: [Int: TraitMetadata] { currentDetail?.traits ?? traits }
+    private var currentSpecializations: [Int: SpecializationMetadata] { currentDetail?.specializations ?? specializations }
+    private var coverage: StatCoverageReport {
+        StatCoverageReport(stats: stats, build: currentBuild, traits: currentTraits, specializations: currentSpecializations)
+    }
+
     private var stats: CharacterStaticStats {
         CharacterStatEngine.calculate(
-            character: character, equipment: equipment, items: items,
-            build: build, traits: traits, specializations: specializations, weaponSet: weaponSet)
+            character: character, equipment: currentTab?.equipment ?? equipment, items: currentDetail?.items ?? items,
+            build: currentBuild, traits: currentTraits, specializations: currentSpecializations,
+            itemStats: currentDetail?.itemStats ?? [:], weaponSet: weaponSet)
     }
 
     private var observationKey: String {
@@ -497,13 +520,36 @@ struct CharacterStatAuditView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Stat coverage") {
-                LabeledContent("Coverage", value: stats.coverage.rawValue)
+                Text(coverage.isComplete ? "Static Stats complete" : "Static Stats incomplete")
+                    .foregroundStyle(coverage.isComplete ? .green : .orange)
+                Text(coverage.summary)
+                Text("Account freshness and static metadata completeness are independent.").font(.caption)
+                if developerMode {
+                    Button("Resolve Missing Stat Sources") {
+                        guard let tab = currentTab else { return }
+                        Task { await account.resolveMissingStatSources(character: character, equipmentTab: tab.tab, weaponSet: weaponSet) }
+                    }
+                    .disabled(currentTab == nil || account.resolvingStatCharacters.contains(character.name))
+                    .accessibilityIdentifier("audit.resolveMissingSources")
+                }
+                if account.resolvingStatCharacters.contains(character.name) { ProgressView("Resolving targeted sources…") }
+                if let message = account.statResolutionMessages[character.name] { Text(message).font(.caption) }
                 LabeledContent("Trait modifiers modeled", value: "\(stats.modeledTraitCount)")
                 LabeledContent("Trait modifiers excluded/conditional", value: "\(stats.excludedTraitCount)")
                 LabeledContent("Defense sum", value: "\(stats.defense.total)")
                 LabeledContent("Rune catalog", value: StaticRuneAttributeCatalog.version)
                 LabeledContent("Trait catalog", value: StaticTraitModifierCatalog.version)
-                ForEach(stats.excludedSources, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+            }
+            Section("Still missing deterministic sources") {
+                if coverage.missing.isEmpty { Text("None") }
+                ForEach(coverage.missing, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+            }
+            Section("Active build IDs") {
+                ForEach(Array((currentBuild?.specializations ?? []).enumerated()), id: \.offset) { _, selected in
+                    Text("Specialization \(selected.id.map(String.init) ?? "none") • selected major IDs \(selected.traits.compactMap { $0 }.map(String.init).joined(separator: ", "))")
+                        .font(.caption)
+                }
+                Text("Great Fortitude (1449): \(currentBuild?.specializations.contains(where: { $0.id == 4 && $0.traits.contains(1449) }) == true ? "selected" : "not selected / build unavailable")")
             }
             Section("Equipment stat sources") {
                 ForEach(stats.equipmentSources) { entry in
@@ -515,6 +561,14 @@ struct CharacterStatAuditView: View {
                         forSourceRows(entry)
                     }
                 }
+            }
+            Section("Active armor/shield defense") {
+                ForEach(stats.equipmentSources.filter { $0.included && $0.sources.contains { $0.label == "Defense" && $0.state != .ignored } }) { entry in
+                    LabeledContent("\(entry.equipment.slot) • \(entry.itemName) • \(entry.equipment.itemID)",
+                        value: entry.sources.first(where: { $0.label == "Defense" })?.state == .used ? String(entry.defense) : "Unresolved")
+                        .font(.caption)
+                }
+                LabeledContent("Total Defense", value: String(stats.defense.total))
             }
             Section("Attributes") {
                 ForEach(CharacterStatEngine.displayOrder, id: \.self) { key in
@@ -528,12 +582,10 @@ struct CharacterStatAuditView: View {
                 if let armor = stats.derived.armor {
                     auditRow(
                         id: "Armor", title: "Armor", calculated: Double(armor), suffix: nil,
-                        components: [
-                            ("Toughness", stats.total(for: "Toughness")),
-                            ("Armor defense", stats.defense.armorPieces),
-                            ("Shield defense", stats.defense.shield),
-                            ("Other defense", stats.defense.other)
-                        ])
+                        components: [("Toughness", stats.total(for: "Toughness"))]
+                            + stats.equipmentSources.filter { $0.included && $0.sources.contains { $0.label == "Defense" && $0.state != .ignored } }
+                                .map { ("\($0.equipment.slot) defense • item \($0.equipment.itemID)", $0.defense) }
+                            + [("Total Defense", stats.defense.total)])
                 }
                 if let health = stats.derived.health {
                     auditRow(
@@ -545,8 +597,11 @@ struct CharacterStatAuditView: View {
                 }
                 derivedPercentRow("CriticalChance", "Critical Chance", stats.derived.criticalChancePercent)
                 if let precisionChance = stats.derived.criticalChanceFromPrecision {
-                    LabeledContent("Base from Precision", value: formatted(precisionChance, suffix: "%"))
-                    LabeledContent("Deterministic build modifiers", value: formatted(stats.derived.criticalChanceBuildModifier, suffix: "%"))
+                    LabeledContent("Base critical chance", value: "5%")
+                    LabeledContent("Precision contribution", value: formatted(precisionChance - 5, suffix: "%"))
+                    LabeledContent("Pinnacle of Strength (1453)", value: formatted(stats.derived.criticalChanceBuildModifier, suffix: "%"))
+                    LabeledContent("Other deterministic critical chance", value: "0%")
+                    Text("Conditional critical chance effects excluded").font(.caption)
                     if let value = observedValue("CriticalChance") {
                         LabeledContent("Unexplained observed remainder", value: formatted(
                             value - (stats.derived.criticalChancePercent ?? 0), suffix: "%"))
@@ -556,8 +611,8 @@ struct CharacterStatAuditView: View {
                 derivedPercentRow("BoonDuration", "Boon Duration", stats.derived.boonDurationPercent)
                 derivedPercentRow("ConditionDuration", "Condition Duration", stats.derived.conditionDurationPercent)
             }
-            Section("Not modeled in static total") {
-                ForEach(stats.excludedSources, id: \.self) { reason in
+            Section("Intentionally excluded dynamic effects") {
+                ForEach(coverage.dynamic, id: \.self) { reason in
                     Label(reason, systemImage: "minus.circle").font(.caption)
                 }
             }
@@ -686,7 +741,7 @@ struct QACharacterStatAuditPickerView: View {
                             character: character, equipment: equipmentTab.equipment, items: detail.items,
                             build: detail.buildTabs.first(where: \.isActive)?.build ?? detail.buildTabs.first?.build,
                             traits: detail.traits, specializations: detail.specializations,
-                            equipmentTabName: equipmentTab.name)
+                            equipmentTabName: equipmentTab.name, equipmentTabID: equipmentTab.tab)
                     }
                 } else {
                     ProgressView("Load a character and equipment tab…")

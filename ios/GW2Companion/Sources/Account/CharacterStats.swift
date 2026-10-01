@@ -70,9 +70,10 @@ struct CharacterStaticStats: Equatable, Sendable {
 }
 
 enum StaticRuneAttributeCatalog {
-    static let version = "pve-2026-10-01-v1"
+    static let version = "pve-2026-10-01-v2"
 
     struct Rule: Sendable {
+        let itemID: Int
         let itemName: String
         let perPieceBonuses: [[String: Int]]
     }
@@ -80,16 +81,22 @@ enum StaticRuneAttributeCatalog {
     // ArenaNet /v2/items/24836 exposes these bonuses as a string array. They are
     // curated here rather than parsed at runtime, so localization cannot alter stats.
     static let rules = [
-        Rule(itemName: "Superior Rune of the Scholar", perPieceBonuses: [
+        Rule(itemID: 24836, itemName: "Superior Rune of the Scholar", perPieceBonuses: [
             ["Power": 25], ["Ferocity": 35], ["Power": 50],
             ["Ferocity": 65], ["Power": 100], ["Ferocity": 125]
+        ]),
+        Rule(itemID: 24771, itemName: "Superior Rune of Melandru", perPieceBonuses: [
+            ["Toughness": 25], ["Vitality": 35], ["Toughness": 50],
+            [:], ["Toughness": 100], [:]
         ])
     ]
 
     static func attributes(for item: ItemMetadata, installedCount: Int) -> [String: Int]? {
-        guard let rule = rules.first(where: {
-            $0.itemName.compare(item.name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-        }) else { return nil }
+        attributes(for: item.id, installedCount: installedCount)
+    }
+
+    static func attributes(for itemID: Int, installedCount: Int) -> [String: Int]? {
+        guard let rule = rules.first(where: { $0.itemID == itemID }) else { return nil }
         var result: [String: Int] = [:]
         for values in rule.perPieceBonuses.prefix(max(0, installedCount)) {
             for (key, value) in values { result[key, default: 0] += value }
@@ -99,7 +106,17 @@ enum StaticRuneAttributeCatalog {
 }
 
 enum StaticTraitModifierCatalog {
-    static let version = "pve-2026-10-01-v1"
+    static let version = "pve-2026-10-01-v2"
+    static let verifiedMinorIDs: [Int: Set<Int>] = [4: [1446, 1448, 1453]]
+
+    /// Verified /v2/traits/1453: Percent 5 is unconditional; its AttributeAdjust
+    /// Power 10 describes extra Power per Might and must NOT be added flat.
+    static func criticalChance(in trait: TraitMetadata) -> Double {
+        guard trait.id == 1453, trait.facts.contains(where: {
+            $0.type == "Percent" && $0.percent == 5
+        }) else { return 0 }
+        return 5
+    }
 
     enum Rule: Sendable {
         case adjust(apiTarget: String, attribute: String, value: Int)
@@ -179,6 +196,7 @@ enum CharacterStatEngine {
         build: CharacterBuild? = nil,
         traits: [Int: TraitMetadata] = [:],
         specializations: [Int: SpecializationMetadata] = [:],
+        itemStats: [Int: ItemStatMetadata] = [:],
         weaponSet: String = "A"
     ) -> CharacterStaticStats {
         var breakdowns = Dictionary(uniqueKeysWithValues: displayOrder.map { ($0, CharacterStatBreakdown()) })
@@ -196,7 +214,7 @@ enum CharacterStatEngine {
         var unresolvedSelectableStatCount = 0
         var exclusions: [String] = []
         let equipmentSources = EquipmentStatInputResolver.audit(
-            equipment: equipment, items: items, weaponSet: weaponSet)
+            equipment: equipment, items: items, itemStats: itemStats, weaponSet: weaponSet)
 
         for entry in equipmentSources where entry.included {
             let equipped = entry.equipment
@@ -224,10 +242,17 @@ enum CharacterStatEngine {
             if isRelic, baseAttributes.isEmpty { excludedRelicCount += 1 }
 
             for upgradeID in equipped.upgrades ?? [] {
+                if StaticRuneAttributeCatalog.attributes(for: upgradeID, installedCount: 1) != nil {
+                    if EquipmentStatInputResolver.terrestrialArmorSlots.contains(equipped.slot) {
+                        runeCounts[upgradeID, default: 0] += 1
+                    }
+                    continue
+                }
                 guard let upgrade = items[upgradeID] else { continue }
                 let kind = upgrade.details?.type?.lowercased()
                 let attributes = upgrade.details?.infixUpgrade?.attributes ?? []
                 if kind == "rune" {
+                    guard EquipmentStatInputResolver.terrestrialArmorSlots.contains(equipped.slot) else { continue }
                     runeCounts[upgradeID, default: 0] += 1
                     if !attributes.isEmpty {
                         runesWithStructuredAttributes.insert(upgradeID)
@@ -246,8 +271,7 @@ enum CharacterStatEngine {
         }
 
         for (runeID, count) in runeCounts where !runesWithStructuredAttributes.contains(runeID) {
-            guard let rune = items[runeID],
-                  let values = StaticRuneAttributeCatalog.attributes(for: rune, installedCount: count)
+            guard let values = StaticRuneAttributeCatalog.attributes(for: runeID, installedCount: count)
             else {
                 unknownRuneCount += count
                 continue
@@ -276,14 +300,19 @@ enum CharacterStatEngine {
         var modeledTraits = 0
         var excludedTraits = 0
         var conversions: [(source: String, target: String, percent: Double)] = []
-        for id in activeTraitIDs {
+        var criticalChanceModifier = 0.0
+        for id in activeTraitIDs.sorted() {
+            if id == 1449 && build?.specializations.contains(where: { $0.id == 4 && $0.traits.contains(1449) }) != true { continue }
             guard let trait = traits[id] else {
                 excludedTraits += 1
                 continue
             }
             let adjustments = StaticTraitModifierCatalog.adjustments(in: trait)
             let traitConversions = StaticTraitModifierCatalog.conversions(in: trait)
-            if !adjustments.isEmpty || !traitConversions.isEmpty {
+            let crit = build?.specializations.contains(where: { $0.id == 4 }) == true
+                ? StaticTraitModifierCatalog.criticalChance(in: trait) : 0
+            criticalChanceModifier += crit
+            if !adjustments.isEmpty || !traitConversions.isEmpty || crit != 0 {
                 modeledTraits += 1
                 for (key, value) in adjustments {
                     breakdowns[canonicalAttribute(key), default: CharacterStatBreakdown()].traits += value
@@ -293,8 +322,12 @@ enum CharacterStatEngine {
                 excludedTraits += 1
             }
         }
+        // Phases: base → equipment → upgrades/runes/infusions → flat traits →
+        // conversions → derived. All conversions read the SAME pre-conversion
+        // snapshot, so no trait-ID iteration order can create recursive gains.
+        let conversionInputs = breakdowns.mapValues(\.total)
         for conversion in conversions {
-            let sourceTotal = breakdowns[canonicalAttribute(conversion.source)]?.total ?? 0
+            let sourceTotal = conversionInputs[canonicalAttribute(conversion.source)] ?? 0
             let amount = Int((Double(sourceTotal) * conversion.percent / 100.0).rounded(.down))
             breakdowns[canonicalAttribute(conversion.target), default: CharacterStatBreakdown()].traits += amount
         }
@@ -311,14 +344,15 @@ enum CharacterStatEngine {
         let derived: CharacterDerivedStats
         if level >= 80 {
             derived = CharacterDerivedStats(
-                criticalChancePercent: criticalChance(precision: precision),
+                criticalChancePercent: criticalChance(precision: precision) + criticalChanceModifier,
                 criticalDamagePercent: criticalDamage(ferocity: ferocity),
                 boonDurationPercent: duration(attribute: concentration),
                 conditionDurationPercent: duration(attribute: expertise),
                 armor: toughness + defense.total,
                 health: professionBaseHealth(character?.profession) + vitality * 10,
                 availableForLevel: true,
-                criticalChanceFromPrecision: criticalChance(precision: precision))
+                criticalChanceFromPrecision: criticalChance(precision: precision),
+                criticalChanceBuildModifier: criticalChanceModifier)
         } else {
             derived = CharacterDerivedStats(
                 criticalChancePercent: nil, criticalDamagePercent: nil, boonDurationPercent: nil,

@@ -74,8 +74,8 @@ enum MapDetailMode: String, CaseIterable, Identifiable, Sendable {
 
 enum MapRasterDetail {
     static let maxSupersampledTiles = 384
-    static let maximumVisibleDerivedTiles = 48
-    static let maximumDerivedSourceTiles = DirectDetailedTileProvider.maximumSourceTiles
+    static let maximumVisibleDerivedTiles = MapRasterLayerRequest.maximumParentTiles
+    static let maximumDerivedSourceTiles = MapRasterLayerRequest.maximumColdSourceTiles
 
     enum RenderingSource: Equatable, Sendable {
         case unavailable
@@ -96,7 +96,7 @@ enum MapRasterDetail {
         let sourceFactor = 1 << max(0, reference - displayZoom)
         let sourceTileCount = visibleDisplayTileCount * sourceFactor * sourceFactor
         guard mode == .detailed,
-              (displayZoom == 5 || displayZoom == 6),
+              (4...6).contains(displayZoom),
               reference == 7,
               visibleDisplayTileCount <= maximumVisibleDerivedTiles,
               sourceTileCount <= maximumDerivedSourceTiles

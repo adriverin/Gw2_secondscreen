@@ -75,7 +75,7 @@ final class DerivedDetailedTileTests: XCTestCase {
             MapRasterDetail.renderingSource(
                 displayZoom: 4, continentID: 1, mode: .detailed,
                 visibleDisplayTileCount: 4),
-            .native(zoom: 4))
+            .overzoom(sourceZoom: 7))
         XCTAssertEqual(
             MapRasterDetail.renderingSource(
                 displayZoom: 6, continentID: 1, mode: .detailed,
