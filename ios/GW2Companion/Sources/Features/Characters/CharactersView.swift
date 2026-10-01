@@ -468,15 +468,17 @@ struct CharacterStatAuditView: View {
     let specializations: [Int: SpecializationMetadata]
     let equipmentTabName: String
     @State private var observed: [String: String] = [:]
+    @State private var weaponSet = "A"
 
     private var stats: CharacterStaticStats {
         CharacterStatEngine.calculate(
             character: character, equipment: equipment, items: items,
-            build: build, traits: traits, specializations: specializations)
+            build: build, traits: traits, specializations: specializations, weaponSet: weaponSet)
     }
 
     private var observationKey: String {
         StatAuditObservationStore.key(character: character.name, equipmentTab: equipmentTabName)
+            + (weaponSet == "A" ? "" : ".weaponB")
     }
 
     var body: some View {
@@ -485,6 +487,12 @@ struct CharacterStatAuditView: View {
                 LabeledContent("Character", value: character.name)
                 LabeledContent("Equipment tab", value: equipmentTabName)
                 LabeledContent("Game mode", value: "PvE level 80")
+                Picker("Terrestrial weapon set", selection: $weaponSet) {
+                    Text("A").tag("A")
+                    Text("B").tag("B")
+                }
+                Text("The account API does not report the live weapon swap. Choose the set shown in the Hero Panel. Aquatic equipment is excluded.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("Compare while the character is not dynamically downscaled. Observations stay on this device and are QA notes, not account data.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -492,9 +500,21 @@ struct CharacterStatAuditView: View {
                 LabeledContent("Coverage", value: stats.coverage.rawValue)
                 LabeledContent("Trait modifiers modeled", value: "\(stats.modeledTraitCount)")
                 LabeledContent("Trait modifiers excluded/conditional", value: "\(stats.excludedTraitCount)")
+                LabeledContent("Defense sum", value: "\(stats.defense.total)")
                 LabeledContent("Rune catalog", value: StaticRuneAttributeCatalog.version)
                 LabeledContent("Trait catalog", value: StaticTraitModifierCatalog.version)
                 ForEach(stats.excludedSources, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+            }
+            Section("Equipment stat sources") {
+                ForEach(stats.equipmentSources) { entry in
+                    DisclosureGroup("\(entry.equipment.slot) — \(entry.itemName)") {
+                        LabeledContent("Item ID", value: "\(entry.equipment.itemID)")
+                        LabeledContent("Record location", value: entry.equipment.location ?? "Not supplied")
+                        LabeledContent("stats.id", value: entry.equipment.stats?.id.map(String.init) ?? "Not supplied")
+                        if let reason = entry.exclusionReason { Text("IGNORED • \(reason)").font(.caption) }
+                        forSourceRows(entry)
+                    }
+                }
             }
             Section("Attributes") {
                 ForEach(CharacterStatEngine.displayOrder, id: \.self) { key in
@@ -524,6 +544,14 @@ struct CharacterStatAuditView: View {
                         ])
                 }
                 derivedPercentRow("CriticalChance", "Critical Chance", stats.derived.criticalChancePercent)
+                if let precisionChance = stats.derived.criticalChanceFromPrecision {
+                    LabeledContent("Base from Precision", value: formatted(precisionChance, suffix: "%"))
+                    LabeledContent("Deterministic build modifiers", value: formatted(stats.derived.criticalChanceBuildModifier, suffix: "%"))
+                    if let value = observedValue("CriticalChance") {
+                        LabeledContent("Unexplained observed remainder", value: formatted(
+                            value - (stats.derived.criticalChancePercent ?? 0), suffix: "%"))
+                    }
+                }
                 derivedPercentRow("CriticalDamage", "Critical Damage", stats.derived.criticalDamagePercent)
                 derivedPercentRow("BoonDuration", "Boon Duration", stats.derived.boonDurationPercent)
                 derivedPercentRow("ConditionDuration", "Condition Duration", stats.derived.conditionDurationPercent)
@@ -536,9 +564,9 @@ struct CharacterStatAuditView: View {
         }
         .navigationTitle("Character Stat Audit")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
+        .task(id: observationKey) {
             observed = StatAuditObservationStore.load(key: observationKey)
-                .mapValues { value in value.formatted(.number.precision(.fractionLength(value.rounded() == value ? 0 : 2))) }
+                .mapValues { StatAuditNumber.editable($0) }
         }
         .accessibilityIdentifier("qa.characterStatAudit")
     }
@@ -560,20 +588,46 @@ struct CharacterStatAuditView: View {
                 Text("Observed")
                 Spacer()
                 TextField("Enter Hero Panel", text: observationBinding(id))
+                    .accessibilityIdentifier("audit.observed.\(id)")
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(maxWidth: 150)
             }
-            if let value = Double(observed[id] ?? "") {
-                LabeledContent("Difference", value: formatted(calculated - value, suffix: suffix))
-                    .foregroundStyle(abs(calculated - value) < 0.01 ? .green : .orange)
+            if let value = observedValue(id) {
+                let difference = StatAuditNumber.difference(calculated: calculated, observed: value)
+                LabeledContent("Difference", value: formatted(difference, suffix: suffix))
+                    .foregroundStyle(abs(difference) < 0.01 ? .green : .orange)
+                    .accessibilityIdentifier("audit.difference.\(id)")
             }
             ForEach(components.filter { $0.1 != 0 }, id: \.0) { component in
                 LabeledContent(component.0, value: component.1.formatted())
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
+        .id(id)
         .padding(.vertical, 4)
+    }
+
+    private func observedValue(_ id: String) -> Double? {
+        StatAuditNumber.parse(observed[id] ?? "", fractional: isPercent(id))
+    }
+
+    private func isPercent(_ id: String) -> Bool {
+        ["CriticalChance", "CriticalDamage", "BoonDuration", "ConditionDuration"].contains(id)
+    }
+
+    private func forSourceRows(_ entry: EquipmentStatAuditEntry) -> some View {
+        ForEach(entry.sources) { source in
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledContent(source.label, value: source.state.rawValue).font(.caption.bold())
+                if let value = source.value { Text("\(value)").font(.caption).monospacedDigit() }
+                ForEach(source.attributes.keys.sorted(), id: \.self) { key in
+                    LabeledContent(key, value: "+\(source.attributes[key] ?? 0)").font(.caption)
+                }
+                Text(source.explanation).font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 3)
+        }
     }
 
     private func observationBinding(_ id: String) -> Binding<String> {
@@ -581,13 +635,14 @@ struct CharacterStatAuditView: View {
             get: { observed[id] ?? "" },
             set: { value in
                 observed[id] = value
-                let numeric = observed.compactMapValues(Double.init)
+                var numeric: [String: Double] = [:]
+                for key in observed.keys { numeric[key] = observedValue(key) }
                 StatAuditObservationStore.save(numeric, key: observationKey)
             })
     }
 
     private func formatted(_ value: Double, suffix: String?) -> String {
-        let number = value.formatted(.number.precision(.fractionLength(suffix == nil ? 0 : 1)))
+        let number = value.formatted(.number.precision(.fractionLength(suffix == nil ? 0 : 2)))
         return number + (suffix ?? "")
     }
 }

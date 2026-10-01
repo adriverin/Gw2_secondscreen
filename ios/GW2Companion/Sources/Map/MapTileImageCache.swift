@@ -11,7 +11,12 @@ actor MapTileImageCache {
 
     private var memory = BoundedMemoryCache<URL, UIImage>(
         countLimit: memoryCountLimit, totalCostLimit: memoryCostLimit)
-    private var inFlight: [URL: Task<UIImage?, Never>] = [:]
+    private struct Flight {
+        let id: UUID
+        let task: Task<UIImage?, Never>
+        var consumers: Set<UUID>
+    }
+    private var inFlight: [URL: Flight] = [:]
     private let session: URLSession
     private let directory: URL
     private let countState = OSAllocatedUnfairLock(initialState: 0)
@@ -36,18 +41,40 @@ actor MapTileImageCache {
     }
 
     func image(for url: URL) async -> UIImage? {
+        guard !Task.isCancelled else { return nil }
         if let cached = memory.value(for: url) { return cached }
-        if let existing = inFlight[url] { return await existing.value }
-        let task = Task { await download(url) }
-        inFlight[url] = task
-        let image = await task.value
-        inFlight[url] = nil
+        let consumer = UUID()
+        let flight: Flight
+        if var existing = inFlight[url] {
+            existing.consumers.insert(consumer)
+            inFlight[url] = existing
+            flight = existing
+        } else {
+            flight = Flight(id: UUID(), task: Task { await download(url) }, consumers: [consumer])
+            inFlight[url] = flight
+        }
+        let image = await withTaskCancellationHandler {
+            await flight.task.value
+        } onCancel: {
+            Task { await self.cancelConsumer(consumer, url: url, flightID: flight.id) }
+        }
+        if inFlight[url]?.id == flight.id { inFlight[url] = nil }
+        guard !Task.isCancelled else { return nil }
         if let image {
             memory.set(image, for: url, cost: Int(image.size.width * image.size.height * 4))
             let count = memory.count
             countState.withLock { $0 = count }
         }
         return image
+    }
+
+    private func cancelConsumer(_ consumer: UUID, url: URL, flightID: UUID) {
+        guard var flight = inFlight[url], flight.id == flightID else { return }
+        flight.consumers.remove(consumer)
+        if flight.consumers.isEmpty {
+            flight.task.cancel()
+            inFlight[url] = nil
+        } else { inFlight[url] = flight }
     }
 
     func handleMemoryPressure() {
@@ -64,12 +91,15 @@ actor MapTileImageCache {
     }
 
     private func download(_ url: URL) async -> UIImage? {
+        let file = directory.appending(path: Self.hash(url.absoluteString))
+        if let data = try? Data(contentsOf: file), let image = UIImage(data: data) {
+            return image
+        }
         do {
             let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+            guard !Task.isCancelled, let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
                   let image = UIImage(data: data) else { return nil }
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let file = directory.appending(path: Self.hash(url.absoluteString))
             try? data.write(to: file, options: .atomic)
             DiskCachePruner.prune(directory: directory, maxFiles: Self.diskFileLimit)
             return image

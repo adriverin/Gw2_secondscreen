@@ -123,7 +123,7 @@ private struct GoalRow: View {
             HStack {
                 Text(goal.type.title).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Text(progress.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(compactProgress(progress)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             if progress.total > 0 {
                 ProgressView(value: progress.fraction)
@@ -141,6 +141,14 @@ private struct GoalRow: View {
         case .legendary: "sparkles.rectangle.stack"
         case .custom: "checklist"
         }
+    }
+
+    private func compactProgress(_ progress: GoalProgress) -> String {
+        if case .legendary = goal.type {
+            if store.legendaryPlan(for: goal, account: account)?.ownership != .notOwned { return progress.label }
+            return "\(progress.ready) / \(progress.total)"
+        }
+        return progress.label
     }
 }
 
@@ -161,19 +169,24 @@ struct GoalDetailView: View {
     var body: some View {
         Group {
             if let goal = store.goals.first(where: { $0.id == goalID }) {
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        header(goal)
+                        if case .legendary = goal.type {} else { header(goal) }
                         switch goal.type {
                         case .achievement: achievementContent(goal)
                         case .craftItem: craftingContent(goal)
                         case .legendary:
-                            LegendaryGoalContent(goal: goal) { item, quantity in
-                                priceInspection = PriceInspection(item: item, quantity: quantity)
-                            }
+                            LegendaryGoalContent(
+                                goal: goal, onInspectPrice: { item, quantity in
+                                    priceInspection = PriceInspection(item: item, quantity: quantity)
+                                }, onWork: {
+                                    withAnimation { proxy.scrollTo("goal.actions", anchor: .top) }
+                                })
                         case .custom: customContent(goal)
                         }
                         actionsSection(goal)
+                            .id("goal.actions")
                         calculationSection(goal)
                     }
                     .padding()
@@ -203,6 +216,7 @@ struct GoalDetailView: View {
                         await store.refreshPrices(for: plan)
                     }
                     await sessions.refreshAPIDerived(recipes: store.recipes, prices: store.marketPrices)
+                }
                 }
             } else {
                 GWEmptyState(title: "Goal unavailable", message: "This goal is no longer in the active account scope.", symbol: "target")

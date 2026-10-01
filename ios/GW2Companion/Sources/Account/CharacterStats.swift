@@ -44,6 +44,8 @@ struct CharacterDerivedStats: Equatable, Sendable {
     var armor: Int?
     var health: Int?
     var availableForLevel: Bool
+    var criticalChanceFromPrecision: Double? = nil
+    var criticalChanceBuildModifier: Double = 0
 }
 
 enum CharacterStatCoverage: String, Equatable, Sendable {
@@ -61,6 +63,7 @@ struct CharacterStaticStats: Equatable, Sendable {
     var excludedTraitCount: Int
     var coverage: CharacterStatCoverage
     var excludedSources: [String]
+    var equipmentSources: [EquipmentStatAuditEntry] = []
 
     var equipmentDefense: Int { defense.total }
     func total(for key: String) -> Int { attributes[CharacterStatEngine.canonicalAttribute(key)]?.total ?? 0 }
@@ -175,7 +178,8 @@ enum CharacterStatEngine {
         items: [Int: ItemMetadata],
         build: CharacterBuild? = nil,
         traits: [Int: TraitMetadata] = [:],
-        specializations: [Int: SpecializationMetadata] = [:]
+        specializations: [Int: SpecializationMetadata] = [:],
+        weaponSet: String = "A"
     ) -> CharacterStaticStats {
         var breakdowns = Dictionary(uniqueKeysWithValues: displayOrder.map { ($0, CharacterStatBreakdown()) })
         let level = character?.level ?? 0
@@ -191,40 +195,29 @@ enum CharacterStatEngine {
         var excludedRelicCount = 0
         var unresolvedSelectableStatCount = 0
         var exclusions: [String] = []
+        let equipmentSources = EquipmentStatInputResolver.audit(
+            equipment: equipment, items: items, weaponSet: weaponSet)
 
-        for equipped in equipment {
+        for entry in equipmentSources where entry.included {
+            let equipped = entry.equipment
             let item = items[equipped.itemID]
-            let selected = equipped.stats?.attributes ?? [:]
             let isRelic = equipped.slot.caseInsensitiveCompare("Relic") == .orderedSame
-            let baseAttributes: [(String, Int)] = if !selected.isEmpty {
-                selected.map { ($0.key, $0.value) }
-            } else if !(item?.details?.statChoices?.isEmpty ?? true) {
-                // A selectable item without the account endpoint's resolved attributes
-                // cannot safely use one generic infix as though it were the chosen prefix.
-                // Item-stat templates require item-specific scaling inputs, so disclose the
-                // gap rather than manufacture a plausible-looking total.
-                {
-                    unresolvedSelectableStatCount += 1
-                    return []
-                }()
-            } else {
-                item?.details?.infixUpgrade?.attributes.map { ($0.attribute, $0.modifier) } ?? []
-            }
+            let baseAttributes = entry.baseAttributes
+            if baseAttributes.isEmpty && !isRelic { unresolvedSelectableStatCount += 1 }
             for (rawKey, value) in baseAttributes {
                 let key = canonicalAttribute(rawKey)
                 if isRelic { breakdowns[key, default: CharacterStatBreakdown()].relic += value }
                 else { breakdowns[key, default: CharacterStatBreakdown()].equipment += value }
             }
 
-            if let item, let value = item.details?.defense, value > 0 {
+            if let item, entry.defense > 0 {
+                let value = entry.defense
                 if item.details?.type?.caseInsensitiveCompare("Shield") == .orderedSame
                     || equipped.slot.localizedCaseInsensitiveContains("Shield") {
                     defense.shield += value
                 } else if item.type?.caseInsensitiveCompare("Armor") == .orderedSame
                             || Self.isArmorSlot(equipped.slot) {
                     defense.armorPieces += value
-                } else {
-                    defense.other += value
                 }
             }
 
@@ -268,8 +261,16 @@ enum CharacterStatEngine {
         if excludedSigilCount > 0 { exclusions.append("\(excludedSigilCount) conditional or unsupported sigil effects excluded") }
         if excludedRelicCount > 0 { exclusions.append("\(excludedRelicCount) conditional relic effects excluded") }
         if unresolvedSelectableStatCount > 0 {
-            exclusions.append("\(unresolvedSelectableStatCount) selectable equipment stat source unavailable")
+            exclusions.append("\(unresolvedSelectableStatCount) equipment attribute sources unresolved (including selectable equipment stat source unavailable)")
         }
+        let missingDefense = equipmentSources.filter {
+            $0.included && $0.sources.contains { $0.label == "Defense" && $0.state == .unresolved }
+        }.count
+        if missingDefense > 0 { exclusions.append("\(missingDefense) active armor/shield defense sources unresolved") }
+        let missingUpgrades = equipmentSources.flatMap(\.sources).filter {
+            $0.state == .unresolved && ($0.label.hasPrefix("Upgrade") || $0.label.hasPrefix("Infusion"))
+        }.count
+        if missingUpgrades > 0 { exclusions.append("\(missingUpgrades) upgrade/infusion sources unmodeled or unresolved") }
 
         let activeTraitIDs = activeTraits(build: build, specializations: specializations)
         var modeledTraits = 0
@@ -316,7 +317,8 @@ enum CharacterStatEngine {
                 conditionDurationPercent: duration(attribute: expertise),
                 armor: toughness + defense.total,
                 health: professionBaseHealth(character?.profession) + vitality * 10,
-                availableForLevel: true)
+                availableForLevel: true,
+                criticalChanceFromPrecision: criticalChance(precision: precision))
         } else {
             derived = CharacterDerivedStats(
                 criticalChancePercent: nil, criticalDamagePercent: nil, boonDurationPercent: nil,
@@ -328,7 +330,7 @@ enum CharacterStatEngine {
             derived: derived, defense: defense,
             modeledTraitCount: modeledTraits, excludedTraitCount: excludedTraits,
             coverage: exclusions.isEmpty ? .high : .partial,
-            excludedSources: exclusions)
+            excludedSources: exclusions, equipmentSources: equipmentSources)
     }
 
     static func canonicalAttribute(_ key: String) -> String {

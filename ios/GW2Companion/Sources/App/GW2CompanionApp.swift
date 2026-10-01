@@ -14,6 +14,9 @@ struct GW2CompanionApp: App {
     @StateObject private var today: TodayStore
     @StateObject private var navigation = AppNavigation()
     @StateObject private var qaResults = QAResultStore()
+#if DEBUG
+    @State private var phaseSixHPriceRace = false
+#endif
     private let api: GW2APIClient
 
     init() {
@@ -75,8 +78,17 @@ struct GW2CompanionApp: App {
                         _ = await (accountRefresh, todayRefresh)
                     }
                     await goals.prepareLegendaries()
+#if DEBUG
+                    phaseSixHPriceRace = ProcessInfo.processInfo.arguments.contains("--phase6h-price-race")
+#endif
                     await sessions.prepare(recipes: goals.recipes, prices: goals.marketPrices)
                 }
+#if DEBUG
+                .sheet(isPresented: $phaseSixHPriceRace) {
+                    TradingPostPriceSheet(item: ItemPlaceholder.metadata(id: 29185), quantity: 1)
+                        .environmentObject(goals)
+                }
+#endif
                 .onChange(of: telemetry.latest?.character?.name, initial: true) { _, name in
                     account.updateLiveCharacter(name: name)
                 }

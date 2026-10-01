@@ -65,12 +65,12 @@ final class DerivedDetailedTileTests: XCTestCase {
             MapRasterDetail.renderingSource(
                 displayZoom: 6, continentID: 1, mode: .detailed,
                 visibleDisplayTileCount: 4),
-            .derived(sourceZoom: 7))
+            .overzoom(sourceZoom: 7))
         XCTAssertEqual(
             MapRasterDetail.renderingSource(
                 displayZoom: 5, continentID: 1, mode: .detailed,
                 visibleDisplayTileCount: 4),
-            .derived(sourceZoom: 7))
+            .overzoom(sourceZoom: 7))
         XCTAssertEqual(
             MapRasterDetail.renderingSource(
                 displayZoom: 4, continentID: 1, mode: .detailed,
@@ -346,8 +346,9 @@ final class CharacterStatFidelityV3Tests: XCTestCase {
                 "+25 Power", "+35 Ferocity", "+50 Power",
                 "+65 Ferocity", "+100 Power", "+125 Ferocity"
             ]))
-        let equipment = (0..<6).map { index in
-            CharacterEquipment(itemID: 100 + index, slot: "Armor\(index)", upgrades: [rune.id])
+        let slots = ["Helm", "Shoulders", "Coat", "Gloves", "Leggings", "Boots"]
+        let equipment = slots.enumerated().map { index, slot in
+            CharacterEquipment(itemID: 100 + index, slot: slot, upgrades: [rune.id])
         }
 
         let stats = CharacterStatEngine.calculate(

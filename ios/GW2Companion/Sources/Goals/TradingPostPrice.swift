@@ -1,5 +1,19 @@
 import Foundation
 
+extension ItemMetadata {
+    var isPlaceholder: Bool {
+        name.caseInsensitiveCompare("Item \(id)") == .orderedSame
+            || (rarity == "Unknown" && details == nil && icon == nil)
+    }
+}
+
+enum PriceItemHeader {
+    static func title(item: ItemMetadata?, loading: Bool) -> String {
+        if let item, !item.isPlaceholder { return item.name }
+        return loading ? "Loading item details…" : "Item details unavailable"
+    }
+}
+
 enum TradingPostPriceState: Equatable, Sendable {
     case loading
     case available(TimedCommercePrice)

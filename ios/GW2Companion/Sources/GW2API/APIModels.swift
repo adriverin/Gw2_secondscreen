@@ -169,9 +169,10 @@ struct CharacterEquipment: Codable, Sendable, Identifiable, Equatable {
     var binding: String? = nil
     var boundTo: String? = nil
     var location: String? = nil
+    var tabs: [Int]? = nil
 
     enum CodingKeys: String, CodingKey {
-        case slot, infusions, upgrades, dyes, skin, stats, binding, location
+        case slot, infusions, upgrades, dyes, skin, stats, binding, location, tabs
         case itemID = "id"
         case boundTo = "bound_to"
     }
@@ -205,7 +206,12 @@ struct CharacterEquipment: Codable, Sendable, Identifiable, Equatable {
         binding = try values.decodeIfPresent(String.self, forKey: .binding)
         boundTo = try values.decodeIfPresent(String.self, forKey: .boundTo)
         location = try values.decodeIfPresent(String.self, forKey: .location)
+        tabs = values.decodeCompactInts(forKey: .tabs)
     }
+}
+
+struct CharacterEquipmentResponse: Codable, Sendable {
+    let equipment: [CharacterEquipment]
 }
 
 struct EquipmentTab: Codable, Sendable, Identifiable, Equatable {
@@ -486,6 +492,51 @@ struct ItemDetails: Codable, Sendable, Equatable {
         case suffixItemID = "suffix_item_id"
         case secondarySuffixItemID = "secondary_suffix_item_id"
         case statChoices = "stat_choices"
+    }
+
+    init(
+        type: String? = nil, weightClass: String? = nil, defense: Int? = nil,
+        damageType: String? = nil, minPower: Int? = nil, maxPower: Int? = nil,
+        infusionSlots: [InfusionSlot]? = nil, infixUpgrade: InfixUpgrade? = nil,
+        suffixItemID: Int? = nil, secondarySuffixItemID: Int? = nil,
+        statChoices: [Int]? = nil, bonuses: [String]? = nil
+    ) {
+        self.type = type
+        self.weightClass = weightClass
+        self.defense = defense
+        self.damageType = damageType
+        self.minPower = minPower
+        self.maxPower = maxPower
+        self.infusionSlots = infusionSlots
+        self.infixUpgrade = infixUpgrade
+        self.suffixItemID = suffixItemID
+        self.secondarySuffixItemID = secondarySuffixItemID
+        self.statChoices = statChoices
+        self.bonuses = bonuses
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        type = try values.decodeIfPresent(String.self, forKey: .type)
+        weightClass = try values.decodeIfPresent(String.self, forKey: .weightClass)
+        defense = try values.decodeIfPresent(Int.self, forKey: .defense)
+        damageType = try values.decodeIfPresent(String.self, forKey: .damageType)
+        minPower = try values.decodeIfPresent(Int.self, forKey: .minPower)
+        maxPower = try values.decodeIfPresent(Int.self, forKey: .maxPower)
+        infusionSlots = try values.decodeIfPresent([InfusionSlot].self, forKey: .infusionSlots)
+        infixUpgrade = try values.decodeIfPresent(InfixUpgrade.self, forKey: .infixUpgrade)
+        // Default item payloads use an empty string for an unused suffix.
+        // This optional ID must not discard defense and all equipment attributes.
+        suffixItemID = values.decodeFlexibleInt(forKey: .suffixItemID)
+        secondarySuffixItemID = values.decodeFlexibleInt(forKey: .secondarySuffixItemID)
+        statChoices = values.decodeCompactInts(forKey: .statChoices)
+        bonuses = try values.decodeIfPresent([String].self, forKey: .bonuses)
+    }
+}
+
+extension ItemMetadata {
+    var requiresEquipmentDetails: Bool {
+        ["Armor", "Weapon", "Trinket", "Back", "UpgradeComponent", "Relic"].contains(type ?? "")
     }
 }
 

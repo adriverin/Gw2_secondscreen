@@ -36,6 +36,7 @@ struct NativeTileMapView: View {
     @GestureState private var magnification = 1.0
     @State private var lastVisibleTileCount = 0
     @State private var lastViewportSize = CGSize(width: 390, height: 844)
+    @State private var detailedFrame: DirectDetailedTileFrame?
 
     private var mapDetail: MapDetailMode { MapDetailMode(rawValue: mapDetailRaw) ?? .balanced }
 
@@ -81,6 +82,7 @@ struct NativeTileMapView: View {
             }
             .onChange(of: center) { _, _ in reportVisibleCoordinate() }
             .onChange(of: zoom) { _, _ in reportVisibleCoordinate() }
+            .onChange(of: mapDetailRaw) { _, _ in reportVisibleCoordinate() }
             .onChange(of: geometry.size) { _, size in
                 lastViewportSize = size
                 reportVisibleCoordinate()
@@ -94,7 +96,12 @@ struct NativeTileMapView: View {
 
     @ViewBuilder
     private func tileLayer(transform: MapViewportTransform) -> some View {
-        let viewport = transform.visibleContinentRect(marginPoints: 256 * magnification)
+        // Prefetch one source-tile border. At z5 a 256-point border would
+        // quadruple the work and spend the detail budget outside the viewport.
+        let margin = mapDetail == .detailed && (zoom == 5 || zoom == 6)
+            ? DirectDetailedTileLayout.screenSide(displayZoom: zoom, magnification: magnification)
+            : 256 * magnification
+        let viewport = transform.visibleContinentRect(marginPoints: margin)
         let continentID = metadata?.continentId ?? 1
         let floor = metadata?.defaultFloor ?? 1
         let tileIDs = projection.tiles(
@@ -103,43 +110,49 @@ struct NativeTileMapView: View {
             displayZoom: zoom, continentID: continentID, mode: mapDetail,
             visibleDisplayTileCount: tileIDs.count,
             artworkAvailable: metadata.map { tileProvider.coverage(for: $0).isOfficial } ?? true)
-        let screenSize = tileScreenSize * magnification
+        // Do not enumerate the entire z7 continent when the budget chose native.
+        let sourceTiles: [TileIndex] = if case .overzoom = source {
+            projection.tiles(
+                coveringContinentRect: viewport, zoom: 7, continentID: continentID, mapFloor: floor)
+        } else { [] }
+        let request: DirectDetailedTileRequest? = if case .overzoom = source,
+            sourceTiles.count <= DirectDetailedTileProvider.maximumSourceTiles {
+            DirectDetailedTileRequest(continent: continentID, floor: floor, tiles: sourceTiles)
+        } else { nil }
+        let frame = detailedFrame.flatMap { $0.request == request && $0.isComplete ? $0 : nil }
+        let renderedTiles = frame?.request.tiles ?? tileIDs
+        let screenSize = frame == nil
+            ? tileScreenSize * magnification
+            : DirectDetailedTileLayout.screenSide(displayZoom: zoom, magnification: magnification)
 
         Group {
-            ForEach(tileIDs, id: \.self) { tile in
+            ForEach(renderedTiles, id: \.self) { tile in
                 if let url = tileProvider.tileURL(
                     continent: continentID, floor: floor, zoom: tile.zoom, x: tile.x, y: tile.y),
                    let worldRect = projection.tileWorldRect(for: tile, continentID: continentID),
                    let continent = projection.continentCoordinate(
                     from: TileWorldCoordinate(x: worldRect.midX, y: worldRect.midY),
                     continentID: continentID, mapFloor: floor) {
-                    tileImage(
-                        nativeURL: url, tile: tile, source: source,
-                        continentID: continentID, floor: floor)
+                    Group {
+                        if let image = frame?.images[tile] {
+                            Image(uiImage: image).resizable().interpolation(.high)
+                        } else {
+                            MapTileImage(url: url, index: tile, showDebug: showTileDebugGrid)
+                        }
+                    }
                         .frame(width: screenSize, height: screenSize)
                         .position(transform.screenPosition(for: continent))
                 }
             }
         }
+        .task(id: request) {
+            guard let request else { detailedFrame = nil; return }
+            let frame = await DirectDetailedTileProvider.shared.frame(for: request)
+            guard !Task.isCancelled else { return }
+            detailedFrame = frame
+        }
         .onAppear { lastVisibleTileCount = tileIDs.count }
         .onChange(of: tileIDs.count) { _, count in lastVisibleTileCount = count }
-    }
-
-    @ViewBuilder
-    private func tileImage(
-        nativeURL: URL, tile: TileIndex, source: MapRasterDetail.RenderingSource,
-        continentID: Int, floor: Int
-    ) -> some View {
-        switch source {
-        case let .derived(sourceZoom):
-            DerivedMapTileImage(
-                request: DerivedDetailedTileRequest(
-                    continent: continentID, floor: floor,
-                    displayTile: tile, sourceZoom: sourceZoom),
-                fallbackURL: nativeURL, showDebug: showTileDebugGrid)
-        case .native, .unavailable:
-            MapTileImage(url: nativeURL, index: tile, showDebug: showTileDebugGrid)
-        }
     }
 
     private var tileScreenSize: CGFloat { CGFloat(ArenaNetTileProjection.tileSize + 1) }
@@ -303,7 +316,9 @@ struct NativeTileMapView: View {
         let transform = MapViewportTransform(
             center: center, zoom: zoom, magnification: 1, dragOffset: .zero, size: lastViewportSize,
             tileReferenceZoom: tileReferenceZoom)
-        let viewport = transform.visibleContinentRect(marginPoints: 256)
+        let margin = mapDetail == .detailed && (zoom == 5 || zoom == 6)
+            ? DirectDetailedTileLayout.screenSide(displayZoom: zoom) : 256
+        let viewport = transform.visibleContinentRect(marginPoints: margin)
         let sourceZoom = MapRasterDetail.sourceZoom(
             displayZoom: zoom, continentID: continentID, viewport: viewport, mode: mapDetail)
         lastVisibleTileCount = projection.tiles(
@@ -362,54 +377,6 @@ private struct MapTileImage: View {
             }
         }
         .task(id: url) { image = await MapTileImageCache.shared.image(for: url) }
-        .accessibilityHidden(true)
-    }
-}
-
-private struct DerivedMapTileImage: View {
-    let request: DerivedDetailedTileRequest
-    let fallbackURL: URL
-    let showDebug: Bool
-    @State private var image: UIImage?
-    @State private var diagnostics: DerivedTileDiagnostics?
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable()
-            } else {
-                Rectangle().fill(Color.white.opacity(0.035))
-                    .overlay(Rectangle().stroke(Color.white.opacity(0.04)))
-            }
-        }
-        .overlay {
-            if showDebug {
-                VStack(spacing: 1) {
-                    Text("z=\(request.displayTile.zoom) x=\(request.displayTile.x) y=\(request.displayTile.y)")
-                    Text("derived z\(request.sourceZoom) • \(diagnostics?.sourceTileCount ?? request.sourceTileCount) src")
-                    if let diagnostics {
-                        Text("\(diagnostics.cacheState.rawValue) • \(diagnostics.generationMilliseconds) ms")
-                    }
-                }
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .foregroundStyle(.yellow)
-                .shadow(color: .black, radius: 1)
-                .allowsHitTesting(false)
-            }
-        }
-        .task(id: request) {
-            let result = await withTaskCancellationHandler {
-                await DerivedDetailedTileProvider.shared.image(for: request)
-            } onCancel: {
-                Task { await DerivedDetailedTileProvider.shared.cancel(request) }
-            }
-            if let result {
-                image = result.image
-                diagnostics = result.diagnostics
-            } else if !Task.isCancelled {
-                image = await MapTileImageCache.shared.image(for: fallbackURL)
-            }
-        }
         .accessibilityHidden(true)
     }
 }

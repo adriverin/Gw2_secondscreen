@@ -164,9 +164,21 @@ actor GW2APIClient {
 
     func items(ids: [Int], priority: APIRequestPriority = .normal) async throws -> [Int: ItemMetadata] {
         itemCache = await loadedIntCache(itemCache, name: "items")
+        // Recover persistent entries from the old all-or-nothing details decoder.
+        // They otherwise looked resolved and were never requested again.
+        for id in ids {
+            if let item = itemCache[id], item.requiresEquipmentDetails && item.details == nil {
+                itemCache[id] = nil
+            }
+        }
         itemCache = try await filledIntCache(
             itemCache, ids: ids, endpoint: "items", name: "items", priority: priority)
         return itemCache.filter { Set(ids).contains($0.key) }
+    }
+
+    func characterEquipment(name: String) async throws -> CharacterEquipmentResponse {
+        try await authenticatedRequest(
+            "characters/\(Self.encodedPath(name))/equipment?v=2021-07-15T13:00:00.000Z", priority: .high)
     }
 
     func currencies(ids: [Int], priority: APIRequestPriority = .normal) async throws -> [Int: CurrencyMetadata] {

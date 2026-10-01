@@ -4,7 +4,7 @@ import Foundation
 import UIKit
 
 struct DerivedDetailedTileRequest: Hashable, Sendable {
-    static let projectionVersion = "current-continent-z7-v1"
+    static let projectionVersion = "current-continent-z7-whole-canvas-v2"
 
     let continent: Int
     let floor: Int
@@ -121,7 +121,7 @@ actor DerivedDetailedTileProvider {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         self.directory = directory
-            ?? caches.appending(path: "GW2DerivedMapTiles-v1", directoryHint: .isDirectory)
+            ?? caches.appending(path: "GW2DerivedMapTiles-v2", directoryHint: .isDirectory)
         self.projection = projection
         self.tileProvider = tileProvider
         self.sourceLoader = sourceLoader ?? { url in
@@ -232,34 +232,36 @@ actor DerivedDetailedTileProvider {
                 generationMilliseconds: milliseconds, imageMemoryBytes: byteCost))
     }
 
-    /// Draws all high-resolution children directly into a 256px destination using
-    /// CoreGraphics' high-quality interpolation. This composites and downsamples in
-    /// one pass without allocating a 1024px intermediate image for z5.
-    private static func composite(_ images: [UIImage], sourceCount: Int) -> UIImage? {
+    /// QA/reference only; live maps use direct z7 tiles. Child rows have a
+    /// top-left origin, while an untransformed CGContext has a bottom-left origin.
+    /// Position rows explicitly, keeping each CGImage upright, then resize once.
+    static func composite(_ images: [UIImage], sourceCount: Int) -> UIImage? {
         let factor = Int(Double(sourceCount).squareRoot())
-        guard factor * factor == sourceCount,
+        guard [2, 4].contains(factor), factor * factor == sourceCount,
+              images.count == sourceCount,
+              images.allSatisfy({ $0.cgImage?.width == 256 && $0.cgImage?.height == 256 }),
               let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(
-                data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0,
+                data: nil, width: factor * 256, height: factor * 256, bitsPerComponent: 8, bytesPerRow: 0,
                 space: colorSpace,
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return nil }
-        context.interpolationQuality = .high
-        context.setFillColor(CGColor(gray: 0.08, alpha: 1))
-        context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
-        context.translateBy(x: 0, y: 256)
-        context.scaleBy(x: 1, y: -1)
-        let childSize = 256.0 / Double(factor)
+        context.interpolationQuality = .none
         for (index, image) in images.enumerated() {
             guard let cgImage = image.cgImage else { return nil }
             let column = index % factor
             let row = index / factor
             context.draw(cgImage, in: CGRect(
-                x: Double(column) * childSize,
-                y: Double(row) * childSize,
-                width: childSize, height: childSize))
+                x: column * 256, y: (factor - 1 - row) * 256,
+                width: 256, height: 256))
         }
-        guard let output = context.makeImage() else { return nil }
+        guard let canvas = context.makeImage(), let resized = CGContext(
+            data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        resized.interpolationQuality = .high
+        resized.draw(canvas, in: CGRect(x: 0, y: 0, width: 256, height: 256))
+        guard let output = resized.makeImage() else { return nil }
         return UIImage(cgImage: output, scale: 1, orientation: .up)
     }
 

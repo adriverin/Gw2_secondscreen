@@ -115,6 +115,12 @@ enum DecodeErrorPath {
 }
 
 extension KeyedDecodingContainer {
+    func decodeFlexibleInt(forKey key: Key) -> Int? {
+        if let value = try? decode(Int.self, forKey: key) { return value }
+        if let value = try? decode(String.self, forKey: key) { return Int(value) }
+        return nil
+    }
+
     func decodeFlexibleURL(forKey key: Key) -> URL? {
         if let url = try? decodeIfPresent(URL.self, forKey: key) { return url }
         guard let string = try? decodeIfPresent(String.self, forKey: key) else { return nil }

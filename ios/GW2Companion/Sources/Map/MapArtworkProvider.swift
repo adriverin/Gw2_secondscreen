@@ -75,12 +75,12 @@ enum MapDetailMode: String, CaseIterable, Identifiable, Sendable {
 enum MapRasterDetail {
     static let maxSupersampledTiles = 384
     static let maximumVisibleDerivedTiles = 48
-    static let maximumDerivedSourceTiles = 384
+    static let maximumDerivedSourceTiles = DirectDetailedTileProvider.maximumSourceTiles
 
     enum RenderingSource: Equatable, Sendable {
         case unavailable
         case native(zoom: Int)
-        case derived(sourceZoom: Int)
+        case overzoom(sourceZoom: Int)
     }
 
     static func renderingSource(
@@ -101,7 +101,7 @@ enum MapRasterDetail {
               visibleDisplayTileCount <= maximumVisibleDerivedTiles,
               sourceTileCount <= maximumDerivedSourceTiles
         else { return .native(zoom: displayZoom) }
-        return .derived(sourceZoom: reference)
+        return .overzoom(sourceZoom: reference)
     }
 
     static func sourceZoom(
@@ -116,7 +116,7 @@ enum MapRasterDetail {
         {
         case .unavailable: return displayZoom
         case let .native(zoom): return zoom
-        case let .derived(sourceZoom): return sourceZoom
+        case let .overzoom(sourceZoom): return sourceZoom
         }
     }
 }

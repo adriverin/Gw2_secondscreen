@@ -11,13 +11,19 @@ struct TradingPostPriceSheet: View {
     let quantity: Int
     @EnvironmentObject private var store: GoalStore
     @Environment(\.dismiss) private var dismiss
+    @State private var metadataLoading = true
+
+    private var resolvedItem: ItemMetadata? {
+        store.priceDetailItems[item.id] ?? (item.isPlaceholder ? nil : item)
+    }
 
     private var presentation: TradingPostPricePresentation {
         let timed = store.marketPrices[item.id]
         let state = TradingPostPriceResolver.state(
-            price: timed, item: item, failed: store.priceError)
+            price: timed, item: resolvedItem, failed: store.priceError)
         return TradingPostPriceResolver.presentation(
-            itemID: item.id, itemName: item.name, missingQuantity: quantity, state: state)
+            itemID: item.id, itemName: PriceItemHeader.title(item: resolvedItem, loading: metadataLoading),
+            missingQuantity: quantity, state: state)
     }
 
     var body: some View {
@@ -25,8 +31,10 @@ struct TradingPostPriceSheet: View {
             List {
                 Section {
                     VStack(spacing: 10) {
-                        GWItemIcon(item: item, size: 72)
-                        Text(item.name.uppercased()).font(.title3.bold()).multilineTextAlignment(.center)
+                        if let resolvedItem { GWItemIcon(item: resolvedItem, size: 72) }
+                        else if metadataLoading { ProgressView().frame(width: 72, height: 72) }
+                        Text(PriceItemHeader.title(item: resolvedItem, loading: metadataLoading))
+                            .font(.title3.bold()).multilineTextAlignment(.center)
                         LabeledContent("Missing", value: quantity.formatted())
                     }
                     .frame(maxWidth: .infinity)
@@ -64,7 +72,11 @@ struct TradingPostPriceSheet: View {
             .navigationTitle("Trading Post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Done") { dismiss() } }
-            .task {
+            .task(id: item.id) {
+                metadataLoading = true
+                _ = await store.loadPriceItemMetadata(itemID: item.id)
+                guard !Task.isCancelled else { return }
+                metadataLoading = false
                 await store.refreshPrice(itemID: item.id, force: true)
             }
         }

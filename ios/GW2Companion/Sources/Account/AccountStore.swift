@@ -266,6 +266,9 @@ final class AccountStore: ObservableObject {
             }
         }
 
+        if let fullEquipment = try? await api.characterEquipment(name: character.name) {
+            detail.equipmentTabs = EquipmentStatInputResolver.hydratedTabs(detail.equipmentTabs, from: fullEquipment)
+        }
         let equipment = detail.equipmentTabs.flatMap(\.equipment)
         var itemIDs: [Int] = []
         for equipped in equipment {
@@ -280,7 +283,7 @@ final class AccountStore: ObservableObject {
             }
         }
         if let resolved = try? await api.items(ids: itemIDs, priority: .high) {
-            detail.items = resolved
+            detail.items.merge(resolved) { _, new in new }
         }
         if let resolved = try? await api.skins(ids: equipment.compactMap(\.skin)) {
             detail.skins = resolved

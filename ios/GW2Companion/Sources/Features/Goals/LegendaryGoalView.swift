@@ -163,13 +163,14 @@ private struct LegendaryGoalEditorView: View {
 struct LegendaryGoalContent: View {
     let goal: PlayerGoal
     let onInspectPrice: (ItemMetadata, Int) -> Void
+    var onWork: (() -> Void)? = nil
 
     @EnvironmentObject private var store: GoalStore
     @EnvironmentObject private var account: AccountStore
 
     var body: some View {
         if let plan = store.legendaryPlan(for: goal, account: account) {
-            LegendaryPlanPresentation(plan: plan, onInspectPrice: onInspectPrice)
+            LegendaryPlanPresentation(plan: plan, onInspectPrice: onInspectPrice, onWork: onWork)
         } else {
             GWCard { Text("Building legendary plan…").foregroundStyle(.secondary) }
         }
@@ -213,15 +214,13 @@ private struct LegendaryPlanPresentation: View {
     let onInspectPrice: (ItemMetadata, Int) -> Void
     @EnvironmentObject private var store: GoalStore
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var navigation: AppNavigation
     @State private var showCompleted = false
+    var onWork: (() -> Void)? = nil
 
     var body: some View {
-        ownershipCard
-        summaryCard
-        tradableCard
-        accountBoundSection
-        readyNowSection
-        GWSectionHeader(title: "Dependency plan", subtitle: "Completed branches are collapsed by default")
+        hero
+        GWSectionHeader(title: "Major requirements")
         Toggle("Show completed", isOn: $showCompleted)
             .accessibilityIdentifier("legendary.showCompleted")
         let visible = plan.visibleTopLevel(showCompleted: showCompleted)
@@ -245,78 +244,43 @@ private struct LegendaryPlanPresentation: View {
         }
     }
 
-    private var ownershipCard: some View {
-        GWCard {
-            if plan.ownership == .armory {
-                Text(plan.name.uppercased()).font(.title2.bold())
-                Label("Owned in Legendary Armory ✓", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
-                GWBadge(text: "OWNED", color: .green, symbol: "checkmark")
-                Text("Armory ownership does not mean this item was crafted on this account.")
-                    .font(.caption).foregroundStyle(.secondary)
-            } else if plan.ownership == .holdings {
-                Text(plan.name.uppercased()).font(.title2.bold())
-                Label("Owned in account holdings ✓", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+    private var hero: some View {
+        let item = store.legendaryItems[plan.targetItemID] ?? account.itemMetadata[plan.targetItemID]
+        let definition = store.legendaryCatalog?.plan(for: plan.targetItemID)
+        return GWCard {
+            HStack(spacing: 12) {
+                if let item { GWItemIcon(item: item, size: 58) }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(plan.name.uppercased()).font(.title2.bold())
+                    Text(definition?.weaponType.map { "Legendary \($0)" } ?? "Legendary")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            if plan.ownership != .notOwned {
+                Label(plan.ownership == .armory ? "Owned in Legendary Armory ✓" : "Owned in account holdings ✓",
+                      systemImage: "checkmark.seal.fill").foregroundStyle(.green)
             } else {
-                Text(plan.name.uppercased()).font(.title2.bold())
-                Label(plan.progress.label, systemImage: "sparkles.rectangle.stack")
-            }
-        }
-    }
-
-    private var summaryCard: some View {
-        GWCard {
-            GWSectionHeader(title: "Major Requirements", subtitle: "\(plan.topLevelReadyCount) / \(plan.topLevelTotalCount) ready")
-            ProgressView(value: Double(plan.topLevelReadyCount), total: Double(max(1, plan.topLevelTotalCount)))
-            LabeledContent("Tradable missing", value: "\(plan.tradableMissing.count) requirements")
-            LabeledContent("Account-bound", value: "\(plan.accountBoundMissing.count) requirements")
-            LabeledContent("Ready now", value: "\(plan.sessionNodes.filter { $0.status == .readyToCraft }.count) components")
-        }
-    }
-
-    @ViewBuilder private var tradableCard: some View {
-        if !plan.tradableMissing.isEmpty || plan.estimatedBuyNowCopper != nil {
-            GWCard {
-                GWSectionHeader(title: "Tradable", subtitle: "Current lowest sell offers only")
+                Text("\(plan.topLevelReadyCount) of \(plan.topLevelTotalCount) major requirements ready")
+                    .font(.headline).foregroundStyle(GWPalette.accent)
+                    .accessibilityIdentifier("legendary.primaryProgress")
+                ProgressView(value: Double(plan.topLevelReadyCount), total: Double(max(1, plan.topLevelTotalCount)))
+                    .accessibilityHidden(true)
+                HStack(spacing: 18) {
+                    Text("\(plan.tradableMissing.count) Tradable")
+                    Text("\(plan.accountBoundMissing.count) Account-bound")
+                    Text("\(plan.sessionNodes.filter { $0.status == .readyToCraft }.count) Ready now")
+                }.font(.caption).foregroundStyle(.secondary)
                 if let estimate = store.estimatedBuyNow(for: plan) {
-                    LabeledContent("Buy missing", value: "≈ \(estimate.amount.compactFormatted)")
+                    LabeledContent("Estimated tradable missing", value: "≈ \(estimate.amount.compactFormatted)")
+                        .font(.subheadline)
                 }
-                Text("This is separate from account-bound requirements and is not a total legendary value.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Button("What should I work on?") {
+                    if let onWork { onWork() } else { navigation.selectedTab = .session }
+                }.buttonStyle(.bordered)
             }
         }
     }
 
-    @ViewBuilder private var accountBoundSection: some View {
-        if !plan.accountBoundMissing.isEmpty {
-            GWSectionHeader(title: "Account-bound", subtitle: "Cannot be purchased on the Trading Post")
-            ForEach(plan.accountBoundMissing) { node in
-                GWCard {
-                    HStack {
-                        GWBadge(text: "ACCOUNT-BOUND", color: .orange, symbol: "lock")
-                        Spacer()
-                        Text("\(node.missingQuantity) missing").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(node.name).font(.headline)
-                    Text(node.acquisition.title).font(.caption).foregroundStyle(.secondary)
-                    if let notes = node.notes { Text(notes).font(.caption).foregroundStyle(.secondary) }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder private var readyNowSection: some View {
-        let ready = plan.sessionNodes.filter { $0.status == .readyToCraft }
-        if !ready.isEmpty {
-            GWSectionHeader(title: "Ready Now", subtitle: "Known ingredients are satisfied")
-            ForEach(ready) { node in
-                GWCard {
-                    GWBadge(text: "READY", color: .green, symbol: "hammer.fill")
-                    Text(node.name).font(.headline)
-                }
-            }
-        }
-    }
 
     private var coverageCard: some View {
         GWCard {
@@ -336,7 +300,7 @@ private struct LegendaryRequirementCard: View {
     @State private var expanded = false
 
     var body: some View {
-        GWCard {
+        VStack(alignment: .leading, spacing: 6) {
             Button { expanded.toggle() } label: {
                 HStack(alignment: .top) {
                     Image(systemName: symbol).foregroundStyle(color)
@@ -344,11 +308,9 @@ private struct LegendaryRequirementCard: View {
                         Text(node.name).font(.headline)
                         HStack(spacing: 5) {
                             GWBadge(text: node.actionStatusTitle.uppercased(), color: color, symbol: symbol)
-                            if node.binding == .tradable { Text("Tradable") }
-                            else { Text("Account-bound") }
                         }
                         .font(.caption2).foregroundStyle(.secondary)
-                        Text("\(node.ownedQuantity) owned • \(node.missingQuantity) missing")
+                        Text("\(node.ownedQuantity) owned • \(node.missingQuantity) missing • \(node.acquisition.title)")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -357,7 +319,8 @@ private struct LegendaryRequirementCard: View {
                     }
                 }
             }.buttonStyle(.plain)
-            if node.binding == .tradable, node.missingQuantity > 0 {
+                .accessibilityIdentifier("legendary.requirement.\(node.itemID)")
+            if expanded, node.binding == .tradable, node.missingQuantity > 0 {
                 Button("Price") {
                     let item = store.legendaryItems[node.itemID]
                         ?? account.itemMetadata[node.itemID]
@@ -366,7 +329,7 @@ private struct LegendaryRequirementCard: View {
                 }
                 .buttonStyle(.bordered)
             }
-            if let notes = node.notes {
+            if expanded, let notes = node.notes {
                 Text(notes).font(.caption).foregroundStyle(.secondary)
             }
             if expanded {
@@ -378,6 +341,8 @@ private struct LegendaryRequirementCard: View {
                 }
             }
         }
+        .padding(10)
+        .background(GWPalette.card, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var symbol: String {

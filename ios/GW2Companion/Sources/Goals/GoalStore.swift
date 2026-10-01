@@ -43,6 +43,7 @@ final class GoalStore: ObservableObject {
     @Published private(set) var recipeIndex: RecipeOutputIndex?
     @Published private(set) var craftableItems: [Int: ItemMetadata] = [:]
     @Published private(set) var marketPrices: [Int: TimedCommercePrice] = [:]
+    @Published private(set) var priceDetailItems: [Int: ItemMetadata] = [:]
     @Published private(set) var pricesUpdatedAt: Date?
     @Published private(set) var achievementState: GoalMetadataLoadState = .idle
     @Published private(set) var recipeState: GoalMetadataLoadState = .idle
@@ -363,6 +364,12 @@ final class GoalStore: ObservableObject {
         if legendaryCatalog == nil {
             legendaryCatalog = try? BundledLegendaryCatalogProvider().catalog()
         }
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--phase6h-fixtures") {
+            preparePhaseSixHFixtures()
+            return
+        }
+#endif
         legendaryState = .loading("Loading legendary armory…")
         do {
             let definitions = try await api.legendaryArmoryDefinitions()
@@ -439,6 +446,23 @@ final class GoalStore: ObservableObject {
         await refreshPrices(ids: [itemID], force: force, priority: .high)
     }
 
+    func loadPriceItemMetadata(itemID: Int) async -> ItemMetadata? {
+        if let cached = priceDetailItems[itemID] { return cached }
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--phase6h-price-race"), itemID == 29185 {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return nil }
+            let item = ItemMetadata(id: itemID, name: "Dusk", icon: nil, rarity: "Exotic", type: "Weapon")
+            priceDetailItems[itemID] = item
+            return item
+        }
+#endif
+        guard let item = try? await api.items(ids: [itemID], priority: .high)[itemID],
+              !item.isPlaceholder else { return nil }
+        priceDetailItems[itemID] = item
+        return item
+    }
+
     /// Visible inventory rows enqueue into one short debounce window so scrolling a
     /// list produces a commerce batch instead of one request per cell.
     func queueInventoryPrice(itemID: Int) {
@@ -463,6 +487,9 @@ final class GoalStore: ObservableObject {
     }
 
     func refreshPrices(ids: [Int], force: Bool = false, priority: APIRequestPriority = .normal) async {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--phase6h-fixtures") { return }
+#endif
         let wanted = Array(Set(ids))
         guard !wanted.isEmpty else { return }
         do {
@@ -474,6 +501,22 @@ final class GoalStore: ObservableObject {
             priceError = error.userFacingMessage(fallback: "Trading Post prices couldn’t be refreshed. Showing saved prices where possible.")
         }
     }
+
+#if DEBUG
+    private func preparePhaseSixHFixtures() {
+        legendaryItems[30704] = ItemMetadata(id: 30704, name: "Twilight", icon: nil, rarity: "Legendary", type: "Weapon")
+        if !goals.contains(where: { $0.type == .legendary(itemID: 30704) }) {
+            // In-memory only; never overwrite or persist a user's goal collection.
+            let goal = PlayerGoal(title: "Twilight", type: .legendary(itemID: 30704), priority: .normal)
+            goals.append(goal)
+            selectedGoalID = goal.id
+        }
+        marketPrices[29185] = TimedCommercePrice(price: CommercePrice(id: 29185, whitelisted: true,
+            buys: CommerceListingSummary(quantity: 1, unitPrice: 10000),
+            sells: CommerceListingSummary(quantity: 1, unitPrice: 12000)), fetchedAt: Date())
+        legendaryState = .ready
+    }
+#endif
 
     func refreshPrices(for achievement: AchievementTrackingState, force: Bool = false) async {
         let ids = achievement.bits.compactMap { bit -> Int? in

@@ -109,14 +109,18 @@ final class GW2CompanionSmokeTests: XCTestCase {
         let disclosure = app.buttons["All Currencies"].firstMatch
         XCTAssertTrue(disclosure.waitForExistence(timeout: 2))
         XCTAssertEqual(disclosure.value as? String, "Collapsed")
-        XCTAssertFalse(app.staticTexts["Fractal Relic"].exists)
+        // Currency rows combine their accessibility children. Match the row's
+        // combined label instead of requiring a standalone StaticText leaf.
+        let fractal = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Fractal Relic")).firstMatch
+        XCTAssertFalse(fractal.exists)
         disclosure.tap()
         XCTAssertEqual(disclosure.value as? String, "Expanded")
-        XCTAssertTrue(app.staticTexts["Fractal Relic"].waitForExistence(timeout: 2),
+        XCTAssertTrue(fractal.waitForExistence(timeout: 2),
                       "All Currencies should expand without changing tabs")
         disclosure.tap()
         XCTAssertEqual(disclosure.value as? String, "Collapsed")
-        XCTAssertFalse(app.staticTexts["Fractal Relic"].waitForExistence(timeout: 0.5),
+        XCTAssertFalse(fractal.waitForExistence(timeout: 0.5),
                        "All Currencies should collapse immediately")
     }
 
@@ -164,7 +168,9 @@ final class GW2CompanionSmokeTests: XCTestCase {
         XCTAssertTrue(scrollUntilExists(app, identifiers: ["qa.inventory", "Characters loaded"], texts: ["Account inventory", "Characters loaded"]))
         XCTAssertTrue(scrollUntilExists(app, identifiers: ["qa.api"], texts: ["API key", "Validated"]))
 
-        XCTAssertTrue(scrollUntilExists(app, identifiers: ["qa.mapAlignment"], texts: ["Map Alignment workflow"]))
+        // Live diagnostics precede the inventory/API sections. Return upward
+        // rather than searching farther down the long QA checklist.
+        XCTAssertTrue(scrollUntilExists(app, identifiers: ["qa.mapAlignment"], texts: ["Map Alignment workflow"], searchUpward: true))
         let alignment = app.descendants(matching: .any)["qa.mapAlignment"].firstMatch
         if alignment.exists {
             alignment.tap()
@@ -196,11 +202,11 @@ final class GW2CompanionSmokeTests: XCTestCase {
         )
     }
 
-    private func scrollUntilExists(_ app: XCUIApplication, identifiers: [String], texts: [String]) -> Bool {
+    private func scrollUntilExists(_ app: XCUIApplication, identifiers: [String], texts: [String], searchUpward: Bool = false) -> Bool {
         for _ in 0..<8 {
             if identifiers.contains(where: { app.descendants(matching: .any)[$0].exists }) { return true }
             if texts.contains(where: { app.staticTexts[$0].exists || app.buttons[$0].exists }) { return true }
-            app.swipeUp()
+            if searchUpward { app.swipeDown() } else { app.swipeUp() }
         }
         return identifiers.contains(where: { app.descendants(matching: .any)[$0].exists })
             || texts.contains(where: { app.staticTexts[$0].exists || app.buttons[$0].exists })
