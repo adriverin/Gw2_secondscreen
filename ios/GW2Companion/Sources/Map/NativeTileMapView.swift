@@ -97,12 +97,13 @@ struct NativeTileMapView: View {
         let viewport = transform.visibleContinentRect(marginPoints: 256 * magnification)
         let continentID = metadata?.continentId ?? 1
         let floor = metadata?.defaultFloor ?? 1
-        let sourceZoom = MapRasterDetail.sourceZoom(
-            displayZoom: zoom, continentID: continentID, viewport: viewport, mode: mapDetail)
         let tileIDs = projection.tiles(
-            coveringContinentRect: viewport, zoom: sourceZoom, continentID: continentID, mapFloor: floor)
-        let scale = pow(2.0, Double(sourceZoom - zoom))
-        let screenSize = tileScreenSize * magnification / CGFloat(max(scale, 1))
+            coveringContinentRect: viewport, zoom: zoom, continentID: continentID, mapFloor: floor)
+        let source = MapRasterDetail.renderingSource(
+            displayZoom: zoom, continentID: continentID, mode: mapDetail,
+            visibleDisplayTileCount: tileIDs.count,
+            artworkAvailable: metadata.map { tileProvider.coverage(for: $0).isOfficial } ?? true)
+        let screenSize = tileScreenSize * magnification
 
         Group {
             ForEach(tileIDs, id: \.self) { tile in
@@ -112,7 +113,9 @@ struct NativeTileMapView: View {
                    let continent = projection.continentCoordinate(
                     from: TileWorldCoordinate(x: worldRect.midX, y: worldRect.midY),
                     continentID: continentID, mapFloor: floor) {
-                    MapTileImage(url: url, index: tile, showDebug: showTileDebugGrid)
+                    tileImage(
+                        nativeURL: url, tile: tile, source: source,
+                        continentID: continentID, floor: floor)
                         .frame(width: screenSize, height: screenSize)
                         .position(transform.screenPosition(for: continent))
                 }
@@ -120,6 +123,23 @@ struct NativeTileMapView: View {
         }
         .onAppear { lastVisibleTileCount = tileIDs.count }
         .onChange(of: tileIDs.count) { _, count in lastVisibleTileCount = count }
+    }
+
+    @ViewBuilder
+    private func tileImage(
+        nativeURL: URL, tile: TileIndex, source: MapRasterDetail.RenderingSource,
+        continentID: Int, floor: Int
+    ) -> some View {
+        switch source {
+        case let .derived(sourceZoom):
+            DerivedMapTileImage(
+                request: DerivedDetailedTileRequest(
+                    continent: continentID, floor: floor,
+                    displayTile: tile, sourceZoom: sourceZoom),
+                fallbackURL: nativeURL, showDebug: showTileDebugGrid)
+        case .native, .unavailable:
+            MapTileImage(url: nativeURL, index: tile, showDebug: showTileDebugGrid)
+        }
     }
 
     private var tileScreenSize: CGFloat { CGFloat(ArenaNetTileProjection.tileSize + 1) }
@@ -342,6 +362,54 @@ private struct MapTileImage: View {
             }
         }
         .task(id: url) { image = await MapTileImageCache.shared.image(for: url) }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct DerivedMapTileImage: View {
+    let request: DerivedDetailedTileRequest
+    let fallbackURL: URL
+    let showDebug: Bool
+    @State private var image: UIImage?
+    @State private var diagnostics: DerivedTileDiagnostics?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable()
+            } else {
+                Rectangle().fill(Color.white.opacity(0.035))
+                    .overlay(Rectangle().stroke(Color.white.opacity(0.04)))
+            }
+        }
+        .overlay {
+            if showDebug {
+                VStack(spacing: 1) {
+                    Text("z=\(request.displayTile.zoom) x=\(request.displayTile.x) y=\(request.displayTile.y)")
+                    Text("derived z\(request.sourceZoom) • \(diagnostics?.sourceTileCount ?? request.sourceTileCount) src")
+                    if let diagnostics {
+                        Text("\(diagnostics.cacheState.rawValue) • \(diagnostics.generationMilliseconds) ms")
+                    }
+                }
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(.yellow)
+                .shadow(color: .black, radius: 1)
+                .allowsHitTesting(false)
+            }
+        }
+        .task(id: request) {
+            let result = await withTaskCancellationHandler {
+                await DerivedDetailedTileProvider.shared.image(for: request)
+            } onCancel: {
+                Task { await DerivedDetailedTileProvider.shared.cancel(request) }
+            }
+            if let result {
+                image = result.image
+                diagnostics = result.diagnostics
+            } else if !Task.isCancelled {
+                image = await MapTileImageCache.shared.image(for: fallbackURL)
+            }
+        }
         .accessibilityHidden(true)
     }
 }

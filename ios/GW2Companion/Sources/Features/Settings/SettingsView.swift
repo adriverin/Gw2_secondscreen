@@ -141,10 +141,11 @@ enum AppDataReset {
     @MainActor
     static func clearCaches(fileManager: FileManager = .default) {
         guard let root = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
-        for name in ["GW2CompanionMetadata", "GW2MapIcons-v1", "GW2CompanionImages", "GW2MapTiles-v1"] {
+        for name in ["GW2CompanionMetadata", "GW2MapIcons-v1", "GW2CompanionImages", "GW2MapTiles-v1", "GW2DerivedMapTiles-v1"] {
             try? fileManager.removeItem(at: root.appending(path: name, directoryHint: .isDirectory))
         }
         Task { await MapTileImageCache.shared.handleMemoryPressure() }
+        Task { await DerivedDetailedTileProvider.shared.handleMemoryPressure() }
         Task { await RemoteImagePipeline.shared.handleMemoryPressure() }
         MapIconStore.shared.handleMemoryPressure()
     }

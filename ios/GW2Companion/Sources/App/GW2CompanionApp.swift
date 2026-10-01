@@ -60,10 +60,20 @@ struct GW2CompanionApp: App {
                     await account.restoreCachedState()
                     goals.setAccountScope(account.account?.id)
                     sessions.setAccountScope(account.account?.id)
-                    async let accountRefresh: Void = account.refresh()
-                    async let todayRefresh: Void = today.setAccountScope(
-                        account.account?.id, permissions: account.permissions)
-                    _ = await (accountRefresh, todayRefresh)
+#if DEBUG
+                    let fixtureMode = ProcessInfo.processInfo.arguments.contains("--phase2-fixtures")
+                        || ProcessInfo.processInfo.arguments.contains("--phase2-no-inventories")
+#else
+                    let fixtureMode = false
+#endif
+                    if fixtureMode {
+                        await today.setAccountScope(account.account?.id, permissions: account.permissions)
+                    } else {
+                        async let accountRefresh: Void = account.refresh()
+                        async let todayRefresh: Void = today.setAccountScope(
+                            account.account?.id, permissions: account.permissions)
+                        _ = await (accountRefresh, todayRefresh)
+                    }
                     await goals.prepareLegendaries()
                     await sessions.prepare(recipes: goals.recipes, prices: goals.marketPrices)
                 }
@@ -81,6 +91,7 @@ struct GW2CompanionApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     MapIconStore.shared.handleMemoryPressure()
                     Task { await MapTileImageCache.shared.handleMemoryPressure() }
+                    Task { await DerivedDetailedTileProvider.shared.handleMemoryPressure() }
                     Task { await RemoteImagePipeline.shared.handleMemoryPressure() }
                 }
         }

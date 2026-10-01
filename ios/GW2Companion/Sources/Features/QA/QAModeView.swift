@@ -33,6 +33,10 @@ struct QAModeView: View {
                     .accessibilityIdentifier("qa.mumble.link")
                 NavigationLink("Map Alignment workflow") { QAMapAlignmentView() }
                     .accessibilityIdentifier("qa.mapAlignment")
+                NavigationLink("Map Detail Comparison") { MapDetailComparisonView() }
+                    .accessibilityIdentifier("qa.mapDetailComparison.link")
+                NavigationLink("Character Stat Audit") { QACharacterStatAuditPickerView() }
+                    .accessibilityIdentifier("qa.characterStatAudit.link")
             }
             inventory
             apiKey

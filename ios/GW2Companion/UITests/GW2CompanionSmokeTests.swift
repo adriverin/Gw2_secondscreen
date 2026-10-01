@@ -95,6 +95,31 @@ final class GW2CompanionSmokeTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Map"].waitForExistence(timeout: 3))
     }
 
+    func testWalletAllCurrenciesDisclosureUpdatesImmediately() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--ui-smoke", "--phase2-fixtures", "--simulate-telemetry",
+            "-wallet.allExpanded.v1.fixture_account", "NO"
+        ]
+        app.launch()
+
+        openMore("Account", app: app)
+        XCTAssertTrue(scrollUntilExists(
+            app, identifiers: [], texts: ["All Currencies"]))
+        let disclosure = app.buttons["All Currencies"].firstMatch
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 2))
+        XCTAssertEqual(disclosure.value as? String, "Collapsed")
+        XCTAssertFalse(app.staticTexts["Fractal Relic"].exists)
+        disclosure.tap()
+        XCTAssertEqual(disclosure.value as? String, "Expanded")
+        XCTAssertTrue(app.staticTexts["Fractal Relic"].waitForExistence(timeout: 2),
+                      "All Currencies should expand without changing tabs")
+        disclosure.tap()
+        XCTAssertEqual(disclosure.value as? String, "Collapsed")
+        XCTAssertFalse(app.staticTexts["Fractal Relic"].waitForExistence(timeout: 0.5),
+                       "All Currencies should collapse immediately")
+    }
+
     private func tapSection(_ id: String, app: XCUIApplication) {
         let button = app.buttons["inventory.section.\(id)"]
         XCTAssertTrue(button.waitForExistence(timeout: 3), "Missing inventory section \(id)")

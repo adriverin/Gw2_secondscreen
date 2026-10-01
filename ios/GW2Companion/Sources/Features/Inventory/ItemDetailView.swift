@@ -39,6 +39,7 @@ struct ItemDetailView: View {
     let metadata: [Int: ItemMetadata]
     var skins: [Int: SkinMetadata] = [:]
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var goals: GoalStore
 
     private var attributes: [ItemAttribute] {
         if let selected = inspected.stats?.attributes {
@@ -97,6 +98,8 @@ struct ItemDetailView: View {
 
                 if inspected.quantity > 1 { Section { LabeledContent("Quantity", value: inspected.quantity.formatted()) } }
 
+                marketSection
+
                 if inspected.binding != nil || inspected.boundTo != nil || !(inspected.item.flags ?? []).isEmpty {
                     Section("Binding") {
                         if let binding = inspected.binding { Text(binding.replacingOccurrences(of: "Account", with: "Account Bound")) }
@@ -114,6 +117,39 @@ struct ItemDetailView: View {
             .navigationTitle("Item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Done") { dismiss() } }
+            .task(id: inspected.item.id) {
+                await goals.refreshOwnedItemPrice(itemID: inspected.item.id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var marketSection: some View {
+        let values = OwnedItemMarketValues(
+            item: inspected.item, quantity: inspected.quantity,
+            price: goals.marketPrices[inspected.item.id])
+        Section("Trading Post") {
+            if values.sellState == .nonTradable || values.buyState == .nonTradable {
+                Text("Not tradable").foregroundStyle(.secondary)
+            } else {
+                if let sell = values.sellNow {
+                    LabeledContent("Unit sell-now", value: CoinAmount(copperValue: sell.unitCopper).compactFormatted)
+                    LabeledContent("Stack sell-now", value: sell.amount.compactFormatted)
+                } else {
+                    LabeledContent("Sell-now", value: "No current buy orders")
+                }
+                if let buy = values.buyNow {
+                    LabeledContent("Unit buy-now", value: CoinAmount(copperValue: buy.unitCopper).compactFormatted)
+                    LabeledContent("Stack replacement", value: buy.amount.compactFormatted)
+                } else {
+                    LabeledContent("Buy-now", value: "No current sell offers")
+                }
+                if let updatedAt = values.updatedAt {
+                    LabeledContent("Updated", value: updatedAt.formatted(date: .omitted, time: .shortened))
+                } else {
+                    ProgressView("Loading current prices…")
+                }
+            }
         }
     }
 

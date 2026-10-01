@@ -443,7 +443,12 @@ struct GoalDetailView: View {
     @ViewBuilder
     private func actionsSection(_ goal: PlayerGoal) -> some View {
         let actions = suggestedActions(goal)
-        GWSectionHeader(title: "What Can I Do Now?", subtitle: "Conservative, deterministic suggestions")
+        GWSectionHeader(
+            title: {
+                if case .legendary = goal.type { return "What should I work on?" }
+                return "What Can I Do Now?"
+            }(),
+            subtitle: "Conservative, deterministic suggestions")
         ForEach(actions.prefix(6)) { action in
             GWCard {
                 HStack {

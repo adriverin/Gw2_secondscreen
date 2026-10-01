@@ -291,7 +291,9 @@ final class AccountStore: ObservableObject {
         if let resolved = try? await api.specializations(ids: specializationIDs) {
             detail.specializations.merge(resolved) { _, new in new }
         }
-        let traitIDs = builds.flatMap(\.specializations).flatMap(\.traits).compactMap { $0 }
+        let selectedSpecializations = builds.flatMap(\.specializations)
+        let traitIDs = selectedSpecializations.flatMap(\.traits).compactMap { $0 }
+            + selectedSpecializations.compactMap(\.id).flatMap { detail.specializations[$0]?.minorTraits ?? [] }
         if let resolved = try? await api.traits(ids: traitIDs) {
             detail.traits.merge(resolved) { _, new in new }
         }
@@ -365,11 +367,15 @@ final class AccountStore: ObservableObject {
             .map { Dictionary(uniqueKeysWithValues: $0.map { ($0.id, $0) }) } ?? [:]
         materialCategories = [5: MaterialCategoryMetadata(id: 5, name: "Basic Crafting Materials", items: [19697], order: 1)]
         rebuildMaterialSnapshot()
-        wallet = [WalletEntry(id: 1, value: 3_824_100), WalletEntry(id: 2, value: 1_423_443), WalletEntry(id: 23, value: 481)]
+        wallet = [
+            WalletEntry(id: 1, value: 3_824_100), WalletEntry(id: 2, value: 1_423_443),
+            WalletEntry(id: 23, value: 481), WalletEntry(id: 7, value: 37)
+        ]
         currencies = [
             1: CurrencyMetadata(id: 1, name: "Coin", description: "Your liquid coin balance.", icon: nil, order: 1),
             2: CurrencyMetadata(id: 2, name: "Karma", description: "Earned by helping Tyrians.", icon: nil, order: 2),
-            23: CurrencyMetadata(id: 23, name: "Spirit Shard", description: "A crafting currency.", icon: nil, order: 3)
+            23: CurrencyMetadata(id: 23, name: "Spirit Shard", description: "A crafting currency.", icon: nil, order: 3),
+            7: CurrencyMetadata(id: 7, name: "Fractal Relic", description: "Earned in fractals.", icon: nil, order: 7)
         ]
         var sources: [(ItemLocation, [InventorySlot])] = [
             (.character("Andrea"), andreaInventory.bags.compactMap { $0 }.flatMap { $0.inventory ?? [] }.compactMap { $0 }),

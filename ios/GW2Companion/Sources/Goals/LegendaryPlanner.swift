@@ -25,7 +25,9 @@ enum LegendaryPlanner {
 
         if ownership != .notOwned {
             let topLevel = definition.topLevelRequirements.map { requirement in
-                ownedNode(requirement: requirement, components: components, itemNames: itemNames)
+                ownedNode(
+                    requirement: requirement, components: components,
+                    itemNames: itemNames, path: [])
             }
             return makePlan(
                 definition: definition, ownership: ownership, topLevel: topLevel,
@@ -193,16 +195,31 @@ enum LegendaryPlanner {
 
     private static func ownedNode(
         requirement: LegendaryIngredient, components: [Int: LegendaryComponentDefinition],
-        itemNames: [Int: String]
+        itemNames: [Int: String], path: Set<Int>
     ) -> LegendaryProgressNode {
         let component = components[requirement.itemID]
+        var childPath = path
+        childPath.insert(requirement.itemID)
+        let children: [LegendaryProgressNode]
+        if path.contains(requirement.itemID) {
+            children = []
+        } else {
+            children = (component?.ingredients ?? []).map { ingredient in
+                let scaled = ingredient.quantity.multipliedReportingOverflow(by: requirement.quantity)
+                return ownedNode(
+                    requirement: LegendaryIngredient(
+                        itemID: ingredient.itemID,
+                        quantity: scaled.overflow ? Int.max : scaled.partialValue),
+                    components: components, itemNames: itemNames, path: childPath)
+            }
+        }
         return LegendaryProgressNode(
             itemID: requirement.itemID,
             name: component?.name ?? itemNames[requirement.itemID] ?? "Item \(requirement.itemID)",
             requiredQuantity: requirement.quantity, ownedQuantity: requirement.quantity, missingQuantity: 0,
             status: .owned, binding: component?.binding ?? .accountBound,
             acquisition: component?.acquisition ?? .unknown,
-            coverage: component?.coverage ?? .partial, notes: component?.notes, children: [])
+            coverage: component?.coverage ?? .partial, notes: component?.notes, children: children)
     }
 
     private static func merge(_ bucket: inout [Int: LegendaryProgressNode], _ node: LegendaryProgressNode) {

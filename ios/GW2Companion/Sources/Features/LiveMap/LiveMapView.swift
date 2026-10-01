@@ -140,10 +140,15 @@ struct LiveMapView: View {
                         tile: tile,
                         visibleTileCount: tileCount,
                         visibleMarkerCount: markerCount,
-                        sourceZoomBias: (MapDetailMode(rawValue: mapDetailRaw) ?? .balanced).sourceZoomBias(
-                            displayZoom: zoom,
-                            referenceZoom: ArenaNetTileProjection.shared.configuration(continentID: metadata?.continentId ?? 1).referenceZoom,
-                            visibleTileCountWithoutBias: tileCount))
+                        sourceZoomBias: max(0, MapRasterDetail.sourceZoom(
+                            displayZoom: zoom, continentID: metadata?.continentId ?? 1,
+                            viewport: MapViewportTransform(
+                                center: center, zoom: zoom, magnification: 1, dragOffset: .zero,
+                                size: CGSize(width: 390, height: 844),
+                                tileReferenceZoom: ArenaNetTileProjection.shared.configuration(
+                                    continentID: metadata?.continentId ?? 1).referenceZoom)
+                                .visibleContinentRect(marginPoints: 256),
+                            mode: MapDetailMode(rawValue: mapDetailRaw) ?? .balanced) - zoom))
                 })
                 .ignoresSafeArea(edges: .top)
 

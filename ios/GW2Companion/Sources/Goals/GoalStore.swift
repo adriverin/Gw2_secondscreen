@@ -60,6 +60,8 @@ final class GoalStore: ObservableObject {
     private var didPrepareAchievements = false
     private var didPrepareAchievementSearch = false
     private var didPrepareRecipes = false
+    private var queuedInventoryPriceIDs = Set<Int>()
+    private var inventoryPriceBatchTask: Task<Void, Never>?
 
     init(
         api: GW2APIClient, cache: MetadataDiskCache = MetadataDiskCache(),
@@ -341,6 +343,10 @@ final class GoalStore: ObservableObject {
 
     func legendaryPlan(for goal: PlayerGoal, account: AccountStore) -> LegendaryProgressPlan? {
         guard case let .legendary(itemID) = goal.type else { return nil }
+        return legendaryPlan(itemID: itemID, account: account)
+    }
+
+    func legendaryPlan(itemID: Int, account: AccountStore) -> LegendaryProgressPlan? {
         if legendaryCatalog == nil {
             legendaryCatalog = try? BundledLegendaryCatalogProvider().catalog()
         }
@@ -431,6 +437,29 @@ final class GoalStore: ObservableObject {
 
     func refreshPrice(itemID: Int, force: Bool = true) async {
         await refreshPrices(ids: [itemID], force: force, priority: .high)
+    }
+
+    /// Visible inventory rows enqueue into one short debounce window so scrolling a
+    /// list produces a commerce batch instead of one request per cell.
+    func queueInventoryPrice(itemID: Int) {
+        guard itemID > 0 else { return }
+        if let cached = marketPrices[itemID], Date().timeIntervalSince(cached.fetchedAt) <= 300 { return }
+        queuedInventoryPriceIDs.insert(itemID)
+        guard inventoryPriceBatchTask == nil else { return }
+        inventoryPriceBatchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled, let self else { return }
+            let ids = InventoryPriceBatchPlanner.batch(visibleItemIDs: Array(self.queuedInventoryPriceIDs))
+            self.queuedInventoryPriceIDs.removeAll()
+            self.inventoryPriceBatchTask = nil
+            await self.refreshPrices(ids: ids, force: false, priority: .normal)
+        }
+    }
+
+    func refreshOwnedItemPrice(itemID: Int) async {
+        await refreshPrices(
+            ids: InventoryPriceBatchPlanner.batch(visibleItemIDs: [], selectedItemID: itemID),
+            force: false, priority: .high)
     }
 
     func refreshPrices(ids: [Int], force: Bool = false, priority: APIRequestPriority = .normal) async {

@@ -473,9 +473,10 @@ struct ItemDetails: Codable, Sendable, Equatable {
     var suffixItemID: Int? = nil
     var secondarySuffixItemID: Int? = nil
     var statChoices: [Int]? = nil
+    var bonuses: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
-        case type, defense
+        case type, defense, bonuses
         case weightClass = "weight_class"
         case damageType = "damage_type"
         case minPower = "min_power"
@@ -621,18 +622,23 @@ struct TraitMetadata: Codable, Sendable, Identifiable, Equatable {
     let description: String
     let tier: Int?
     let slot: String?
+    var facts: [TraitFact] = []
 
     enum CodingKeys: String, CodingKey {
-        case id, name, icon, description, tier, slot
+        case id, name, icon, description, tier, slot, facts
     }
 
-    init(id: Int, name: String, icon: URL?, description: String, tier: Int?, slot: String?) {
+    init(
+        id: Int, name: String, icon: URL?, description: String, tier: Int?, slot: String?,
+        facts: [TraitFact] = []
+    ) {
         self.id = id
         self.name = name
         self.icon = icon
         self.description = description
         self.tier = tier
         self.slot = slot
+        self.facts = facts
     }
 
     init(from decoder: Decoder) throws {
@@ -643,7 +649,17 @@ struct TraitMetadata: Codable, Sendable, Identifiable, Equatable {
         description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
         tier = try values.decodeIfPresent(Int.self, forKey: .tier)
         slot = try values.decodeIfPresent(String.self, forKey: .slot)
+        facts = values.decodeLossyArray(TraitFact.self, forKey: .facts)
     }
+}
+
+struct TraitFact: Codable, Sendable, Equatable {
+    let type: String
+    var text: String? = nil
+    var target: String? = nil
+    var source: String? = nil
+    var value: Int? = nil
+    var percent: Double? = nil
 }
 
 struct SkillMetadata: Codable, Sendable, Identifiable, Equatable {

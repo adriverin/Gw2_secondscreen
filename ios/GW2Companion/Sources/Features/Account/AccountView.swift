@@ -6,6 +6,7 @@ struct AccountView: View {
     @State private var localError: String?
     @State private var walletSearch = ""
     @State private var walletPinRevision = 0
+    @State private var walletAllCurrenciesExpanded = false
     @State private var showingReplaceKey = false
     @State private var showingInventoryPermissionHelp = false
 
@@ -113,22 +114,43 @@ struct AccountView: View {
                 } else {
                     ForEach(pinned) { entry in walletRow(entry, allowPin: true) }
                 }
-                DisclosureGroup(isExpanded: allCurrenciesExpanded) {
-                    ForEach(remaining) { entry in walletRow(entry, allowPin: true) }
+                Button {
+                    allCurrenciesExpanded.wrappedValue.toggle()
                 } label: {
-                    Text("ALL CURRENCIES")
-                        .font(.caption2.bold()).foregroundStyle(.secondary)
+                    HStack {
+                        Text("ALL CURRENCIES")
+                            .font(.caption2.bold()).foregroundStyle(.secondary)
+                        Spacer()
+                        Image(systemName: walletAllCurrenciesExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption.bold()).foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("account.wallet.all")
+                .accessibilityLabel("All Currencies")
+                .accessibilityValue(walletAllCurrenciesExpanded ? "Expanded" : "Collapsed")
+                if walletAllCurrenciesExpanded {
+                    ForEach(remaining) { entry in walletRow(entry, allowPin: true) }
+                }
             }
         }
         .accessibilityIdentifier("account.wallet")
+        .onAppear { restoreWalletDisclosurePreference() }
+        .onChange(of: store.account?.id) { _, _ in restoreWalletDisclosurePreference() }
     }
 
     private var allCurrenciesExpanded: Binding<Bool> {
         Binding(
-            get: { WalletPresentation.isAllExpanded(accountID: store.account?.id) },
-            set: { WalletPresentation.setAllExpanded($0, accountID: store.account?.id) })
+            get: { walletAllCurrenciesExpanded },
+            set: { expanded in
+                walletAllCurrenciesExpanded = expanded
+                WalletPresentation.setAllExpanded(expanded, accountID: store.account?.id)
+            })
+    }
+
+    private func restoreWalletDisclosurePreference() {
+        walletAllCurrenciesExpanded = WalletPresentation.isAllExpanded(accountID: store.account?.id)
     }
 
     private func walletRow(_ entry: WalletEntry, allowPin: Bool) -> some View {

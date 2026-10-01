@@ -2,11 +2,17 @@ import SwiftUI
 
 struct InventoryView: View {
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var goals: GoalStore
     @EnvironmentObject private var navigation: AppNavigation
     @State private var search = ""
     @State private var sort: HoldingSort = .name
     @State private var inspected: InspectedItem?
     @State private var showingReplaceKey = false
+    @AppStorage(InventoryPricePreference.storageKey) private var pricePreferenceRaw = InventoryPricePreference.sellNow.rawValue
+
+    private var pricePreference: InventoryPricePreference {
+        InventoryPricePreference(rawValue: pricePreferenceRaw) ?? .sellNow
+    }
 
     var body: some View {
         NavigationStack {
@@ -63,6 +69,17 @@ struct InventoryView: View {
                             .tint(navigation.inventorySection == section ? GWPalette.accent : .secondary)
                             .accessibilityIdentifier("inventory.section.\(section.rawValue)")
                     }
+                    Menu {
+                        Picker("Inventory Prices", selection: $pricePreferenceRaw) {
+                            ForEach(InventoryPricePreference.allCases) { preference in
+                                Text(preference.title).tag(preference.rawValue)
+                            }
+                        }
+                    } label: {
+                        Label("Prices: \(pricePreference.title)", systemImage: "coloncurrencysign.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("inventory.prices.preference")
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -248,7 +265,7 @@ struct BankStorageView: View {
     }
 
     private func slotGrid(_ slots: [InventorySlot?], items: [Int: ItemMetadata]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 52, maximum: 62), spacing: 9)], spacing: 9) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 76, maximum: 86), spacing: 9)], spacing: 9) {
             ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in
                 InventorySlotCell(slot: slot, items: items) { inspected = $0 }
             }
@@ -273,7 +290,7 @@ struct SharedInventoryView: View {
                         Text("Shared inventory is empty.").foregroundStyle(.secondary).padding(.top, 8)
                     }
                 } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 52, maximum: 62), spacing: 9)], spacing: 9) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 76, maximum: 86), spacing: 9)], spacing: 9) {
                         ForEach(Array(account.sharedSlots.enumerated()), id: \.offset) { _, slot in
                             InventorySlotCell(slot: slot, items: account.itemMetadata) { inspected = $0 }
                         }
@@ -368,14 +385,25 @@ struct MaterialStorageView: View {
 private struct MaterialStorageRowView: View {
     let row: MaterialRowSnapshot
     let item: ItemMetadata?
+    @EnvironmentObject private var goals: GoalStore
+    @AppStorage(InventoryPricePreference.storageKey) private var preferenceRaw = InventoryPricePreference.sellNow.rawValue
 
     var body: some View {
         HStack {
             GWItemIcon(item: item ?? ItemPlaceholder.metadata(id: row.id, name: row.name), size: 40)
-            Text(row.name)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.name)
+                if let item, preference != .off {
+                    OwnedItemPriceLine(item: item, quantity: row.count, compact: false)
+                }
+            }
             Spacer()
             Text(row.count.formatted()).monospacedDigit().bold()
         }
+    }
+
+    private var preference: InventoryPricePreference {
+        InventoryPricePreference(rawValue: preferenceRaw) ?? .sellNow
     }
 }
 
@@ -383,20 +411,27 @@ struct InventorySlotCell: View {
     let slot: InventorySlot?
     let items: [Int: ItemMetadata]
     let onSelect: (InspectedItem) -> Void
+    @AppStorage(InventoryPricePreference.storageKey) private var preferenceRaw = InventoryPricePreference.sellNow.rawValue
 
     var body: some View {
         if let slot {
             let item = items[slot.id] ?? ItemPlaceholder.metadata(id: slot.id)
-            Button { onSelect(InspectedItem(item: item, quantity: slot.count, slot: slot)) } label: {
-                ZStack(alignment: .bottomTrailing) {
-                    GWItemIcon(item: item, size: 52)
-                    if slot.count > 1 {
-                        Text(slot.count.formatted()).font(.caption2.bold()).padding(3)
-                            .background(.black.opacity(0.8), in: Capsule())
+            VStack(spacing: 3) {
+                Button { onSelect(InspectedItem(item: item, quantity: slot.count, slot: slot)) } label: {
+                    ZStack(alignment: .bottomTrailing) {
+                        GWItemIcon(item: item, size: 52)
+                        if slot.count > 1 {
+                            Text(slot.count.formatted()).font(.caption2.bold()).padding(3)
+                                .background(.black.opacity(0.8), in: Capsule())
+                        }
                     }
                 }
+                .buttonStyle(.plain)
+                if pricePreference != .off {
+                    OwnedItemPriceLine(item: item, quantity: slot.count, compact: true)
+                        .frame(maxWidth: 76)
+                }
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("\(item.name), quantity \(slot.count)")
             .accessibilityIdentifier("inventory.item.\(item.name)")
         } else {
@@ -404,11 +439,16 @@ struct InventorySlotCell: View {
                 .accessibilityLabel("Empty slot")
         }
     }
+
+    private var pricePreference: InventoryPricePreference {
+        InventoryPricePreference(rawValue: preferenceRaw) ?? .sellNow
+    }
 }
 
 struct HoldingRow: View {
     let result: HoldingSearchResult
     var compact = false
+    @AppStorage(InventoryPricePreference.storageKey) private var preferenceRaw = InventoryPricePreference.sellNow.rawValue
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -420,6 +460,9 @@ struct HoldingRow: View {
                     Text(result.holding.totalQuantity.formatted()).font(.headline).monospacedDigit()
                 }
                 if !compact {
+                    if preference != .off {
+                        OwnedItemPriceLine(item: result.item, quantity: result.holding.totalQuantity, compact: false)
+                    }
                     Text("\(result.holding.totalQuantity.formatted()) total")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(result.holding.locations) { value in
@@ -440,5 +483,41 @@ struct HoldingRow: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(result.item.name), \(result.holding.totalQuantity) total, \(result.holding.locations.map { "\($0.quantity) in \($0.location.title)" }.joined(separator: ", "))")
+    }
+
+    private var preference: InventoryPricePreference {
+        InventoryPricePreference(rawValue: preferenceRaw) ?? .sellNow
+    }
+}
+
+struct OwnedItemPriceLine: View {
+    let item: ItemMetadata
+    let quantity: Int
+    var compact: Bool
+    @EnvironmentObject private var goals: GoalStore
+    @AppStorage(InventoryPricePreference.storageKey) private var preferenceRaw = InventoryPricePreference.sellNow.rawValue
+
+    private var preference: InventoryPricePreference {
+        InventoryPricePreference(rawValue: preferenceRaw) ?? .sellNow
+    }
+
+    var body: some View {
+        let values = OwnedItemMarketValues(item: item, quantity: quantity, price: goals.marketPrices[item.id])
+        Group {
+            if let estimate = values.rowValue(for: preference) {
+                if compact {
+                    Text(estimate.amount.compactFormatted)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.65)
+                } else if let label = values.rowLabel(for: preference) {
+                    Text(label).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .task(id: "\(item.id)-\(preference.rawValue)") {
+            guard preference != .off else { return }
+            goals.queueInventoryPrice(itemID: item.id)
+        }
+        .accessibilityLabel(values.rowLabel(for: preference) ?? "")
     }
 }

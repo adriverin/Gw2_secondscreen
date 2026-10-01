@@ -290,6 +290,9 @@ private struct EquipmentSection: View {
                 }
                 EquipmentStatsView(
                     character: character, equipment: selectedTab.equipment, items: detail.items,
+                    build: detail.buildTabs.first(where: \.isActive)?.build ?? detail.buildTabs.first?.build,
+                    traits: detail.traits, specializations: detail.specializations,
+                    equipmentTabName: selectedTab.name,
                     source: detail.source, updatedAt: detail.updatedAt)
             } else if detail.errorMessage == nil {
                 ProgressView("Loading equipment…").frame(maxWidth: .infinity).padding(30)
@@ -335,18 +338,24 @@ private struct EquipmentStatsView: View {
     let character: GW2Character
     let equipment: [CharacterEquipment]
     let items: [Int: ItemMetadata]
+    let build: CharacterBuild?
+    let traits: [Int: TraitMetadata]
+    let specializations: [Int: SpecializationMetadata]
+    let equipmentTabName: String
     let source: AccountDataSource?
     let updatedAt: Date?
     @State private var inspectedStat: String?
 
     private var stats: CharacterStaticStats {
-        CharacterStatEngine.calculate(character: character, equipment: equipment, items: items)
+        CharacterStatEngine.calculate(
+            character: character, equipment: equipment, items: items,
+            build: build, traits: traits, specializations: specializations)
     }
 
     var body: some View {
         GWCard {
             GWSectionHeader(
-                title: "Estimated Static Stats",
+                title: "Level-80 PvE Static Estimate",
                 subtitle: source == .cached
                     ? "Saved data\(updatedAt.map { " • Updated \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "")"
                     : "Calculated from your character and equipment data")
@@ -386,8 +395,28 @@ private struct EquipmentStatsView: View {
                 Text("Derived stats currently available for level 80 characters.")
                     .font(.caption).foregroundStyle(.secondary).padding(.top, 8)
             }
-            Text("Estimated Static Stats\n\nCalculated from your character and equipment data. Conditional traits, temporary buffs, food, utility effects and some profession modifiers may differ from the in-game Hero Panel.")
-                .font(.caption2).foregroundStyle(.secondary).padding(.top, 10)
+            Divider().padding(.vertical, 8)
+            HStack {
+                Text("STAT COVERAGE").font(.caption2.bold()).foregroundStyle(.secondary)
+                Spacer()
+                GWBadge(
+                    text: stats.coverage.rawValue.uppercased(),
+                    color: stats.coverage == .high ? .green : .orange,
+                    symbol: stats.coverage == .high ? "checkmark.circle" : "exclamationmark.circle")
+            }
+            Text("\(stats.modeledTraitCount) trait modifiers modeled • \(stats.excludedTraitCount) excluded/conditional")
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(stats.excludedSources, id: \.self) { reason in
+                Text("• \(reason)").font(.caption2).foregroundStyle(.secondary)
+            }
+            NavigationLink("Character Stat Audit") {
+                CharacterStatAuditView(
+                    character: character, equipment: equipment, items: items,
+                    build: build, traits: traits, specializations: specializations,
+                    equipmentTabName: equipmentTabName)
+            }
+            .buttonStyle(.bordered)
+            .padding(.top, 6)
         }
         .sheet(item: Binding(
             get: { inspectedStat.map { StatInspection(id: $0) } },
@@ -418,22 +447,224 @@ private struct StatSourceSheet: View {
                     LabeledContent(CharacterStatEngine.displayName(name), value: breakdown.total.formatted())
                         .font(.headline)
                 }
-                if breakdown.base != 0 {
-                    LabeledContent("Base", value: breakdown.base.formatted())
-                }
-                if breakdown.equipment != 0 {
-                    LabeledContent("Equipment", value: "+\(breakdown.equipment.formatted())")
-                }
-                if breakdown.upgrades != 0 {
-                    LabeledContent("Upgrades", value: "+\(breakdown.upgrades.formatted())")
-                }
-                if breakdown.infusions != 0 {
-                    LabeledContent("Infusions", value: "+\(breakdown.infusions.formatted())")
+                ForEach(breakdown.components, id: \.0) { component in
+                    if component.1 != 0 {
+                        LabeledContent(component.0, value: component.1 > 0 ? "+\(component.1.formatted())" : component.1.formatted())
+                    }
                 }
             }
             .navigationTitle(CharacterStatEngine.displayName(name))
             .toolbar { Button("Done") { dismiss() } }
         }
+    }
+}
+
+struct CharacterStatAuditView: View {
+    let character: GW2Character
+    let equipment: [CharacterEquipment]
+    let items: [Int: ItemMetadata]
+    let build: CharacterBuild?
+    let traits: [Int: TraitMetadata]
+    let specializations: [Int: SpecializationMetadata]
+    let equipmentTabName: String
+    @State private var observed: [String: String] = [:]
+
+    private var stats: CharacterStaticStats {
+        CharacterStatEngine.calculate(
+            character: character, equipment: equipment, items: items,
+            build: build, traits: traits, specializations: specializations)
+    }
+
+    private var observationKey: String {
+        StatAuditObservationStore.key(character: character.name, equipmentTab: equipmentTabName)
+    }
+
+    var body: some View {
+        List {
+            Section("Context") {
+                LabeledContent("Character", value: character.name)
+                LabeledContent("Equipment tab", value: equipmentTabName)
+                LabeledContent("Game mode", value: "PvE level 80")
+                Text("Compare while the character is not dynamically downscaled. Observations stay on this device and are QA notes, not account data.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Stat coverage") {
+                LabeledContent("Coverage", value: stats.coverage.rawValue)
+                LabeledContent("Trait modifiers modeled", value: "\(stats.modeledTraitCount)")
+                LabeledContent("Trait modifiers excluded/conditional", value: "\(stats.excludedTraitCount)")
+                LabeledContent("Rune catalog", value: StaticRuneAttributeCatalog.version)
+                LabeledContent("Trait catalog", value: StaticTraitModifierCatalog.version)
+                ForEach(stats.excludedSources, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+            }
+            Section("Attributes") {
+                ForEach(CharacterStatEngine.displayOrder, id: \.self) { key in
+                    auditRow(
+                        id: key, title: CharacterStatEngine.displayName(key),
+                        calculated: Double(stats.total(for: key)), suffix: nil,
+                        components: stats.attributes[key]?.components ?? [])
+                }
+            }
+            Section("Derived") {
+                if let armor = stats.derived.armor {
+                    auditRow(
+                        id: "Armor", title: "Armor", calculated: Double(armor), suffix: nil,
+                        components: [
+                            ("Toughness", stats.total(for: "Toughness")),
+                            ("Armor defense", stats.defense.armorPieces),
+                            ("Shield defense", stats.defense.shield),
+                            ("Other defense", stats.defense.other)
+                        ])
+                }
+                if let health = stats.derived.health {
+                    auditRow(
+                        id: "Health", title: "Health", calculated: Double(health), suffix: nil,
+                        components: [
+                            ("Profession base health", CharacterStatEngine.professionBaseHealth(character.profession)),
+                            ("Vitality × 10", stats.total(for: "Vitality") * 10)
+                        ])
+                }
+                derivedPercentRow("CriticalChance", "Critical Chance", stats.derived.criticalChancePercent)
+                derivedPercentRow("CriticalDamage", "Critical Damage", stats.derived.criticalDamagePercent)
+                derivedPercentRow("BoonDuration", "Boon Duration", stats.derived.boonDurationPercent)
+                derivedPercentRow("ConditionDuration", "Condition Duration", stats.derived.conditionDurationPercent)
+            }
+            Section("Not modeled in static total") {
+                ForEach(stats.excludedSources, id: \.self) { reason in
+                    Label(reason, systemImage: "minus.circle").font(.caption)
+                }
+            }
+        }
+        .navigationTitle("Character Stat Audit")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            observed = StatAuditObservationStore.load(key: observationKey)
+                .mapValues { value in value.formatted(.number.precision(.fractionLength(value.rounded() == value ? 0 : 2))) }
+        }
+        .accessibilityIdentifier("qa.characterStatAudit")
+    }
+
+    @ViewBuilder
+    private func derivedPercentRow(_ id: String, _ title: String, _ value: Double?) -> some View {
+        if let value {
+            auditRow(id: id, title: title, calculated: value, suffix: "%", components: [])
+        }
+    }
+
+    private func auditRow(
+        id: String, title: String, calculated: Double, suffix: String?, components: [(String, Int)]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title).font(.headline)
+            LabeledContent("Calculated", value: formatted(calculated, suffix: suffix))
+            HStack {
+                Text("Observed")
+                Spacer()
+                TextField("Enter Hero Panel", text: observationBinding(id))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 150)
+            }
+            if let value = Double(observed[id] ?? "") {
+                LabeledContent("Difference", value: formatted(calculated - value, suffix: suffix))
+                    .foregroundStyle(abs(calculated - value) < 0.01 ? .green : .orange)
+            }
+            ForEach(components.filter { $0.1 != 0 }, id: \.0) { component in
+                LabeledContent(component.0, value: component.1.formatted())
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func observationBinding(_ id: String) -> Binding<String> {
+        Binding(
+            get: { observed[id] ?? "" },
+            set: { value in
+                observed[id] = value
+                let numeric = observed.compactMapValues(Double.init)
+                StatAuditObservationStore.save(numeric, key: observationKey)
+            })
+    }
+
+    private func formatted(_ value: Double, suffix: String?) -> String {
+        let number = value.formatted(.number.precision(.fractionLength(suffix == nil ? 0 : 1)))
+        return number + (suffix ?? "")
+    }
+}
+
+struct QACharacterStatAuditPickerView: View {
+    @EnvironmentObject private var account: AccountStore
+    @State private var characterName: String?
+    @State private var equipmentTabID: Int?
+
+    private var character: GW2Character? {
+        account.characters.first { $0.name == characterName } ?? account.characters.first
+    }
+
+    private var detail: CharacterDetailData {
+        character.flatMap { account.characterDetails[$0.name] } ?? CharacterDetailData()
+    }
+
+    private var equipmentTab: EquipmentTab? {
+        detail.equipmentTabs.first { $0.id == equipmentTabID }
+            ?? detail.equipmentTabs.first(where: \.isActive) ?? detail.equipmentTabs.first
+    }
+
+    var body: some View {
+        List {
+            Section("Selection") {
+                Picker("Character", selection: $characterName) {
+                    ForEach(account.characters) { character in
+                        Text(character.name).tag(character.name as String?)
+                    }
+                }
+                if detail.equipmentTabs.count > 1 {
+                    Picker("Equipment tab", selection: $equipmentTabID) {
+                        ForEach(detail.equipmentTabs) { tab in Text(tab.name).tag(tab.id as Int?) }
+                    }
+                }
+            }
+            Section {
+                if let character, let equipmentTab {
+                    NavigationLink("Open Stat Audit") {
+                        CharacterStatAuditView(
+                            character: character, equipment: equipmentTab.equipment, items: detail.items,
+                            build: detail.buildTabs.first(where: \.isActive)?.build ?? detail.buildTabs.first?.build,
+                            traits: detail.traits, specializations: detail.specializations,
+                            equipmentTabName: equipmentTab.name)
+                    }
+                } else {
+                    ProgressView("Load a character and equipment tab…")
+                }
+            }
+        }
+        .navigationTitle("Character Stat Audit")
+        .task(id: character?.name) {
+            guard let character else { return }
+            characterName = character.name
+            await account.loadCharacterDetails(character)
+            equipmentTabID = account.characterDetails[character.name]?.equipmentTabs.first(where: \.isActive)?.id
+        }
+    }
+}
+
+enum StatAuditObservationStore {
+    private static let prefix = "qa.statAudit.v1."
+
+    static func key(character: String, equipmentTab: String) -> String {
+        let raw = character + "." + equipmentTab
+        let safe = raw.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "_" }
+        return prefix + String(safe)
+    }
+
+    static func load(key: String, defaults: UserDefaults = .standard) -> [String: Double] {
+        guard let data = defaults.data(forKey: key),
+              let values = try? JSONDecoder().decode([String: Double].self, from: data) else { return [:] }
+        return values
+    }
+
+    static func save(_ values: [String: Double], key: String, defaults: UserDefaults = .standard) {
+        defaults.set(try? JSONEncoder().encode(values), forKey: key)
     }
 }
 
@@ -592,6 +823,7 @@ struct CharacterInventorySection: View {
     var fallbackItems: [Int: ItemMetadata] = [:]
     @State private var layout: Layout = .grid
     @State private var inspected: InspectedItem?
+    @AppStorage(InventoryPricePreference.storageKey) private var preferenceRaw = InventoryPricePreference.sellNow.rawValue
 
     private var items: [Int: ItemMetadata] {
         fallbackItems.merging(detail.items) { _, new in new }
@@ -631,7 +863,7 @@ struct CharacterInventorySection: View {
                 }
             }
             if layout == .grid {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 52, maximum: 62), spacing: 9)], spacing: 9) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 76, maximum: 86), spacing: 9)], spacing: 9) {
                     ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in inventorySlot(slot) }
                 }
                 .padding(.top, 12)
@@ -640,7 +872,17 @@ struct CharacterInventorySection: View {
                     ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in
                         if let slot, let item = items[slot.id] {
                             Button { inspected = InspectedItem(item: item, quantity: slot.count, slot: slot) } label: {
-                                HStack { GWItemIcon(item: item, size: 38); Text(item.name); Spacer(); Text(slot.count.formatted()).bold() }
+                                HStack {
+                                    GWItemIcon(item: item, size: 38)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.name)
+                                        if pricePreference != .off {
+                                            OwnedItemPriceLine(item: item, quantity: slot.count, compact: false)
+                                        }
+                                    }
+                                    Spacer()
+                                    Text(slot.count.formatted()).bold()
+                                }
                                     .padding(.vertical, 7)
                             }.buttonStyle(.plain)
                         }
@@ -652,18 +894,29 @@ struct CharacterInventorySection: View {
 
     @ViewBuilder private func inventorySlot(_ slot: InventorySlot?) -> some View {
         if let slot, let item = items[slot.id] {
-            Button { inspected = InspectedItem(item: item, quantity: slot.count, slot: slot) } label: {
-                ZStack(alignment: .bottomTrailing) {
-                    GWItemIcon(item: item, size: 52)
-                    if slot.count > 1 { Text(slot.count.formatted()).font(.caption2.bold()).padding(3).background(.black.opacity(0.8), in: Capsule()) }
+            VStack(spacing: 3) {
+                Button { inspected = InspectedItem(item: item, quantity: slot.count, slot: slot) } label: {
+                    ZStack(alignment: .bottomTrailing) {
+                        GWItemIcon(item: item, size: 52)
+                        if slot.count > 1 { Text(slot.count.formatted()).font(.caption2.bold()).padding(3).background(.black.opacity(0.8), in: Capsule()) }
+                    }
+                }
+                .buttonStyle(.plain)
+                if pricePreference != .off {
+                    OwnedItemPriceLine(item: item, quantity: slot.count, compact: true)
+                        .frame(maxWidth: 76)
                 }
             }
-            .buttonStyle(.plain).accessibilityLabel("\(item.name), quantity \(slot.count)")
+            .accessibilityLabel("\(item.name), quantity \(slot.count)")
             .accessibilityIdentifier("inventory.item.\(item.name)")
         } else {
             RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.45)).frame(width: 52, height: 52)
                 .accessibilityHidden(true)
         }
+    }
+
+    private var pricePreference: InventoryPricePreference {
+        InventoryPricePreference(rawValue: preferenceRaw) ?? .sellNow
     }
 }
 

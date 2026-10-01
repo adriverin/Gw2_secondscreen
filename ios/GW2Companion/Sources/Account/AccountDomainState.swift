@@ -128,6 +128,10 @@ enum WalletPresentation {
         defaults.set(expanded, forKey: allExpandedKeyPrefix + scope(accountID))
     }
 
+    static func effectiveAllExpanded(stored: Bool, query: String) -> Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || stored
+    }
+
     static func isPinned(_ id: Int, accountID: String?, defaults: UserDefaults = .standard) -> Bool {
         pinnedIDs(accountID: accountID, defaults: defaults).contains(id)
     }

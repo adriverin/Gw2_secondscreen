@@ -69,6 +69,10 @@ enum LegendaryOwnershipState: String, Sendable {
     case armory
     case holdings
     case notOwned
+
+    var planActionTitle: String {
+        self == .notOwned ? "View Plan" : "View Full Plan"
+    }
 }
 
 enum LegendaryRequirementStatus: String, Sendable {
@@ -266,6 +270,25 @@ struct LegendaryProgressNode: Identifiable, Hashable, Sendable {
     let coverage: KnowledgeCoverage
     let notes: String?
     let children: [LegendaryProgressNode]
+
+    var isComplete: Bool { missingQuantity == 0 || status == .owned }
+
+    func visibleChildren(showCompleted: Bool) -> [LegendaryProgressNode] {
+        children.filter { showCompleted || !$0.isComplete }
+    }
+
+    var actionStatusTitle: String {
+        switch status {
+        case .owned: return "Owned"
+        case .readyToCraft: return "Ready"
+        case .accountBoundManual: return "Account-bound"
+        case .unknownManual: return acquisition == .unknown ? "Unknown" : "Manual"
+        case .missing:
+            if binding == .tradable { return "Buyable" }
+            if acquisition == .craft || acquisition == .mysticForge { return "Craftable" }
+            return "Missing"
+        }
+    }
 }
 
 struct LegendaryProgressPlan: Hashable, Sendable {
@@ -286,6 +309,10 @@ struct LegendaryProgressPlan: Hashable, Sendable {
     let materialMissingCount: Int
 
     var isOwnedInArmory: Bool { ownership == .armory }
+
+    func visibleTopLevel(showCompleted: Bool) -> [LegendaryProgressNode] {
+        topLevel.filter { showCompleted || !$0.isComplete }
+    }
 
     var progress: GoalProgress {
         if ownership != .notOwned {

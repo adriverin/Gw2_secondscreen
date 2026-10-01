@@ -73,22 +73,50 @@ enum MapDetailMode: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum MapRasterDetail {
-    static let maxSupersampledTiles = 96
+    static let maxSupersampledTiles = 384
+    static let maximumVisibleDerivedTiles = 48
+    static let maximumDerivedSourceTiles = 384
+
+    enum RenderingSource: Equatable, Sendable {
+        case unavailable
+        case native(zoom: Int)
+        case derived(sourceZoom: Int)
+    }
+
+    static func renderingSource(
+        displayZoom: Int,
+        continentID: Int,
+        mode: MapDetailMode,
+        visibleDisplayTileCount: Int,
+        artworkAvailable: Bool = true,
+        projection: ArenaNetTileProjection = .shared
+    ) -> RenderingSource {
+        guard artworkAvailable else { return .unavailable }
+        let reference = projection.configuration(continentID: continentID).referenceZoom
+        let sourceFactor = 1 << max(0, reference - displayZoom)
+        let sourceTileCount = visibleDisplayTileCount * sourceFactor * sourceFactor
+        guard mode == .detailed,
+              (displayZoom == 5 || displayZoom == 6),
+              reference == 7,
+              visibleDisplayTileCount <= maximumVisibleDerivedTiles,
+              sourceTileCount <= maximumDerivedSourceTiles
+        else { return .native(zoom: displayZoom) }
+        return .derived(sourceZoom: reference)
+    }
 
     static func sourceZoom(
         displayZoom: Int, continentID: Int, viewport: CGRect,
         mode: MapDetailMode, projection: ArenaNetTileProjection = .shared
     ) -> Int {
-        let reference = projection.configuration(continentID: continentID).referenceZoom
         let unbiased = projection.tiles(
             coveringContinentRect: viewport, zoom: displayZoom, continentID: continentID, mapFloor: 1)
-        let bias = mode.sourceZoomBias(
-            displayZoom: displayZoom, referenceZoom: reference, visibleTileCountWithoutBias: unbiased.count)
-        let candidate = min(reference, displayZoom + bias)
-        if candidate == displayZoom { return displayZoom }
-        let detailed = projection.tiles(
-            coveringContinentRect: viewport, zoom: candidate, continentID: continentID, mapFloor: 1)
-        if detailed.count > maxSupersampledTiles { return displayZoom }
-        return candidate
+        switch renderingSource(
+            displayZoom: displayZoom, continentID: continentID, mode: mode,
+            visibleDisplayTileCount: unbiased.count, projection: projection)
+        {
+        case .unavailable: return displayZoom
+        case let .native(zoom): return zoom
+        case let .derived(sourceZoom): return sourceZoom
+        }
     }
 }

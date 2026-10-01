@@ -19,6 +19,7 @@
 		1E692F514066812F38D427D7 /* PhaseSixDQATests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 913CC630B4A4B4732D54944B /* PhaseSixDQATests.swift */; };
 		21C6BBC9F2FDF4FADA3C7D57 /* MapIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE93751AAFB77C4FEF799FD /* MapIconCache.swift */; };
 		22521838CFAC2F3124A2259F /* PhaseFourGoalsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D95DCAF0B68E52A01E9823D /* PhaseFourGoalsTests.swift */; };
+		23137CD391142EAC6A138235 /* MapDetailComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F305B4CC0D69D2FB92F6AE04 /* MapDetailComparisonView.swift */; };
 		23C6E5373B0B575521A9B631 /* MetadataDiskCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFC16DAE75FC39EE4D34A83A /* MetadataDiskCache.swift */; };
 		27AEA95DB13B2D7CF599140E /* QAMapAlignmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81458E9238CA625E397D475 /* QAMapAlignmentView.swift */; };
 		286232ABF48DDCF7434D7CA0 /* PhaseEightMaterialsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351263A101490341584AA562 /* PhaseEightMaterialsTests.swift */; };
@@ -26,6 +27,7 @@
 		2DB9C6752C0F8114A9C95B96 /* Provenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031A0FED64155985B5F07B46 /* Provenance.swift */; };
 		2EDD2DDDB8AAD0CA74C0E573 /* tokeninfo.json in Resources */ = {isa = PBXBuildFile; fileRef = 862FA9BA760ED284306BC65F /* tokeninfo.json */; };
 		2F09B90B1BFF58A250EF351C /* GatheringStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E04A3691D07B3AAD65C0E0F /* GatheringStore.swift */; };
+		2F962A71CFA3065767778BCD /* DerivedDetailedTileProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F39C2A60634752B424F650 /* DerivedDetailedTileProvider.swift */; };
 		34108CCE20A26CA27FDC0483 /* NativeTileMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDDA2B781B4D8F637DCD608C /* NativeTileMapView.swift */; };
 		345E9D9000684721C3D1CFCB /* CraftingPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803D38165D757499E9523D7B /* CraftingPlanner.swift */; };
 		37059E1DED23032BCEA6A277 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED30358E8898943C2A040207 /* AccountView.swift */; };
@@ -81,6 +83,7 @@
 		8D8E435052E4B13EC9FC604F /* BoundedMemoryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4F881935C8E714D4366031 /* BoundedMemoryCache.swift */; };
 		8E45C020BB66772743AAEA0A /* MapAlignmentHarnessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B1474C16120CDB07FCF5F4B /* MapAlignmentHarnessView.swift */; };
 		8EB05B9538BC51764F0B2479 /* TradingPostPrice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64BECC5506E7B66681384626 /* TradingPostPrice.swift */; };
+		9012753ED37969EA86FE065D /* OwnedItemPricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45FC98678D2C733A57D6500E /* OwnedItemPricing.swift */; };
 		91425164586232ECEF531838 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = 4C83866BB25238A1F481E603 /* THIRD_PARTY_NOTICES.md */; };
 		970B569714A37AE010A4A747 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D945F404EE6F376D785DDB /* KeychainService.swift */; };
 		99A93DB7F120D2DBB00AE8A1 /* APIDecoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75929349FD9E5B2360FB64A /* APIDecoding.swift */; };
@@ -101,6 +104,7 @@
 		B0934465CE6C237596DE3FC7 /* MemoryDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564DD9349A272887D094B822 /* MemoryDiagnostics.swift */; };
 		B13AA7D36A0C4F8E758871D4 /* TelemetryProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D1D0CC8C8C4E7DCC4CC2F5 /* TelemetryProvider.swift */; };
 		B2C9912FDCF40C77D552EAAE /* GWDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3A329377A48477D6B55A78 /* GWDesignSystem.swift */; };
+		B4D68380B04B9904028C8B25 /* PhaseNineUsabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F760F16FA190A6755DF47A65 /* PhaseNineUsabilityTests.swift */; };
 		B70A8974E9BB3CA7371D0D10 /* QASupportBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74AE5A41754AE2D236345B49 /* QASupportBundle.swift */; };
 		B72AE06600B1889A38F06911 /* PhaseEightLegendaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635028EF441120869144C8EC /* PhaseEightLegendaryTests.swift */; };
 		B9DB0A86FDC2586146CF643A /* legendary-plans-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 759B8F1AF614AF86C0B4683C /* legendary-plans-v1.json */; };
@@ -184,6 +188,7 @@
 		197E6205FE2FA510BEF687D0 /* MapTileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTileProvider.swift; sourceTree = "<group>"; };
 		1C875900BF0A49FF975E4E88 /* TodayMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayMerge.swift; sourceTree = "<group>"; };
 		203640634EADC83FFCA476B2 /* build-tabs.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "build-tabs.json"; sourceTree = "<group>"; };
+		20F39C2A60634752B424F650 /* DerivedDetailedTileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DerivedDetailedTileProvider.swift; sourceTree = "<group>"; };
 		237A9416DA412605209608F2 /* MapMarkerScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapMarkerScene.swift; sourceTree = "<group>"; };
 		23CF9F8D9D82244817F99438 /* PhaseSevenReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseSevenReliabilityTests.swift; sourceTree = "<group>"; };
 		240889348B74B30C3A6B0567 /* MapObjective.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapObjective.swift; sourceTree = "<group>"; };
@@ -203,6 +208,7 @@
 		3EC312E21EB7F35D3C984356 /* AppNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNavigation.swift; sourceTree = "<group>"; };
 		41AF24B1DC04B2FCE00D42B3 /* QARedaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QARedaction.swift; sourceTree = "<group>"; };
 		426DDA7E39FA8E62250D2239 /* TodayModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayModels.swift; sourceTree = "<group>"; };
+		45FC98678D2C733A57D6500E /* OwnedItemPricing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnedItemPricing.swift; sourceTree = "<group>"; };
 		4652B2A909BF40925A934C7A /* LiveMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMapView.swift; sourceTree = "<group>"; };
 		4772E8D4F242453503853A56 /* MapQADiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapQADiagnostics.swift; sourceTree = "<group>"; };
 		49715E2EB9E8AD799378289A /* EarlyBeta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarlyBeta.swift; sourceTree = "<group>"; };
@@ -301,9 +307,11 @@
 		F1093BA2E21721B07BA3FD49 /* account-achievements-phase4.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "account-achievements-phase4.json"; sourceTree = "<group>"; };
 		F1C6D08BA632B0704B1488B1 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F1EABA534839A34581BC487A /* phase7-bank-nulls.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "phase7-bank-nulls.json"; sourceTree = "<group>"; };
+		F305B4CC0D69D2FB92F6AE04 /* MapDetailComparisonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapDetailComparisonView.swift; sourceTree = "<group>"; };
 		F380C84FC6A0DB82D7E38403 /* NavigatorPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigatorPanelView.swift; sourceTree = "<group>"; };
 		F464E3A24B2FAB2F0657274E /* items.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = items.json; sourceTree = "<group>"; };
 		F4C5F1E9E0B7D77A326E0822 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		F760F16FA190A6755DF47A65 /* PhaseNineUsabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseNineUsabilityTests.swift; sourceTree = "<group>"; };
 		F8A744F55B3E368B6879D888 /* DeveloperDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperDiagnostics.swift; sourceTree = "<group>"; };
 		F9940BADA2FDBC5CED7768DA /* GW2CompanionUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GW2CompanionUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FACEC2DC634B0D83A4FB727D /* LegendaryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendaryModels.swift; sourceTree = "<group>"; };
@@ -347,6 +355,7 @@
 				351263A101490341584AA562 /* PhaseEightMaterialsTests.swift */,
 				608C82D7454A551444D2E8C4 /* PhaseFiveSessionPlannerTests.swift */,
 				3D95DCAF0B68E52A01E9823D /* PhaseFourGoalsTests.swift */,
+				F760F16FA190A6755DF47A65 /* PhaseNineUsabilityTests.swift */,
 				23CF9F8D9D82244817F99438 /* PhaseSevenReliabilityTests.swift */,
 				5081C3D0B06666E7D12D89F1 /* PhaseSixBHardeningTests.swift */,
 				913CC630B4A4B4732D54944B /* PhaseSixDQATests.swift */,
@@ -449,6 +458,7 @@
 		6CCF6E3795E639FD98939DFF /* Map */ = {
 			isa = PBXGroup;
 			children = (
+				20F39C2A60634752B424F650 /* DerivedDetailedTileProvider.swift */,
 				77F2A0CBD9BB1648998F52BB /* GW2CoordinateTransformer.swift */,
 				0B1474C16120CDB07FCF5F4B /* MapAlignmentHarnessView.swift */,
 				778D451668D46EF41D09CEE0 /* MapAlignmentLandmarks.swift */,
@@ -479,6 +489,7 @@
 		751C76587782491CEBE20CE2 /* QA */ = {
 			isa = PBXGroup;
 			children = (
+				F305B4CC0D69D2FB92F6AE04 /* MapDetailComparisonView.swift */,
 				D211FC55D243AA71056A3732 /* QAGuidedCheckView.swift */,
 				B81458E9238CA625E397D475 /* QAMapAlignmentView.swift */,
 				628D9FC39E1300CE3C320BC3 /* QAModeView.swift */,
@@ -541,6 +552,7 @@
 				E3614751CB5BEEFECCA3C97D /* CharacterPortraitStore.swift */,
 				A50FCDD482D31B8AE26A0DFD /* CharacterStats.swift */,
 				B1B3F756A327F313C6EFB1EC /* MaterialStorageSnapshot.swift */,
+				45FC98678D2C733A57D6500E /* OwnedItemPricing.swift */,
 			);
 			path = Account;
 			sourceTree = "<group>";
@@ -895,6 +907,7 @@
 				E9A2923CC198746B639E94C2 /* CharacterStats.swift in Sources */,
 				391B0E39007F694113B38626 /* CharactersView.swift in Sources */,
 				345E9D9000684721C3D1CFCB /* CraftingPlanner.swift in Sources */,
+				2F962A71CFA3065767778BCD /* DerivedDetailedTileProvider.swift in Sources */,
 				D46317F627D0834B6728557B /* DeveloperDiagnostics.swift in Sources */,
 				66A53DE8937E100AE0476BCF /* DiagnosticsViews.swift in Sources */,
 				72197E329435C4FEFDAA08BB /* EarlyBeta.swift in Sources */,
@@ -919,6 +932,7 @@
 				8E45C020BB66772743AAEA0A /* MapAlignmentHarnessView.swift in Sources */,
 				C2B2F453008E897DBA55D54F /* MapAlignmentLandmarks.swift in Sources */,
 				7B6949FECB13105F37CA2887 /* MapArtworkProvider.swift in Sources */,
+				23137CD391142EAC6A138235 /* MapDetailComparisonView.swift in Sources */,
 				87A091E33990ABD247283F9D /* MapDetailPolicy.swift in Sources */,
 				21C6BBC9F2FDF4FADA3C7D57 /* MapIconCache.swift in Sources */,
 				502B1EA971EA0575DC7F3F7A /* MapLandmarks.swift in Sources */,
@@ -936,6 +950,7 @@
 				51572D3D229C1E3468065880 /* NavigationEngine.swift in Sources */,
 				89E8280BF80F5495EBA672DB /* NavigatorPanelView.swift in Sources */,
 				E47EF66B6889B478018CD066 /* OnboardingFlow.swift in Sources */,
+				9012753ED37969EA86FE065D /* OwnedItemPricing.swift in Sources */,
 				EEA674C4106111A0545994B8 /* PairingScannerView.swift in Sources */,
 				A6F64FAD9C880063A68A345F /* PairingView.swift in Sources */,
 				2DB9C6752C0F8114A9C95B96 /* Provenance.swift in Sources */,
@@ -980,6 +995,7 @@
 				286232ABF48DDCF7434D7CA0 /* PhaseEightMaterialsTests.swift in Sources */,
 				BBB2F1DEA307B74A82F15858 /* PhaseFiveSessionPlannerTests.swift in Sources */,
 				22521838CFAC2F3124A2259F /* PhaseFourGoalsTests.swift in Sources */,
+				B4D68380B04B9904028C8B25 /* PhaseNineUsabilityTests.swift in Sources */,
 				06C15902E143F82B59BF385D /* PhaseSevenReliabilityTests.swift in Sources */,
 				CD16410E6F3E63B12DEA4CAE /* PhaseSixBHardeningTests.swift in Sources */,
 				1E692F514066812F38D427D7 /* PhaseSixDQATests.swift in Sources */,
