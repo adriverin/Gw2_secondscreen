@@ -10,8 +10,8 @@ struct LegendaryBrowserView: View {
         let grouped = Dictionary(grouping: items, by: \.category)
         List {
             switch store.legendaryState {
-            case let .loading(message):
-                Section { ProgressView(message) }
+            case .loading:
+                Section { GWLoadingRows(count: 3) }
             case let .cached(message):
                 Section { Label(message, systemImage: "clock.arrow.circlepath") }
             case let .unavailable(message):
@@ -36,7 +36,7 @@ struct LegendaryBrowserView: View {
             }
         }
         .navigationTitle("Legendary")
-        .searchable(text: $query, prompt: "Sunrise, staff, 30703")
+        .searchable(text: $query, prompt: "Search legendary items")
         .task {
             await store.prepareLegendaries()
         }
@@ -56,7 +56,7 @@ struct LegendaryBrowserView: View {
                 Text(legendaryType(item)).font(.caption).foregroundStyle(.secondary)
                 if item.ownership != .notOwned {
                     Label(ownershipText(item.ownership), systemImage: "checkmark.seal.fill")
-                        .font(.caption.bold()).foregroundStyle(.green)
+                        .font(.caption.bold()).foregroundStyle(GWPalette.success)
                 } else if let plan {
                     Text("\(plan.topLevelReadyCount) / \(plan.topLevelTotalCount) major requirements ready")
                         .font(.caption).foregroundStyle(.secondary)
@@ -113,7 +113,7 @@ private struct LegendaryGoalEditorView: View {
                             .frame(width: 58, height: 58)
                     }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(item.name.uppercased()).font(.title3.bold())
+                        Text(item.name).font(GWTypography.screen)
                         if let type = item.weaponType { Text("Legendary \(type)").foregroundStyle(.secondary) }
                     }
                 }
@@ -216,10 +216,13 @@ private struct LegendaryPlanPresentation: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var navigation: AppNavigation
     @State private var showCompleted = false
+    @State private var showOwnedPlan = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var onWork: (() -> Void)? = nil
 
     var body: some View {
         hero
+        if plan.ownership == .notOwned || showOwnedPlan {
         GWSectionHeader(title: "Major requirements")
         Toggle("Show completed", isOn: $showCompleted)
             .accessibilityIdentifier("legendary.showCompleted")
@@ -227,7 +230,7 @@ private struct LegendaryPlanPresentation: View {
         if visible.isEmpty {
             GWCard {
                 Text("All major branches are complete.")
-                Text("Turn on Show completed to inspect the full dependency graph.")
+                Text("Show completed to review your requirements.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -235,6 +238,10 @@ private struct LegendaryPlanPresentation: View {
             LegendaryRequirementCard(
                 node: node, showCompleted: showCompleted,
                 onInspectPrice: onInspectPrice)
+        }
+        } else {
+            Button("View Full Plan") { showOwnedPlan = true; showCompleted = true }
+                .buttonStyle(.bordered).frame(minHeight: 44)
         }
         coverageCard
         if !plan.pricesUnavailableItemIDs.isEmpty {
@@ -247,21 +254,21 @@ private struct LegendaryPlanPresentation: View {
     private var hero: some View {
         let item = store.legendaryItems[plan.targetItemID] ?? account.itemMetadata[plan.targetItemID]
         let definition = store.legendaryCatalog?.plan(for: plan.targetItemID)
-        return GWCard {
+        return GWPlainSection {
             HStack(spacing: 12) {
                 if let item { GWItemIcon(item: item, size: 58) }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(plan.name.uppercased()).font(.title2.bold())
+                    Text(plan.name).font(GWTypography.hero)
                     Text(definition?.weaponType.map { "Legendary \($0)" } ?? "Legendary")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             if plan.ownership != .notOwned {
                 Label(plan.ownership == .armory ? "Owned in Legendary Armory ✓" : "Owned in account holdings ✓",
-                      systemImage: "checkmark.seal.fill").foregroundStyle(.green)
+                      systemImage: "checkmark.seal.fill").foregroundStyle(GWPalette.success)
             } else {
                 Text("\(plan.topLevelReadyCount) of \(plan.topLevelTotalCount) major requirements ready")
-                    .font(.headline).foregroundStyle(GWPalette.accent)
+                    .font(.headline).foregroundStyle(.primary)
                     .accessibilityIdentifier("legendary.primaryProgress")
                 ProgressView(value: Double(plan.topLevelReadyCount), total: Double(max(1, plan.topLevelTotalCount)))
                     .accessibilityHidden(true)
@@ -276,19 +283,19 @@ private struct LegendaryPlanPresentation: View {
                 }
                 Button("What should I work on?") {
                     if let onWork { onWork() } else { navigation.selectedTab = .session }
-                }.buttonStyle(.bordered)
+                }.buttonStyle(GWPrimaryButtonStyle())
             }
         }
     }
 
 
     private var coverageCard: some View {
-        GWCard {
-            LabeledContent("Plan coverage", value: plan.coverageTitle)
-            Text("Curated mystic-forge, vendor, and crafting relationships only. World completion, WvW reward-track progress, and clover yield are never inferred.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
+        DisclosureGroup("About this plan") {
+            Text("Some acquisition steps may be missing. This plan includes known crafting, vendor and Mystic Forge requirements. World completion and reward-track progress must be checked in game.")
+                .font(.caption).foregroundStyle(.secondary).padding(.top, GWSpacing.small)
+        }.font(.subheadline).padding(.vertical, GWSpacing.small)
     }
+
 }
 
 private struct LegendaryRequirementCard: View {
@@ -298,27 +305,34 @@ private struct LegendaryRequirementCard: View {
     @EnvironmentObject private var store: GoalStore
     @EnvironmentObject private var account: AccountStore
     @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { expanded.toggle() } label: {
+            Button { withAnimation(GWPresentation.motion(reduced: reduceMotion)) { expanded.toggle() } } label: {
                 HStack(alignment: .top) {
                     Image(systemName: symbol).foregroundStyle(color)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(node.name).font(.headline)
-                        HStack(spacing: 5) {
-                            GWBadge(text: node.actionStatusTitle.uppercased(), color: color, symbol: symbol)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: GWSpacing.small) {
+                                Text(node.name).font(.headline)
+                                GWBadge(text: statusTitle, color: color)
+                            }
+                            VStack(alignment: .leading, spacing: GWSpacing.xSmall) {
+                                Text(node.name).font(.headline)
+                                GWBadge(text: statusTitle, color: color)
+                            }
                         }
-                        .font(.caption2).foregroundStyle(.secondary)
-                        Text("\(node.ownedQuantity) owned • \(node.missingQuantity) missing • \(node.acquisition.title)")
+                        Text("\(node.ownedQuantity) owned · \(node.missingQuantity) missing")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     if !node.children.isEmpty {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right").foregroundStyle(.tertiary)
                     }
-                }
+                }.frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain)
+                .accessibilityValue(expanded ? "Expanded" : "Collapsed")
                 .accessibilityIdentifier("legendary.requirement.\(node.itemID)")
             if expanded, node.binding == .tradable, node.missingQuantity > 0 {
                 Button("Price") {
@@ -341,8 +355,20 @@ private struct LegendaryRequirementCard: View {
                 }
             }
         }
-        .padding(10)
-        .background(GWPalette.card, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, GWSpacing.xSmall)
+    }
+
+    private var statusTitle: String {
+        switch node.status {
+        case .owned: "OWNED"
+        case .readyToCraft: "READY"
+        case .accountBoundManual: "ACCOUNT-BOUND"
+        case .unknownManual: "MANUAL"
+        case .missing:
+            if node.binding == .tradable { "BUY" }
+            else if node.acquisition == .craft || node.acquisition == .mysticForge { "CRAFT" }
+            else { "EARN" }
+        }
     }
 
     private var symbol: String {

@@ -10,7 +10,7 @@ struct GW2CompanionApp: App {
     @StateObject private var objectives = MapObjectiveStore()
     @StateObject private var account: AccountStore
     @StateObject private var goals: GoalStore
-    @StateObject private var sessions = SessionStore()
+    @StateObject private var sessions: SessionStore
     @StateObject private var today: TodayStore
     @StateObject private var navigation = AppNavigation()
     @StateObject private var qaResults = QAResultStore()
@@ -31,7 +31,28 @@ struct GW2CompanionApp: App {
         self.api = api
         _account = StateObject(wrappedValue: AccountStore(api: api))
         _goals = StateObject(wrappedValue: GoalStore(api: api))
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--phase7-preview") {
+            _sessions = StateObject(wrappedValue: SessionStore(defaults: UserDefaults(suiteName: "PhaseSevenPreview.\(UUID().uuidString)")!))
+            _today = StateObject(wrappedValue: TodayStore(provider: PhaseSevenPreviewProvider(),
+                cache: MetadataDiskCache(directory: FileManager.default.temporaryDirectory.appending(path: "PhaseSevenTodayPreview-\(UUID().uuidString)"))))
+        } else {
+            _sessions = StateObject(wrappedValue: SessionStore())
+            _today = StateObject(wrappedValue: TodayStore(provider: api))
+        }
+#else
+        _sessions = StateObject(wrappedValue: SessionStore())
         _today = StateObject(wrappedValue: TodayStore(provider: api))
+#endif
+    }
+
+    private var todayPermissions: PermissionSet {
+#if DEBUG
+        if GWPresentation.isDesignReview {
+            return PermissionSet((account.tokenInfo?.permissions ?? []) + ["progression", "wallet"])
+        }
+#endif
+        return account.permissions
     }
 
     var body: some Scene {
@@ -75,14 +96,20 @@ struct GW2CompanionApp: App {
                     let fixtureMode = false
 #endif
                     if fixtureMode {
-                        await today.setAccountScope(account.account?.id, permissions: account.permissions)
+                        await today.setAccountScope(account.account?.id, permissions: todayPermissions)
                     } else {
                         async let accountRefresh: Void = account.refresh()
                         async let todayRefresh: Void = today.setAccountScope(
-                            account.account?.id, permissions: account.permissions)
+                            account.account?.id, permissions: todayPermissions)
                         _ = await (accountRefresh, todayRefresh)
                     }
                     await goals.prepareLegendaries()
+#if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--phase7-preview"),
+                       !goals.activeGoals.contains(where: { $0.type == .legendary(itemID: 30704) }) {
+                        goals.addLegendaryGoal(itemID: 30704, name: "Twilight", priority: .normal)
+                    }
+#endif
 #if DEBUG
                     phaseSixHPriceRace = ProcessInfo.processInfo.arguments.contains("--phase6h-price-race")
                         || ProcessInfo.processInfo.arguments.contains("--tp-loading-regression")
@@ -101,10 +128,10 @@ struct GW2CompanionApp: App {
                 .onChange(of: account.account?.id) { _, id in
                     goals.setAccountScope(id)
                     sessions.setAccountScope(id)
-                    Task { await today.setAccountScope(id, permissions: account.permissions) }
+                    Task { await today.setAccountScope(id, permissions: todayPermissions) }
                 }
                 .onChange(of: account.tokenInfo?.permissions) { _, _ in
-                    Task { await today.setAccountScope(account.account?.id, permissions: account.permissions) }
+                    Task { await today.setAccountScope(account.account?.id, permissions: todayPermissions) }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     MapIconStore.shared.handleMemoryPressure()
@@ -130,17 +157,36 @@ private struct RootNavigationView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var navigation: AppNavigation
     @AppStorage("onboarding.completed.v1") private var onboardingCompleted = false
+    @AppStorage("appearance.theme") private var appearance = GWAppearance.dark.rawValue
+    @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var goals: GoalStore
 
     var body: some View {
         Group {
         if horizontalSizeClass == .regular {
             NavigationSplitView(columnVisibility: splitVisibilityBinding) {
                 List {
+                    Section {
+                        VStack(alignment: .leading, spacing: GWSpacing.small) {
+                            Text("GW2 Companion").font(.headline)
+                            Text(account.account?.name ?? "Your second screen for Tyria")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            if let character = account.currentCharacter {
+                                HStack { GWBadge(text: "LIVE", color: GWPalette.success, symbol: "circle.fill"); Text(character.name).font(.caption).lineLimit(1) }
+                            }
+                        }.padding(.vertical, GWSpacing.small)
+                    }.listRowBackground(Color.clear)
                     ForEach(AppTab.iPadSidebar) { tab in
                         Button {
                             navigation.show(tab)
                         } label: {
-                            Label(tab.title, systemImage: tab.symbol)
+                            HStack {
+                                Label(tab.title, systemImage: tab.symbol)
+                                Spacer()
+                                if tab == .goals && !goals.activeGoals.isEmpty {
+                                    Text(goals.activeGoals.count.formatted()).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                }
+                            }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
@@ -149,7 +195,9 @@ private struct RootNavigationView: View {
                         .listRowBackground(navigation.selectedTab == tab ? GWPalette.accent.opacity(0.16) : Color.clear)
                     }
                 }
-                .navigationTitle("GW2 Companion")
+                .navigationTitle("")
+                .scrollContentBackground(.hidden)
+                .background(GWPalette.secondaryBackground)
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 250)
             } detail: {
                 content(for: navigation.selectedTab)
@@ -176,6 +224,8 @@ private struct RootNavigationView: View {
             .toolbar(navigation.sidebarHidden && navigation.selectedTab == .map ? .hidden : .automatic, for: .tabBar)
         }
         }
+        .preferredColorScheme((GWAppearance(rawValue: appearance) ?? .dark).colorScheme)
+        .background(GWPalette.background)
         .fullScreenCover(isPresented: Binding(
             get: { !onboardingCompleted },
             set: { if !$0 { onboardingCompleted = true } }
@@ -229,3 +279,64 @@ private struct RootNavigationView: View {
         }
     }
 }
+
+#if DEBUG
+/// Deterministic design-review data enters through the existing provider and merge pipeline.
+/// No preview data or launch flag is present in Release.
+private struct PhaseSevenPreviewProvider: TodayDataProvider {
+    func wizardVaultSeason(language: String) async throws -> WizardVaultSeason {
+        WizardVaultSeason(title: "Design review", start: "2026-01-01", end: "2027-01-01", listings: [], objectives: [])
+    }
+    func wizardVaultObjectives(ids: [Int], language: String) async throws -> [WizardVaultObjectiveMetadata] { [] }
+    func wizardVaultListings(ids: [Int], language: String) async throws -> [WizardVaultListingMetadata] { [] }
+    func worldBossIDs() async throws -> [String] { ["shadow_behemoth"] }
+    func mapChestIDs() async throws -> [String] { [] }
+    func dailyCraftingIDs() async throws -> [String] { ["lump_of_mithrilium"] }
+    func raids(language: String) async throws -> [RaidDefinition] { [] }
+    func dungeons(language: String) async throws -> [DungeonDefinition] { [] }
+    func wizardVaultDaily() async throws -> WizardVaultAccountPeriod { try JSONDecoder().decode(WizardVaultAccountPeriod.self, from: Data(Self.daily.utf8)) }
+    func wizardVaultWeekly() async throws -> WizardVaultAccountPeriod { try JSONDecoder().decode(WizardVaultAccountPeriod.self, from: Data(Self.weekly.utf8)) }
+    func wizardVaultSpecial() async throws -> WizardVaultAccountSpecial { WizardVaultAccountSpecial(objectives: []) }
+    func accountWizardVaultListings() async throws -> [WizardVaultAccountListing] { [] }
+    func accountWorldBossIDs() async throws -> [String] { [] }
+    func accountMapChestIDs() async throws -> [String] { [] }
+    func accountDailyCraftingIDs() async throws -> [String] { [] }
+    func accountRaidEventIDs() async throws -> [String] { [] }
+    func accountDungeonPathIDs() async throws -> [String] { [] }
+    func todayItems(ids: [Int]) async throws -> [Int: ItemMetadata] {
+        [46742: ItemMetadata(id: 46742, name: "Lump of Mithrillium", icon: nil, rarity: "Ascended")]
+    }
+    func todayCurrencies(ids: [Int]) async throws -> [Int: CurrencyMetadata] {
+        [63: CurrencyMetadata(id: 63, name: "Astral Acclaim", description: "", icon: nil, order: 1)]
+    }
+    func todayWallet() async throws -> [WalletEntry] { [WalletEntry(id: 63, value: 125)] }
+    private static let daily = #"""
+{
+  "meta_progress_current": 3,
+  "meta_progress_complete": 4,
+  "meta_reward_item_id": 99961,
+  "meta_reward_astral": 20,
+  "meta_reward_claimed": false,
+  "objectives": [
+    {"id": 1, "title": "Complete 3 Events", "track": "PvE", "acclaim": 10, "progress_current": 0, "progress_complete": 3, "claimed": false},
+    {"id": 2, "title": "Defeat 10 Enemies", "track": "PvE", "acclaim": 10, "progress_current": 4, "progress_complete": 10, "claimed": false},
+    {"id": 3, "title": "Dodge 3 Attacks", "track": "PvE", "acclaim": 10, "progress_current": 3, "progress_complete": 3, "claimed": false},
+    {"id": 4, "title": "Gather 10 Resources", "track": "PvE", "acclaim": 10, "progress_current": 10, "progress_complete": 10, "claimed": true}
+  ]
+}
+"""#
+    private static let weekly = #"""
+{
+  "meta_progress_current": 4,
+  "meta_progress_complete": 6,
+  "meta_reward_item_id": 100137,
+  "meta_reward_astral": 450,
+  "meta_reward_claimed": false,
+  "objectives": [
+    {"id": 5, "title": "Defeat Veteran Enemies", "track": "PvE", "acclaim": 50, "progress_current": 50, "progress_complete": 50, "claimed": true},
+    {"id": 57, "title": "Complete 10 Events", "track": "PvE", "acclaim": 50, "progress_current": 7, "progress_complete": 10, "claimed": false}
+  ]
+}
+"""#
+}
+#endif

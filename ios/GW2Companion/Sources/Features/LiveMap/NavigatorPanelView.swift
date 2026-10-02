@@ -11,7 +11,14 @@ struct NavigatorPanelView: View {
     @State private var search = ""
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: GWSpacing.medium) {
+            if let target = store.currentTarget {
+                VStack(alignment: .leading, spacing: GWSpacing.small) {
+                    GWSectionHeader(title: "Target")
+                    ObjectiveRow(objective: target, player: player)
+                    Button("Stop navigation") { store.clearTarget() }.font(.subheadline)
+                }.padding(GWSpacing.large)
+            }
             Picker("Navigator", selection: $section) {
                 ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -26,13 +33,14 @@ struct NavigatorPanelView: View {
 
     private var nearbyContent: some View {
         VStack(spacing: 8) {
-            TextField("Search this map", text: $search)
-                .textFieldStyle(.roundedBorder)
+            GWSearchField(prompt: "Search this map", text: $search)
                 .padding(.horizontal)
-            Picker("Nearby filter", selection: $store.nearbyFilter) {
-                ForEach(NearbyFilter.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
+            Menu {
+                Picker("Nearby filter", selection: $store.nearbyFilter) {
+                    ForEach(NearbyFilter.allCases) { Text($0.rawValue).tag($0) }
+                }
+            } label: { Label(store.nearbyFilter.rawValue, systemImage: "line.3.horizontal.decrease") }
+            .frame(minHeight: 44)
             .padding(.horizontal)
 
             List(search.isEmpty ? store.nearby.map(\.objective) : store.search(search)) { objective in
@@ -82,7 +90,7 @@ struct NavigatorPanelView: View {
                 if let finished = route.finishedAt, let started = route.startedAt {
                     let visited = route.objectives.compactMap(store.objective).filter { $0.state == .visited }
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("ROUTE COMPLETE").font(.caption.bold()).foregroundStyle(.green)
+                        Text("ROUTE COMPLETE").font(.caption.bold()).foregroundStyle(GWPalette.success)
                         LabeledContent("Observed visits", value: String(visited.count))
                         LabeledContent("Duration", value: "\(max(1, Int(finished.timeIntervalSince(started) / 60))) min")
                     }
@@ -127,6 +135,7 @@ struct NavigatorPanelView: View {
 struct ObjectiveRow: View {
     let objective: MapObjective
     let player: ContinentPoint?
+    @EnvironmentObject private var objectives: MapObjectiveStore
 
     var body: some View {
         HStack(spacing: 10) {
@@ -139,7 +148,7 @@ struct ObjectiveRow: View {
             if let player {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(ObjectiveDistanceEngine.cardinalDirection(from: player, to: objective.coordinate).rawValue).bold()
-                    Text(ObjectiveDistanceEngine.distance(from: player, to: objective.coordinate), format: .number.precision(.fractionLength(0)))
+                    Text(GWMapDistancePresentation.text(from: player, to: objective.coordinate, metadata: objectives.mapMetadata))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -182,7 +191,7 @@ struct ObjectiveDetailView: View {
                         let bearing = ObjectiveDistanceEngine.bearing(from: player, to: objective.coordinate)
                         Section("Navigation") {
                             LabeledContent("Direction", value: ObjectiveDistanceEngine.cardinalDirection(from: player, to: objective.coordinate).rawValue)
-                            LabeledContent("Distance", value: "\(ObjectiveDistanceEngine.distance(from: player, to: objective.coordinate).formatted(.number.precision(.fractionLength(0)))) coordinate units")
+                            LabeledContent("Distance", value: GWMapDistancePresentation.text(from: player, to: objective.coordinate, metadata: store.mapMetadata))
                             LabeledContent("Bearing", value: "\(bearing.formatted(.number.precision(.fractionLength(0))))°")
                             let relative = ObjectiveDistanceEngine.relativeAngle(targetBearing: bearing, playerHeadingRadians: heading)
                             Text(relativeDescription(relative)).font(.caption).foregroundStyle(.secondary)

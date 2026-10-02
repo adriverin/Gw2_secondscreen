@@ -24,8 +24,8 @@ struct OnboardingFlow: View {
             .frame(maxWidth: 620)
             .padding(28)
             .frame(maxWidth: .infinity)
-            .background(Color(.systemBackground).ignoresSafeArea())
-            .sheet(isPresented: $showingPairing) { PairingView(onConnected: { step = 3 }) }
+            .background(GWPalette.background.ignoresSafeArea())
+            .sheet(isPresented: $showingPairing) { PairingView(onConnected: { finish() }) }
         }
         .interactiveDismissDisabled()
     }
@@ -34,8 +34,8 @@ struct OnboardingFlow: View {
         VStack(spacing: 20) {
             Image(systemName: "map.fill").font(.system(size: 72)).foregroundStyle(GWPalette.accent)
                 .accessibilityHidden(true)
-            Text("Welcome to GW2 Companion").font(.largeTitle.bold()).multilineTextAlignment(.center)
-            Text("Your second screen for Tyria.").font(.title3).foregroundStyle(.secondary)
+            Text("Your second screen for Tyria").font(.largeTitle.bold()).multilineTextAlignment(.center)
+            Text("Your account knows what you need. Your live map helps you get it.").font(.title3).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 14) {
                 onboardingRow(1, "Connect your Guild Wars 2 account")
                 onboardingRow(2, "Connect your gaming PC")
@@ -43,7 +43,7 @@ struct OnboardingFlow: View {
             }
             .padding(.vertical)
             Button("Get Started") { step = 1 }
-                .buttonStyle(.borderedProminent).controlSize(.large).tint(GWPalette.accent)
+                .buttonStyle(GWPrimaryButtonStyle())
         }
     }
 
@@ -60,18 +60,14 @@ struct OnboardingFlow: View {
             Image(systemName: "desktopcomputer").font(.system(size: 58)).foregroundStyle(.orange)
                 .accessibilityHidden(true)
             Text("Connect Your Gaming PC").font(.largeTitle.bold()).multilineTextAlignment(.center)
-            Text("Guild Wars 2 does not expose live player position through its web API. GW2 Companion Bridge reads the game’s official MumbleLink telemetry locally and sends it to this device over your home network.")
+            Text("Run GW2 Companion Bridge on your gaming PC, then scan its QR code to follow your character live. Both devices use your home network.")
                 .foregroundStyle(.secondary).multilineTextAlignment(.center)
-            VStack(alignment: .leading, spacing: 9) {
-                Label("No game automation", systemImage: "checkmark.shield")
-                Label("No packet interception", systemImage: "checkmark.shield")
-                Label("No API key sent to the PC", systemImage: "checkmark.shield")
-                Label("No cloud server", systemImage: "checkmark.shield")
-            }
+            NavigationLink("How your connection stays private") { PrivacySummaryView() }
+                .font(.subheadline)
             Button("Scan Bridge QR Code") { showingPairing = true }
-                .buttonStyle(.borderedProminent).controlSize(.large).tint(.orange)
+                .buttonStyle(GWPrimaryButtonStyle())
             Button("Enter Details Manually") { showingPairing = true }.buttonStyle(.bordered)
-            Button("Skip for Now") { step = 3 }.foregroundStyle(.secondary)
+            Button("Skip for Now") { finish() }.foregroundStyle(.secondary)
         }
     }
 
@@ -82,7 +78,7 @@ struct OnboardingFlow: View {
             Text("Ready for Tyria").font(.largeTitle.bold())
             Text(summaryText).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Start Using GW2 Companion") { finish() }
-                .buttonStyle(.borderedProminent).controlSize(.large).tint(GWPalette.accent)
+                .buttonStyle(GWPrimaryButtonStyle())
         }
     }
 
@@ -137,7 +133,7 @@ struct AccountSetupForm: View {
                     if isChecking { ProgressView("Checking key…").frame(maxWidth: .infinity) }
                     else { Text("Enter API Key").frame(maxWidth: .infinity) }
                 }
-                .buttonStyle(.borderedProminent).controlSize(.large).disabled(apiKey.isEmpty || isChecking)
+                .buttonStyle(GWPrimaryButtonStyle()).disabled(apiKey.isEmpty || isChecking)
                 Button("How to Create an API Key") { showingHelp = true }
                 if let errorMessage { GWErrorBanner(message: errorMessage, stale: false) }
                 if let skip { Button("Skip for Now", action: skip).foregroundStyle(.secondary) }

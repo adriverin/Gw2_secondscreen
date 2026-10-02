@@ -31,7 +31,7 @@ enum AppTab: Hashable, CaseIterable, Identifiable {
     static var iPadSidebar: [AppTab] { [.session, .map, .goals, .characters, .inventory, .account, .settings] }
 }
 
-enum CharacterSection: String, CaseIterable, Hashable { case equipment, build, inventory }
+enum CharacterSection: String, CaseIterable, Hashable { case equipment, build, inventory, stats }
 
 struct CharacterRoute: Hashable {
     let name: String
@@ -68,7 +68,7 @@ final class AppNavigation: ObservableObject {
     @Published var inventorySection: InventoryHubSection = .all
     @Published var inventoryCharacterName: String?
     @Published var sidebarHidden = false
-    @Published var navigatorHidden = false
+    @Published var navigatorHidden = true
 
     var splitColumnVisibility: NavigationSplitViewVisibility {
         get { sidebarHidden ? .detailOnly : .all }

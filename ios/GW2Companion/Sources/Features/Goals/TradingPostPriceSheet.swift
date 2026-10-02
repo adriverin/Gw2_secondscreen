@@ -35,7 +35,7 @@ struct TradingPostPriceSheet: View {
                 Section {
                     VStack(spacing: 10) {
                         if let resolvedItem { GWItemIcon(item: resolvedItem, size: 72) }
-                        else if metadataLoading { ProgressView().frame(width: 72, height: 72) }
+                        else if metadataLoading { RoundedRectangle(cornerRadius: GWSpacing.medium).fill(GWPalette.interactive).frame(width: 72, height: 72) }
                         Text(PriceItemHeader.title(item: resolvedItem, loading: metadataLoading))
                             .font(.title3.bold()).multilineTextAlignment(.center)
                         LabeledContent("Missing", value: quantity.formatted())
@@ -50,16 +50,16 @@ struct TradingPostPriceSheet: View {
                     case .available, .stale:
                         if checkingPrice { Text("Last known price").font(.caption).foregroundStyle(.secondary) }
                         if let unit = presentation.unitCopper {
-                            LabeledContent("Lowest sell offer", value: "\(CoinAmount(copperValue: unit).formatted) each")
+                            LabeledContent("Buy now · each", value: "\(CoinAmount(copperValue: unit).compactFormatted) each")
                         }
                         if let buyNow = presentation.buyNowCopper {
-                            LabeledContent("Estimated buy-now", value: CoinAmount(copperValue: buyNow).formatted)
+                            LabeledContent("Estimated stack", value: CoinAmount(copperValue: buyNow).compactFormatted)
                         }
                         if checkingPrice { ProgressView("Refreshing…") }
                         else if case .stale = presentation.state {
                             Text(store.priceLookups[item.id]?.error.map { "Showing last known price. \($0)" }
                                  ?? "This listing is older than five minutes.")
-                                .font(.caption).foregroundStyle(.orange)
+                                .font(.caption).foregroundStyle(GWPalette.warning)
                         }
                     case .noSellListings:
                         Text("No current sell listings")

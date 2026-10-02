@@ -9,6 +9,8 @@ struct SettingsView: View {
     @AppStorage("developer.mode.enabled") private var developerMode = false
     @AppStorage("onboarding.completed.v1") private var onboardingCompleted = false
     @AppStorage(MapDetailMode.storageKey) private var mapDetailRaw = MapDetailMode.balanced.rawValue
+    @AppStorage("appearance.theme") private var appearance = GWAppearance.dark.rawValue
+    @State private var showingLayers = false
     @State private var showingPairing = false
     @State private var showingAccount = false
     @State private var showingHelp = false
@@ -28,9 +30,9 @@ struct SettingsView: View {
                         NavigationLink("Permissions") { PermissionDetailsView() }
                     }
                 }
-                Section("PC") {
+                Section("PC Connection") {
                     Button { showingPairing = true } label: {
-                        settingsRow("Gaming PC", detail: telemetry.savedPairing.map { "\($0.host):\($0.port)" } ?? "Not paired", symbol: "desktopcomputer")
+                        settingsRow("Gaming PC", detail: telemetry.savedPairing == nil ? "Not paired" : "Paired", symbol: "desktopcomputer")
                     }
                     NavigationLink("Connection Diagnostics") { ConnectionDiagnosticsView() }
                 }
@@ -39,6 +41,15 @@ struct SettingsView: View {
                         ForEach(MapDetailMode.allCases) { mode in
                             Text(mode.title).tag(mode.rawValue)
                         }
+                    }
+                }
+                Section { Button("Layers") { showingLayers = true } }
+                Section("Planning") {
+                    NavigationLink("Session & Acquisition Preferences") { PlanningPreferencesView() }
+                }
+                Section("Appearance") {
+                    Picker("Theme", selection: $appearance) {
+                        ForEach(GWAppearance.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
                     }
                 }
                 Section("Data") {
@@ -54,12 +65,13 @@ struct SettingsView: View {
                     Button { unlockDeveloperMode() } label: {
                         settingsRow("GW2 Companion", detail: AppBuildInfo.versionAndBuild, symbol: "info.circle")
                     }.buttonStyle(.plain)
-                    LabeledContent("Bridge Protocol", value: "\(BridgeProtocol.current)")
                     Text("GW2 Companion is an unofficial companion application and is not affiliated with or endorsed by ArenaNet.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if developerMode {
+                if GWPresentation.developerToolsAvailable && developerMode {
                     Section("Developer") {
+                        NavigationLink("UI Gallery") { GWUIGallery() }
+                        LabeledContent("Bridge Protocol", value: "\(BridgeProtocol.current)")
                         NavigationLink("Real Hardware QA") { QAModeView() }
                             .accessibilityIdentifier("settings.developer.qa")
                             .accessibilityLabel("Real Hardware QA")
@@ -79,6 +91,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .sheet(isPresented: $showingLayers) { LayerPanelView() }
             .sheet(isPresented: $showingPairing) { PairingView() }
             .sheet(isPresented: $showingAccount) { NavigationStack { AccountSetupForm(connected: { showingAccount = false }) } }
             .sheet(isPresented: $showingPrivacy) { PrivacySummaryView() }
@@ -101,6 +114,7 @@ struct SettingsView: View {
     }
 
     private func unlockDeveloperMode() {
+        guard GWPresentation.developerToolsAvailable else { return }
         versionTaps += 1
         if versionTaps >= 7 { developerMode = true; versionTaps = 0 }
     }

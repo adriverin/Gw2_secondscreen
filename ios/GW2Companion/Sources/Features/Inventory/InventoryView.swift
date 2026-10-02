@@ -32,19 +32,18 @@ struct InventoryView: View {
                     hub
                 }
             }
+            .background(GWPalette.background)
             .navigationTitle("Inventory")
             .sheet(item: $inspected) { ItemDetailView(inspected: $0, metadata: account.itemMetadata) }
             .sheet(isPresented: $showingReplaceKey) {
                 NavigationStack { AccountSetupForm(connected: { showingReplaceKey = false }) }
             }
         }
-        .accessibilityIdentifier("inventory.hub")
     }
 
     private var loadingState: some View {
         VStack(spacing: 12) {
-            ProgressView("Indexing account inventory…")
-            Text("Never loaded").font(.caption).foregroundStyle(.secondary)
+            GWLoadingRows()
         }
         .accessibilityIdentifier("inventory.state.loading")
     }
@@ -60,34 +59,54 @@ struct InventoryView: View {
     }
 
     private var hub: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(InventoryHubSection.allCases) { section in
-                        Button(section.title) { navigation.inventorySection = section }
-                            .buttonStyle(.bordered)
-                            .tint(navigation.inventorySection == section ? GWPalette.accent : .secondary)
-                            .accessibilityIdentifier("inventory.section.\(section.rawValue)")
-                    }
-                    Menu {
-                        Picker("Inventory Prices", selection: $pricePreferenceRaw) {
-                            ForEach(InventoryPricePreference.allCases) { preference in
-                                Text(preference.title).tag(preference.rawValue)
-                            }
-                        }
-                    } label: {
-                        Label("Prices: \(pricePreference.title)", systemImage: "coloncurrencysign.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("inventory.prices.preference")
+        GeometryReader { geometry in
+            if geometry.size.width >= 800 {
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: GWSpacing.small) {
+                        GWSectionHeader(title: "Locations").padding(.bottom, GWSpacing.medium)
+                        locationButtons
+                        priceMenu.padding(.top, GWSpacing.large)
+                        Spacer()
+                    }.padding(GWSpacing.large).frame(width: 180)
+                        .background(GWPalette.secondaryBackground)
+                    hubContent
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
+            } else {
+                VStack(spacing: 0) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: GWSpacing.xSmall) { locationButtons; priceMenu }
+                            .padding(.horizontal, GWSpacing.medium).padding(.top, GWSpacing.small)
+                    }.accessibilityIdentifier("inventory.sections")
+                    hubContent
+                }
             }
-            .accessibilityIdentifier("inventory.sections")
+        }
+    }
 
+    @ViewBuilder private var locationButtons: some View {
+        ForEach(InventoryHubSection.allCases) { section in
+            Button { navigation.inventorySection = section } label: {
+                Text(section.title).fixedSize(horizontal: true, vertical: false)
+                    .foregroundStyle(navigation.inventorySection == section ? Color.primary : Color.secondary)
+            }
+                .buttonStyle(GWSelectionButtonStyle(selected: navigation.inventorySection == section))
+                .accessibilityAddTraits(navigation.inventorySection == section ? .isSelected : [])
+                .accessibilityIdentifier("inventory.section.\(section.rawValue)")
+        }
+    }
+
+    private var priceMenu: some View {
+        Menu {
+            Picker("Inventory Prices", selection: $pricePreferenceRaw) {
+                ForEach(InventoryPricePreference.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+        } label: { Image(systemName: "line.3.horizontal.decrease").frame(minWidth: 44, minHeight: 44) }
+            .accessibilityIdentifier("inventory.prices.preference").accessibilityLabel("Price display")
+    }
+
+    private var hubContent: some View {
+        VStack(spacing: 0) {
             statusBanner
-
             switch navigation.inventorySection {
             case .all: allSearch
             case .characters: charactersList
@@ -95,7 +114,7 @@ struct InventoryView: View {
             case .materials: MaterialStorageView(inspected: $inspected)
             case .shared: SharedInventoryView(inspected: $inspected)
             }
-        }
+        }.frame(maxWidth: .infinity)
     }
 
     @ViewBuilder private var statusBanner: some View {
@@ -109,7 +128,7 @@ struct InventoryView: View {
                 .accessibilityIdentifier("inventory.state.error")
         } else if account.inventoryLive, let updated = account.inventoryUpdatedAt ?? account.accountLastRefreshedAt {
             HStack {
-                Text("LIVE ACCOUNT RESPONSE • \(updated.formatted(date: .omitted, time: .shortened))")
+                GWFreshnessLabel(updated: updated)
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
@@ -117,16 +136,16 @@ struct InventoryView: View {
             .accessibilityIdentifier("inventory.state.live")
         } else if account.isStale {
             HStack {
-                Label(account.cacheStatusText, systemImage: "clock.arrow.circlepath")
+                Text("Using saved inventory")
                 Spacer()
-                Text("CACHED").font(.caption2.bold()).foregroundStyle(.orange)
+                Text("Saved").font(.caption2.bold()).foregroundStyle(GWPalette.warning)
             }
             .font(.caption).foregroundStyle(.secondary)
             .padding(.horizontal).padding(.top, 8)
             .accessibilityIdentifier("inventory.state.cached")
         } else if let updated = account.accountLastRefreshedAt {
             HStack {
-                Text("LIVE ACCOUNT RESPONSE • \(updated.formatted(date: .omitted, time: .shortened))")
+                GWFreshnessLabel(updated: updated)
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
@@ -150,10 +169,9 @@ struct InventoryView: View {
                     .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
             }
             Section {
-                TextField("Search all inventory", text: $search)
-                    .textFieldStyle(.roundedBorder)
+                GWSearchField(prompt: "Search all inventory", text: $search)
                     .accessibilityIdentifier("inventory.search.field")
-            }
+            }.listRowBackground(Color.clear)
             Section {
                 ForEach(results) { result in
                     Button { inspected = InspectedItem(item: result.item, quantity: result.holding.totalQuantity) } label: {
@@ -166,9 +184,11 @@ struct InventoryView: View {
                 Text(search.isEmpty
                      ? "\(results.count.formatted()) unique items"
                      : "Search all inventory")
-            }
+            }.listRowBackground(Color.clear)
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(GWPalette.background)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -245,7 +265,7 @@ struct BankStorageView: View {
         let occupied = account.bankSlots.compactMap { $0 }.count
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                GWSectionHeader(title: "Bank", subtitle: "\(occupied) occupied slots • \(account.dataSource.qaLabel)")
+                GWSectionHeader(title: "Bank", subtitle: "\(occupied) occupied slots")
                 if account.bankSlots.isEmpty {
                     if account.domainStates[.bank]?.phase == .failed {
                         Text(account.domainStates[.bank]?.message ?? "Couldn't refresh bank.")
@@ -281,7 +301,7 @@ struct SharedInventoryView: View {
         let occupied = account.sharedSlots.compactMap { $0 }.count
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                GWSectionHeader(title: "Shared Inventory", subtitle: "\(occupied) occupied slots • \(account.dataSource.qaLabel)")
+                GWSectionHeader(title: "Shared Inventory", subtitle: "\(occupied) occupied slots")
                 if account.sharedSlots.isEmpty {
                     if account.domainStates[.sharedInventory]?.phase == .failed {
                         Text(account.domainStates[.sharedInventory]?.message ?? "Couldn't refresh shared inventory.")
@@ -317,8 +337,7 @@ struct MaterialStorageView: View {
             Section {
                 Toggle("Show All Materials", isOn: $showAll)
                     .accessibilityIdentifier("inventory.materials.showAll")
-                TextField("Search materials", text: $search)
-                    .textFieldStyle(.roundedBorder)
+                GWSearchField(prompt: "Search materials", text: $search)
                     .accessibilityIdentifier("inventory.materials.search")
             } header: {
                 Text("Material Storage")
@@ -422,7 +441,7 @@ struct InventorySlotCell: View {
                         GWItemIcon(item: item, size: 52)
                         if slot.count > 1 {
                             Text(slot.count.formatted()).font(.caption2.bold()).padding(3)
-                                .background(.black.opacity(0.8), in: Capsule())
+                                .foregroundStyle(.white).background(.black.opacity(0.8), in: Capsule())
                         }
                     }
                 }
@@ -432,7 +451,7 @@ struct InventorySlotCell: View {
                         .frame(maxWidth: 76)
                 }
             }
-            .accessibilityLabel("\(item.name), quantity \(slot.count)")
+            .accessibilityLabel("\(GWPresentation.itemName(item)), quantity \(slot.count)")
             .accessibilityIdentifier("inventory.item.\(item.name)")
         } else {
             RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.45)).frame(width: 52, height: 52)
@@ -455,7 +474,7 @@ struct HoldingRow: View {
             GWItemIcon(item: result.item, size: compact ? 40 : 48)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(result.item.name).font(.headline).foregroundStyle(.primary)
+                    Text(GWPresentation.itemName(result.item)).font(.headline).foregroundStyle(.primary)
                     Spacer()
                     Text(result.holding.totalQuantity.formatted()).font(.headline).monospacedDigit()
                 }
@@ -463,9 +482,7 @@ struct HoldingRow: View {
                     if preference != .off {
                         OwnedItemPriceLine(item: result.item, quantity: result.holding.totalQuantity, compact: false)
                     }
-                    Text("\(result.holding.totalQuantity.formatted()) total")
-                        .font(.caption).foregroundStyle(.secondary)
-                    ForEach(result.holding.locations) { value in
+                    ForEach(result.holding.locations.prefix(3)) { value in
                         HStack {
                             Text(value.location.title)
                             Spacer()
@@ -481,8 +498,10 @@ struct HoldingRow: View {
             Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).padding(.top, 4)
         }
         .padding(.vertical, 4)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(result.item.name), \(result.holding.totalQuantity) total, \(result.holding.locations.map { "\($0.quantity) in \($0.location.title)" }.joined(separator: ", "))")
+        .accessibilityLabel("\(GWPresentation.itemName(result.item)), \(result.holding.totalQuantity) total, \(result.holding.locations.map { "\($0.quantity) in \($0.location.title)" }.joined(separator: ", "))")
     }
 
     private var preference: InventoryPricePreference {

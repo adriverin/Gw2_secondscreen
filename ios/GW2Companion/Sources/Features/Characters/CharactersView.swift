@@ -4,12 +4,19 @@ import SwiftUI
 struct CharactersView: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var navigation: AppNavigation
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var availableWidth: CGFloat = 0
+
+    private var usesRoster: Bool { sizeClass == .regular && (availableWidth == 0 || availableWidth >= 740) }
+    private var characterPath: Binding<[CharacterRoute]> {
+        Binding(get: { usesRoster ? [] : navigation.characterPath }, set: { if !usesRoster { navigation.characterPath = $0 } })
+    }
 
     var body: some View {
-        NavigationStack(path: $navigation.characterPath) {
+        NavigationStack(path: characterPath) {
             Group {
                 if account.connectionState == .loading && account.characters.isEmpty {
-                    ProgressView("Loading characters…")
+                    GWLoadingRows()
                 } else if account.connectionState == .disconnected {
                     GWEmptyState(
                         title: "Connect your Guild Wars 2 account",
@@ -29,9 +36,23 @@ struct CharactersView: View {
                         symbol: "wifi.exclamationmark",
                         actionTitle: "Try Again") { Task { await account.refresh() } }
                 } else {
-                    characterGrid
+                    GeometryReader { geometry in
+                        if sizeClass == .regular && geometry.size.width >= 740 {
+                            HStack(spacing: 0) {
+                                characterRoster.frame(width: 300)
+                                Divider()
+                                if let route = navigation.characterPath.last,
+                                   let character = account.characters.first(where: { $0.name == route.name }) {
+                                    CharacterDetailView(character: character, initialSection: route.section).id(route)
+                                } else {
+                                    GWEmptyState(title: "Your characters", message: "Choose a character to view equipment, build, inventory and stats.", symbol: "person.2")
+                                }
+                            }
+                        } else { characterGrid }
+                    }
                 }
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
             .navigationTitle("Characters")
             .navigationDestination(for: CharacterRoute.self) { route in
                 if let character = account.characters.first(where: { $0.name == route.name }) {
@@ -46,6 +67,22 @@ struct CharactersView: View {
         }
     }
 
+    private var characterRoster: some View {
+        ScrollView {
+            LazyVStack(spacing: GWSpacing.medium) {
+                ForEach(account.characters) { character in
+                    Button { navigation.characterPath = [CharacterRoute(name: character.name, section: .equipment)] } label: {
+                        CharacterCard(character: character, profession: account.professions[character.profession],
+                                      specialization: account.eliteSpecializationName(for: character),
+                                      isCurrent: account.currentCharacter?.name == character.name)
+                    }.buttonStyle(.plain)
+                        .accessibilityIdentifier("character.roster.\(character.name)")
+                        .task { if !GWPresentation.isDesignReview { await account.loadCharacterDetails(character) } }
+                }
+            }.padding(GWSpacing.medium)
+        }.background(GWPalette.background).refreshable { await account.refresh() }
+    }
+
     private var characterGrid: some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 310, maximum: 520), spacing: 16)], spacing: 16) {
@@ -58,7 +95,7 @@ struct CharactersView: View {
                             isCurrent: account.currentCharacter?.name == character.name)
                     }
                     .buttonStyle(.plain)
-                    .task { await account.loadCharacterDetails(character) }
+                    .task { if !GWPresentation.isDesignReview { await account.loadCharacterDetails(character) } }
                 }
             }
             .padding()
@@ -79,9 +116,9 @@ private struct CharacterCard: View {
                 CachedAsyncImage(url: profession?.iconBig ?? profession?.icon) {
                     Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.secondary)
                 }
-                .frame(width: 62, height: 62)
+                .frame(width: 44, height: 44)
                 .padding(8)
-                .background(GWPalette.profession(character.profession).opacity(0.16), in: RoundedRectangle(cornerRadius: 15))
+                .background(GWPalette.profession(character.profession).opacity(0.16), in: RoundedRectangle(cornerRadius: GWSpacing.large))
 
                 VStack(alignment: .leading, spacing: 7) {
                     HStack {
@@ -93,10 +130,7 @@ private struct CharacterCard: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                     Text("\(formattedHours(character.age)) played")
                         .font(.subheadline.bold()).monospacedDigit()
-                    if let crafting = character.crafting?.filter(\.active), !crafting.isEmpty {
-                        Text(crafting.prefix(2).map { "\($0.discipline) \($0.rating)" }.joined(separator: " • "))
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
+
                 }
             }
         }
@@ -108,6 +142,8 @@ private struct CharacterCard: View {
 struct CharacterDetailView: View {
     let character: GW2Character
     @State private var section: CharacterSection
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var selectedEquipmentTabID: Int?
     @EnvironmentObject private var account: AccountStore
     @State private var portraitData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
@@ -123,10 +159,7 @@ struct CharacterDetailView: View {
         ScrollView {
             LazyVStack(spacing: 18) {
                 characterHeader
-                Picker("Character section", selection: $section) {
-                    ForEach(CharacterSection.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
-                }
-                .pickerStyle(.segmented)
+                sectionPicker
 
                 if let error = detail.buildError, section == .build {
                     GWErrorBanner(message: error, stale: !detail.buildTabs.isEmpty) {
@@ -144,19 +177,24 @@ struct CharacterDetailView: View {
                     }
                 }
                 if detail.source == .cached, let updated = detail.updatedAt {
-                    GWErrorBanner(
-                        message: "Saved data. Updated \(updated.formatted(date: .abbreviated, time: .shortened)). Not current.",
-                        stale: true)
+                    GWFreshnessLabel(updated: updated, saved: true)
                 }
 
                 Group {
                     switch section {
                     case .equipment:
-                        EquipmentSection(character: character, detail: detail)
+                        EquipmentSection(character: character, detail: detail, selectedTabID: $selectedEquipmentTabID)
                     case .build:
                         BuildSection(detail: detail)
                     case .inventory:
                         CharacterInventorySection(detail: detail, fallbackItems: account.itemMetadata)
+                    case .stats:
+                        if let tab = detail.equipmentTabs.first(where: { $0.id == selectedEquipmentTabID }) ?? detail.equipmentTabs.first(where: \.isActive) ?? detail.equipmentTabs.first {
+                            EquipmentStatsView(character: character, equipment: tab.equipment, items: detail.items,
+                                build: detail.buildTabs.first(where: \.isActive)?.build ?? detail.buildTabs.first?.build,
+                                traits: detail.traits, specializations: detail.specializations, equipmentTabName: tab.name,
+                                source: detail.source, updatedAt: detail.updatedAt, itemStats: detail.itemStats ?? [:], equipmentTabID: tab.tab)
+                        } else { GWLoadingRows() }
                     }
                 }
             }
@@ -164,11 +202,14 @@ struct CharacterDetailView: View {
             .padding()
             .frame(maxWidth: .infinity)
         }
+        .accessibilityIdentifier("character.profile")
+        .accessibilityValue(section.rawValue)
+        .background(GWPalette.background)
         .navigationTitle(character.name)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await account.loadCharacterDetails(character, force: true) }
         .task {
-            await account.loadCharacterDetails(character)
+            if !GWPresentation.isDesignReview { await account.loadCharacterDetails(character) }
             portraitData = await CharacterPortraitStore.shared.data(account: account.account?.name, character: character.name)
         }
         .onChange(of: selectedPhoto) { _, item in
@@ -182,42 +223,68 @@ struct CharacterDetailView: View {
         .toolbar { portraitMenu }
     }
 
-    private var characterHeader: some View {
-        ZStack(alignment: .bottomLeading) {
-            LinearGradient(
-                colors: [GWPalette.profession(character.profession).opacity(0.68), .black.opacity(0.78)],
-                startPoint: .topLeading, endPoint: .bottomTrailing)
-            HStack(alignment: .bottom, spacing: 18) {
-                Group {
-                    if let portraitData, let image = UIImage(data: portraitData) {
-                        Image(uiImage: image).resizable().scaledToFill()
-                    } else {
-                        CachedAsyncImage(url: account.professions[character.profession]?.iconBig) {
-                            Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().padding(22)
+    private var sectionPicker: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                Picker("Section", selection: $section) {
+                    ForEach(CharacterSection.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                }.pickerStyle(.menu).frame(minHeight: 44)
+                    .accessibilityIdentifier("character.sections")
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: GWSpacing.xSmall) {
+                        ForEach(CharacterSection.allCases, id: \.self) { value in
+                            Button { section = value } label: {
+                                Text(value.rawValue.capitalized)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .foregroundStyle(section == value ? Color.primary : Color.secondary)
+                            }
+                            .buttonStyle(GWSelectionButtonStyle(selected: section == value))
+                            .accessibilityAddTraits(section == value ? .isSelected : [])
+                            .accessibilityIdentifier("character.section.\(value.rawValue)")
                         }
-                    }
+                    }.padding(GWSpacing.xSmall)
                 }
-                .frame(width: 128, height: 150)
-                .background(.black.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-
-                VStack(alignment: .leading, spacing: 7) {
-                    if account.currentCharacter?.name == character.name {
-                        GWBadge(text: "CURRENTLY PLAYING", color: .green, symbol: "circle.fill")
-                    }
-                    Text(character.name).font(.largeTitle.bold()).minimumScaleFactor(0.7)
-                    Text("\(account.eliteSpecializationName(for: character) ?? character.profession) • \(character.race) • Level \(character.level)")
-                        .foregroundStyle(.white.opacity(0.82))
-                    Text(headerFacts).font(.caption).foregroundStyle(.white.opacity(0.72))
-                }
-                .padding(.bottom, 8)
+                    .background(GWPalette.card, in: RoundedRectangle(cornerRadius: GWSpacing.large))
             }
-            .padding(18)
         }
-        .foregroundStyle(.white)
-        .frame(minHeight: 205)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    private var characterHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: GWSpacing.section) { portrait; characterIdentity }
+            VStack(alignment: .leading, spacing: GWSpacing.large) { portrait; characterIdentity }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, GWSpacing.medium)
         .accessibilityElement(children: .combine)
+    }
+
+    private var portrait: some View {
+        Group {
+            if let portraitData, let image = UIImage(data: portraitData) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                CachedAsyncImage(url: account.professions[character.profession]?.iconBig) {
+                    Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().padding(GWSpacing.large)
+                }
+            }
+        }.frame(width: 88, height: 104)
+            .background(GWPalette.profession(character.profession).opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: GWSpacing.large))
+            .accessibilityHidden(true)
+    }
+
+    private var characterIdentity: some View {
+        VStack(alignment: .leading, spacing: GWSpacing.small) {
+            Text(character.name).font(GWTypography.hero)
+            Text("\(account.eliteSpecializationName(for: character) ?? character.profession) · Level \(character.level)")
+                .font(.subheadline).foregroundStyle(.secondary)
+            if account.currentCharacter?.name == character.name {
+                GWBadge(text: "CURRENTLY PLAYING", color: GWPalette.success, symbol: "circle.fill")
+            }
+            Text("\(character.race) · \(formattedHours(character.age)) played").font(.caption).foregroundStyle(.secondary)
+        }
     }
 
     private var headerFacts: String {
@@ -249,7 +316,7 @@ struct CharacterDetailView: View {
 private struct EquipmentSection: View {
     let character: GW2Character
     let detail: CharacterDetailData
-    @State private var selectedTabID: Int?
+    @Binding var selectedTabID: Int?
     @State private var inspected: InspectedItem?
 
     private var selectedTab: EquipmentTab? {
@@ -272,7 +339,7 @@ private struct EquipmentSection: View {
                                     Text(tab.name)
                                 }
                             }
-                            .buttonStyle(.bordered).tint(tab.id == selectedTab?.id ? GWPalette.accent : .secondary)
+                            .buttonStyle(GWSelectionButtonStyle(selected: tab.id == selectedTab?.id))
                         }
                     }
                 }
@@ -288,14 +355,8 @@ private struct EquipmentSection: View {
                         }
                     }
                 }
-                EquipmentStatsView(
-                    character: character, equipment: selectedTab.equipment, items: detail.items,
-                    build: detail.buildTabs.first(where: \.isActive)?.build ?? detail.buildTabs.first?.build,
-                    traits: detail.traits, specializations: detail.specializations,
-                    equipmentTabName: selectedTab.name,
-                    source: detail.source, updatedAt: detail.updatedAt, itemStats: detail.itemStats ?? [:], equipmentTabID: selectedTab.tab)
             } else if detail.errorMessage == nil {
-                ProgressView("Loading equipment…").frame(maxWidth: .infinity).padding(30)
+                GWLoadingRows()
             }
         }
         .sheet(item: $inspected) { ItemDetailView(inspected: $0, metadata: detail.items, skins: detail.skins) }
@@ -314,7 +375,8 @@ private struct EquipmentRow: View {
                 GWItemIcon(item: item)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(displaySlot(slot)).font(.caption.bold()).foregroundStyle(.secondary)
-                    Text(item.name).font(.subheadline.bold()).lineLimit(2)
+                    Text(GWPresentation.itemName(item)).font(.subheadline.bold()).lineLimit(2)
+                    Text(item.rarity).font(.caption).foregroundStyle(GWPalette.rarity(item.rarity))
                     if let upgrade = equipment.upgrades?.compactMap({ metadata[$0]?.name }).first {
                         Text(upgrade).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     }
@@ -324,7 +386,7 @@ private struct EquipmentRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(displaySlot(slot)): \(item.name), \(item.rarity)")
+        .accessibilityLabel("\(displaySlot(slot)): \(GWPresentation.itemName(item)), \(item.rarity)")
     }
 
     private func displaySlot(_ value: String) -> String {
@@ -347,6 +409,7 @@ private struct EquipmentStatsView: View {
     var itemStats: [Int: ItemStatMetadata] = [:]
     var equipmentTabID: Int? = nil
     @State private var inspectedStat: String?
+    @AppStorage("developer.mode.enabled") private var developerMode = false
 
     private var stats: CharacterStaticStats {
         CharacterStatEngine.calculate(
@@ -357,24 +420,25 @@ private struct EquipmentStatsView: View {
     var body: some View {
         GWCard {
             GWSectionHeader(
-                title: "Level-80 PvE Static Estimate",
+                title: "Estimated static stats",
                 subtitle: source == .cached
                     ? "Saved data\(updatedAt.map { " • Updated \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "")"
                     : "Calculated from your character and equipment data")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145))], alignment: .leading, spacing: 10) {
+            VStack(spacing: GWSpacing.medium) {
                 ForEach(CharacterStatEngine.displayOrder, id: \.self) { key in
                     let total = stats.total(for: key)
                     Button { inspectedStat = key } label: {
                         LabeledContent(CharacterStatEngine.displayName(key), value: total.formatted())
                             .font(.subheadline)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).frame(minHeight: 44)
                 }
             }
+            .monospacedDigit()
             .padding(.top, 12)
             if stats.derived.availableForLevel {
                 Divider().padding(.vertical, 8)
-                GWSectionHeader(title: "Derived", subtitle: "Level 80 formulas")
+                GWSectionHeader(title: "Combat stats")
                 if let value = stats.derived.criticalChancePercent {
                     LabeledContent("Critical Chance", value: percent(value))
                 }
@@ -399,32 +463,26 @@ private struct EquipmentStatsView: View {
             }
             Divider().padding(.vertical, 8)
             let coverage = StatCoverageReport(stats: stats, build: build, traits: traits, specializations: specializations)
-            Text(coverage.isComplete ? "Static Stats complete" : "Static Stats incomplete").font(.caption.bold())
-            Text(coverage.summary).font(.caption)
-            Text("Local rules \(coverage.localRules.summary) • Account data \(coverage.accountData.summary) • Public metadata \(coverage.publicMetadata.summary) • Network required \(coverage.networkRequired)").font(.caption)
             let missingEquipment = stats.equipmentSources.filter { $0.included && $0.equipment.slot != "Relic" && $0.baseAttributes.isEmpty }.count
-            if missingEquipment > 0 { Text("\(missingEquipment) equipment sources still unresolved").font(.caption).foregroundStyle(.orange) }
-            HStack {
-                Text("STAT COVERAGE").font(.caption2.bold()).foregroundStyle(.secondary)
-                Spacer()
-                GWBadge(
-                    text: coverage.isComplete ? "COMPLETE" : "INCOMPLETE",
-                    color: coverage.isComplete ? .green : .orange,
-                    symbol: coverage.isComplete ? "checkmark.circle" : "exclamationmark.circle")
+            if missingEquipment > 0 {
+                Label("\(missingEquipment) equipment sources unavailable", systemImage: "exclamationmark.circle")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            Text("\(stats.modeledTraitCount) trait modifiers modeled • \(stats.excludedTraitCount) excluded/conditional")
-                .font(.caption).foregroundStyle(.secondary)
-            ForEach(stats.excludedSources, id: \.self) { reason in
-                Text("• \(reason)").font(.caption2).foregroundStyle(.secondary)
+            DisclosureGroup("View calculation details") {
+                Text("A level-80 PvE estimate from equipment and selected static traits. Combat effects and downscaling can change your in-game values.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(coverage.summary).font(.caption)
+                ForEach(stats.excludedSources, id: \.self) { reason in
+                    Text(reason).font(.caption).foregroundStyle(.secondary)
+                }
+            }.accessibilityIdentifier("stats.calculationDetails")
+            if GWPresentation.developerToolsAvailable && developerMode {
+                NavigationLink("Character Stat Audit") {
+                    CharacterStatAuditView(character: character, equipment: equipment, items: items,
+                        build: build, traits: traits, specializations: specializations,
+                        equipmentTabName: equipmentTabName, equipmentTabID: equipmentTabID)
+                }.buttonStyle(.bordered)
             }
-            NavigationLink("Character Stat Audit") {
-                CharacterStatAuditView(
-                    character: character, equipment: equipment, items: items,
-                    build: build, traits: traits, specializations: specializations,
-                    equipmentTabName: equipmentTabName, equipmentTabID: equipmentTabID)
-            }
-            .buttonStyle(.bordered)
-            .padding(.top, 6)
         }
         .sheet(item: Binding(
             get: { inspectedStat.map { StatInspection(id: $0) } },
@@ -530,7 +588,7 @@ struct CharacterStatAuditView: View {
                 LabeledContent("Network required", value: "\(coverage.networkRequired)")
                 ForEach(coverage.diagnostics, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
                 Text("Account freshness and static metadata completeness are independent.").font(.caption)
-                if developerMode {
+                if GWPresentation.developerToolsAvailable && developerMode {
                     Button("Resolve Missing Stat Sources") {
                         guard let tab = currentTab else { return }
                         Task { await account.resolveMissingStatSources(character: character, equipmentTab: tab.tab, weaponSet: weaponSet) }
@@ -559,14 +617,14 @@ struct CharacterStatAuditView: View {
                         .font(.caption)
                 }
                 Text("Great Fortitude (1449): \(currentBuild?.specializations.contains(where: { $0.id == 4 && $0.traits.contains(1449) }) == true ? "selected" : "not selected / build unavailable")")
-                if developerMode, let trait = currentTraits[1449] {
+                if GWPresentation.developerToolsAvailable && developerMode, let trait = currentTraits[1449] {
                     ForEach(Array(trait.facts.enumerated()), id: \.offset) { _, fact in
                         Text("1449 fact: \(fact.type) • \(fact.source ?? "none") → \(fact.target ?? "none") • \(fact.percent.map { String($0) } ?? "no percent")%")
                             .font(.caption)
                     }
                 }
             }
-            if developerMode, let diagnostics = account.statEquipmentDiagnostics[character.name], !diagnostics.isEmpty {
+            if GWPresentation.developerToolsAvailable && developerMode, let diagnostics = account.statEquipmentDiagnostics[character.name], !diagnostics.isEmpty {
                 Section("Raw equipment DTO shape (no credentials)") {
                     ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, diagnostic in
                         Text(diagnostic.summary).font(.caption)
@@ -820,7 +878,7 @@ private struct BuildSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            GWSectionHeader(title: "Build", subtitle: "View-only character templates")
+            GWSectionHeader(title: "Build", subtitle: "Selected specializations and skills")
             if detail.buildTabs.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
@@ -833,7 +891,7 @@ private struct BuildSection: View {
                                     Text(tab.name)
                                 }
                             }
-                            .buttonStyle(.bordered).tint(tab.id == selectedTab?.id ? GWPalette.accent : .secondary)
+                            .buttonStyle(GWSelectionButtonStyle(selected: tab.id == selectedTab?.id))
                         }
                     }
                 }
@@ -848,7 +906,7 @@ private struct BuildSection: View {
                     skillCard(skills)
                 }
             } else if detail.errorMessage == nil {
-                ProgressView("Loading build…").frame(maxWidth: .infinity).padding(30)
+                GWLoadingRows(count: 3)
             }
         }
         .sheet(item: $inspected) { inspection in
@@ -872,7 +930,7 @@ private struct BuildSection: View {
                         Button { inspected = .trait(trait) } label: {
                             VStack {
                                 GWItemLikeIcon(url: trait.icon, selected: true, size: 48)
-                                Text("Tier \(tier + 1)").font(.caption2).foregroundStyle(.secondary)
+                                Text(trait.name).font(.caption).foregroundStyle(.primary).lineLimit(2)
                             }
                         }
                         .buttonStyle(.plain)
@@ -892,6 +950,7 @@ private struct BuildSection: View {
         let values = ([skills.heal] + skills.utilities + [skills.elite]).compactMap { $0 }
         return GWCard {
             GWSectionHeader(title: "Skills")
+            ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(values, id: \.self) { id in
                     if let skill = detail.skills[id] {
@@ -904,6 +963,7 @@ private struct BuildSection: View {
                 }
             }
             .padding(.top, 12)
+            }
         }
     }
 }
@@ -1007,7 +1067,7 @@ struct CharacterInventorySection: View {
                                 HStack {
                                     GWItemIcon(item: item, size: 38)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.name)
+                                        Text(GWPresentation.itemName(item))
                                         if pricePreference != .off {
                                             OwnedItemPriceLine(item: item, quantity: slot.count, compact: false)
                                         }
@@ -1039,7 +1099,7 @@ struct CharacterInventorySection: View {
                         .frame(maxWidth: 76)
                 }
             }
-            .accessibilityLabel("\(item.name), quantity \(slot.count)")
+            .accessibilityLabel("\(GWPresentation.itemName(item)), quantity \(slot.count)")
             .accessibilityIdentifier("inventory.item.\(item.name)")
         } else {
             RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.45)).frame(width: 52, height: 52)

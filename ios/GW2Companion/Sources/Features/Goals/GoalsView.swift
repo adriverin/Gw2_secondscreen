@@ -7,14 +7,16 @@ struct GoalsView: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var sessions: SessionStore
     @EnvironmentObject private var navigation: AppNavigation
+    @State private var availableWidth: CGFloat = 0
+    private var usesSplit: Bool { sizeClass == .regular && (availableWidth == 0 || availableWidth >= 800) }
     @State private var showingAddGoal = false
     @State private var showingArchive = false
 
     var body: some View {
-        Group {
-            if sizeClass == .regular {
+        GeometryReader { geometry in
+            if sizeClass == .regular && geometry.size.width >= 800 {
                 HStack(spacing: 0) {
-                    goalList
+                    NavigationStack { goalList }
                         .frame(minWidth: 285, idealWidth: 320, maxWidth: 360)
                     Divider()
                     if let id = store.selectedGoalID {
@@ -29,6 +31,8 @@ struct GoalsView: View {
                 NavigationStack { goalList }
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
+        .background(GWPalette.background)
         .sheet(isPresented: $showingAddGoal) { AddGoalView() }
         .task {
             store.setAccountScope(account.account?.id)
@@ -44,8 +48,17 @@ struct GoalsView: View {
         }
     }
 
+    private func selectedGoalRow(_ goal: PlayerGoal) -> some View {
+        Button { store.selectedGoalID = goal.id } label: {
+            GoalRow(goal: goal)
+                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+            .listRowBackground(store.selectedGoalID == goal.id ? GWPalette.interactive : Color.clear)
+            .accessibilityAddTraits(store.selectedGoalID == goal.id ? .isSelected : [])
+    }
+
     private var goalList: some View {
-        List(selection: $store.selectedGoalID) {
+        List {
             Section {
                 if store.activeGoals.isEmpty {
                     ContentUnavailableView(
@@ -53,8 +66,8 @@ struct GoalsView: View {
                         description: Text("Track an achievement, plan a craft, plan a legendary, or add a custom checklist."))
                 } else {
                     ForEach(store.activeGoals) { goal in
-                        if sizeClass == .regular {
-                            GoalRow(goal: goal).tag(goal.id)
+                        if usesSplit {
+                            selectedGoalRow(goal)
                         } else {
                             NavigationLink { GoalDetailView(goalID: goal.id) } label: { GoalRow(goal: goal) }
                         }
@@ -65,8 +78,8 @@ struct GoalsView: View {
             if !store.pausedGoals.isEmpty {
                 Section("Paused") {
                     ForEach(store.pausedGoals) { goal in
-                        if sizeClass == .regular {
-                            GoalRow(goal: goal).tag(goal.id)
+                        if usesSplit {
+                            selectedGoalRow(goal)
                         } else {
                             NavigationLink { GoalDetailView(goalID: goal.id) } label: { GoalRow(goal: goal) }
                         }
@@ -78,8 +91,8 @@ struct GoalsView: View {
                 Section {
                     DisclosureGroup("Completed & Archived", isExpanded: $showingArchive) {
                         ForEach(store.archivedGoals) { goal in
-                            if sizeClass == .regular {
-                                GoalRow(goal: goal).tag(goal.id)
+                            if usesSplit {
+                                selectedGoalRow(goal)
                             } else {
                                 NavigationLink { GoalDetailView(goalID: goal.id) } label: { GoalRow(goal: goal) }
                             }
@@ -118,12 +131,16 @@ private struct GoalRow: View {
                 Image(systemName: symbol).foregroundStyle(GWPalette.accent)
                 Text(goal.title).font(.headline).lineLimit(2)
                 Spacer()
-                if goal.priority == .high { Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange) }
+                if goal.priority == .high { Image(systemName: "exclamationmark.circle.fill").foregroundStyle(GWPalette.warning) }
             }
             HStack {
                 Text(goal.type.title).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Text(compactProgress(progress)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            if let plan = store.legendaryPlan(for: goal, account: account),
+               let next = plan.topLevel.first(where: { !$0.isComplete }) {
+                Text("Next: \(next.name)").font(.caption).foregroundStyle(.secondary)
             }
             if progress.total > 0 {
                 ProgressView(value: progress.fraction)
@@ -146,7 +163,7 @@ private struct GoalRow: View {
     private func compactProgress(_ progress: GoalProgress) -> String {
         if case .legendary = goal.type {
             if store.legendaryPlan(for: goal, account: account)?.ownership != .notOwned { return progress.label }
-            return "\(progress.ready) / \(progress.total)"
+            return "\(progress.ready) / \(progress.total) major requirements"
         }
         return progress.label
     }
@@ -160,6 +177,8 @@ struct GoalDetailView: View {
     @EnvironmentObject private var navigation: AppNavigation
     @EnvironmentObject private var telemetry: TelemetryStore
     @EnvironmentObject private var sessions: SessionStore
+    @AppStorage("developer.mode.enabled") private var developerMode = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedRequirement: FlattenedRequirement?
     @State private var linkBitIndex: Int?
     @State private var showingLinkPicker = false
@@ -181,17 +200,18 @@ struct GoalDetailView: View {
                                 goal: goal, onInspectPrice: { item, quantity in
                                     priceInspection = PriceInspection(item: item, quantity: quantity)
                                 }, onWork: {
-                                    withAnimation { proxy.scrollTo("goal.actions", anchor: .top) }
+                                    withAnimation(GWPresentation.motion(reduced: reduceMotion)) { proxy.scrollTo("goal.actions", anchor: .top) }
                                 })
                         case .custom: customContent(goal)
                         }
                         actionsSection(goal)
                             .id("goal.actions")
-                        calculationSection(goal)
+                        if GWPresentation.developerToolsAvailable && developerMode { calculationSection(goal) }
                     }
                     .padding()
                     .frame(maxWidth: 850, alignment: .topLeading)
                 }
+                .background(GWPalette.background)
                 .navigationTitle(goal.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { statusMenu(goal) }
@@ -238,7 +258,7 @@ struct GoalDetailView: View {
             if progress.total > 0 {
                 ProgressView(value: progress.fraction).accessibilityLabel(progress.label)
             }
-            if let source = goal.sourceReference {
+            if GWPresentation.developerToolsAvailable && developerMode, let source = goal.sourceReference {
                 Label(source.provenance.title, systemImage: "checkmark.shield")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -323,7 +343,7 @@ struct GoalDetailView: View {
             if plan.targetAlreadyOwned {
                 GWCard {
                     Label("Target already owned", systemImage: "checkmark.seal.fill")
-                        .font(.headline).foregroundStyle(.green)
+                        .font(.headline).foregroundStyle(GWPalette.success)
                     Text("ArenaNet account holdings contain \(plan.targetOwnedQuantity) of the target. This does not reveal how it was obtained.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -339,7 +359,7 @@ struct GoalDetailView: View {
             GWSectionHeader(title: "Missing Materials", subtitle: "Consolidated globally; account supply is allocated once")
             let missing = plan.flattenedRequirements.filter { $0.missingQuantity > 0 }
             if missing.isEmpty {
-                GWCard { Label("All flattened requirements are ready", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
+                GWCard { Label("All flattened requirements are ready", systemImage: "checkmark.circle.fill").foregroundStyle(GWPalette.success) }
             } else {
                 ForEach(missing) { requirement in
                     Button { selectedRequirement = requirement } label: {
@@ -462,20 +482,23 @@ struct GoalDetailView: View {
                 if case .legendary = goal.type { return "What should I work on?" }
                 return "What Can I Do Now?"
             }(),
-            subtitle: "Conservative, deterministic suggestions")
+            subtitle: "Make progress with what you have")
         ForEach(actions.prefix(6)) { action in
             GWCard {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(action.title).font(.headline)
-                        Text(action.reason).font(.caption).foregroundStyle(.secondary)
-                        Text("Why this? • \(action.confidence.rawValue) • score \(action.score)")
-                            .font(.caption2).foregroundStyle(.tertiary)
+                        DisclosureGroup("Why this?") {
+                            Text(action.reason).font(.caption).foregroundStyle(.secondary)
+                            if GWPresentation.developerToolsAvailable && developerMode {
+                                Text("\(action.confidence.rawValue) · score \(action.score)").font(.caption)
+                            }
+                        }.font(.caption)
                     }
                     Spacer()
                     if [.navigate, .gather].contains(action.type), !action.objectiveIDs.isEmpty {
                         Button("Navigate") { navigate(action, goal: goal) }
-                            .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                            .buttonStyle(GWPrimaryButtonStyle())
                     } else if action.type == .buy, let itemID = action.itemID {
                         Button("Price") {
                             let item = store.craftableItems[itemID]
@@ -492,11 +515,11 @@ struct GoalDetailView: View {
                                 ?? 1
                             priceInspection = PriceInspection(item: item, quantity: max(1, quantity))
                         }
-                        .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                        .buttonStyle(GWPrimaryButtonStyle())
                     } else if action.type == .craft, let itemID = action.itemID,
                               let item = store.craftableItems[itemID] ?? store.achievementItems[itemID] {
                         Button("Plan") { store.addCraftingGoal(item: item, quantity: 1, priority: goal.priority) }
-                            .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                            .buttonStyle(GWPrimaryButtonStyle())
                     }
                 }
             }
@@ -608,7 +631,14 @@ struct GoalDetailView: View {
         let skill = capability.disciplineSatisfied
             ? "Can craft: \(discipline) \(capability.highestRating) • \(capability.characterName ?? "account")"
             : "Requires \(discipline) \(capability.requiredRating); highest \(capability.highestRating)"
-        return "\(skill) • recipe \(capability.recipeAvailability.rawValue)"
+        let recipe: String
+        switch capability.recipeAvailability {
+        case .known: recipe = "Recipe unlocked"
+        case .autoLearned: recipe = "Recipe learned automatically"
+        case .locked: recipe = "Recipe not unlocked"
+        case .unknown: recipe = "Recipe unlock unavailable"
+        }
+        return "\(skill) · \(recipe)"
     }
 }
 
@@ -651,7 +681,7 @@ private struct CraftRequirementTree: View {
                 }
                 if !node.issues.isEmpty {
                     Text("• \(node.issues.count) notice\(node.issues.count == 1 ? "" : "s")")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(GWPalette.warning)
                 }
             }
             .font(.caption2)
@@ -714,10 +744,10 @@ struct RequirementDetailView: View {
                     Section("Trading Post") {
                         LabeledContent("Status", value: presentation.detailStatus)
                         if let unit = presentation.unitCopper {
-                            LabeledContent("Lowest sell offer", value: "\(CoinAmount(copperValue: unit).formatted) each")
+                            LabeledContent("Lowest sell offer", value: "\(CoinAmount(copperValue: unit).compactFormatted) each")
                         }
                         if let buyNow = presentation.buyNowCopper {
-                            LabeledContent("Estimated buy-now", value: CoinAmount(copperValue: buyNow).formatted)
+                            LabeledContent("Estimated buy-now", value: CoinAmount(copperValue: buyNow).compactFormatted)
                         }
                         if let updated = presentation.updatedAt {
                             LabeledContent("Updated", value: updated.formatted(date: .omitted, time: .shortened))
@@ -745,7 +775,7 @@ struct RequirementDetailView: View {
                             if let description = method.description {
                                 Text(description).font(.caption).foregroundStyle(.secondary)
                             }
-                            Text("\(method.source.displayTitle) • \(method.coverage.rawValue) coverage")
+                            Text(method.coverage == .partial ? "Some acquisition steps may be missing" : method.source.displayTitle)
                                 .font(.caption2).foregroundStyle(.tertiary)
                         }
                     }

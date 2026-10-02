@@ -4,11 +4,18 @@ struct LayerPanelView: View {
     @EnvironmentObject private var gathering: GatheringStore
     @EnvironmentObject private var objectives: MapObjectiveStore
     @EnvironmentObject private var telemetry: TelemetryStore
+    @AppStorage(MapDetailMode.storageKey) private var mapDetailRaw = MapDetailMode.balanced.rawValue
+    @AppStorage("developer.mode.enabled") private var developerMode = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Map Detail") {
+                    Picker("Detail", selection: $mapDetailRaw) {
+                        ForEach(MapDetailMode.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                }
                 Section("Quick filters") {
                     Picker("Preset", selection: presetBinding) {
                         ForEach(ObjectiveFilterPreset.allCases) { Text($0.title).tag($0) }
@@ -56,6 +63,7 @@ struct LayerPanelView: View {
                     Text("Visited means this companion observed the player near an objective. Marked complete is a separate manual state and is not Guild Wars 2 API completion.")
                 }
 #if DEBUG
+                if GWPresentation.developerToolsAvailable && developerMode {
                 Section("Developer diagnostics") {
                     LabeledContent("Map ID", value: objectives.mapMetadata.map { String($0.id) } ?? "—")
                     LabeledContent("Floor", value: objectives.mapMetadata.map { String($0.defaultFloor) } ?? "—")
@@ -73,6 +81,7 @@ struct LayerPanelView: View {
                             LabeledContent("Bearing", value: "\(ObjectiveDistanceEngine.bearing(from: point, to: target.coordinate).formatted(.number.precision(.fractionLength(1))))°")
                         }
                     }
+                }
                 }
 #endif
             }

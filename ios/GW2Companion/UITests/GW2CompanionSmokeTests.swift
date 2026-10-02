@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 @MainActor
 final class GW2CompanionSmokeTests: XCTestCase {
@@ -245,3 +246,216 @@ final class GW2CompanionSmokeTests: XCTestCase {
         row.tap()
     }
 }
+
+/// Review artifacts accompany stable interaction assertions; no pixel snapshots are asserted.
+@MainActor
+final class PhaseSevenProductUITests: XCTestCase {
+    func testCharacterTabsRemainUsable() {
+        XCUIDevice.shared.orientation = UIDevice.current.userInterfaceIdiom == .pad ? .landscapeLeft : .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-smoke", "--phase2-fixtures", "--phase6h-fixtures", "--phase7-preview"]
+        app.launch()
+        open("Characters", app: app)
+        app.staticTexts["Andrea"].firstMatch.press(forDuration: 0.1)
+        XCTAssertTrue(app.buttons["character.section.build"].waitForExistence(timeout: 5))
+        app.buttons["character.section.build"].press(forDuration: 0.1)
+        XCTAssertTrue(app.staticTexts["Skills"].waitForExistence(timeout: 5))
+        capture("Character Build focused", app: app)
+        app.buttons["character.section.stats"].press(forDuration: 0.1)
+        XCTAssertTrue(app.staticTexts["Estimated static stats"].waitForExistence(timeout: 5))
+        capture("Character Stats focused", app: app)
+    }
+
+    func testDesignReviewAndCoreInteractions() {
+        let app = XCUIApplication()
+        let pad = UIDevice.current.userInterfaceIdiom == .pad
+        XCUIDevice.shared.orientation = pad ? .landscapeLeft : .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        app.launchArguments = ["--ui-smoke", "--phase2-fixtures", "--phase6h-fixtures", "--phase7-preview", "--simulate-telemetry"]
+        app.launch()
+
+        open("Today", app: app)
+        XCTAssertTrue(app.buttons["today.planSession"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Daily,")).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Weekly,")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["Data source"].exists)
+        capture("Today", app: app)
+        let quickWin = app.staticTexts["Claim reward in game"].firstMatch
+        if quickWin.exists {
+            quickWin.press(forDuration: 0.1)
+            XCTAssertTrue(app.staticTexts["Claim this reward inside Guild Wars 2. Rewards are claimed in game."].waitForExistence(timeout: 3))
+            app.navigationBars.buttons.element(boundBy: 0).press(forDuration: 0.1)
+        }
+
+        open("Map", app: app)
+        let map = app.otherElements["map.camera"]
+        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        capture("Live Map", app: app)
+        map.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.42)).press(forDuration: 0.1)
+        XCTAssertTrue(app.buttons["map.chrome.sidebar"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["map.chrome.navigator"].exists)
+        capture("Immersive Map", app: app)
+        app.buttons["map.chrome.sidebar"].press(forDuration: 0.1)
+
+        open("Characters", app: app)
+        let roster = app.buttons["character.roster.Andrea"]
+        let andrea = app.staticTexts["Andrea"].firstMatch
+        XCTAssertTrue(roster.waitForExistence(timeout: 4) || andrea.waitForExistence(timeout: 4))
+        capture("Characters", app: app)
+        if roster.exists { roster.press(forDuration: 0.1) } else { andrea.press(forDuration: 0.1) }
+        XCTAssertTrue(app.buttons["character.section.equipment"].waitForExistence(timeout: 4))
+        capture("Character detail", app: app)
+        app.buttons["character.section.build"].press(forDuration: 0.1)
+        XCTAssertTrue(app.buttons["character.section.build"].waitForExistence(timeout: 3))
+        if !app.staticTexts["Skills"].exists { app.scrollViews["character.profile"].swipeUp() }
+        XCTAssertTrue(app.staticTexts["Skills"].waitForExistence(timeout: 3))
+        app.scrollViews["character.profile"].swipeDown()
+        capture("Character build", app: app)
+        app.buttons["character.section.stats"].press(forDuration: 0.1)
+        XCTAssertTrue(app.staticTexts["Estimated static stats"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["Character Stat Audit"].exists)
+        let calculation = app.buttons["stats.calculationDetails"]
+        if !calculation.isHittable { app.scrollViews["character.profile"].swipeUp() }
+        XCTAssertTrue(calculation.exists)
+        calculation.press(forDuration: 0.1)
+        app.scrollViews["character.profile"].swipeDown()
+        capture("Character stats", app: app)
+        app.buttons["character.section.inventory"].press(forDuration: 0.1)
+        XCTAssertTrue(app.staticTexts["Starter Backpack"].waitForExistence(timeout: 3) || app.staticTexts["Bag 1"].exists)
+
+        open("Inventory", app: app)
+        for section in ["bank", "materials", "shared", "all"] {
+            XCTAssertTrue(app.buttons["inventory.section.\(section)"].waitForExistence(timeout: 3))
+            app.buttons["inventory.section.\(section)"].press(forDuration: 0.1)
+        }
+        capture("Inventory", app: app)
+        let ore = app.buttons["inventory.item.Mithril Ore"].firstMatch
+        XCTAssertTrue(ore.waitForExistence(timeout: 3))
+        ore.press(forDuration: 0.1)
+        XCTAssertTrue(app.navigationBars["Item"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Total"].exists)
+        capture("Item detail", app: app)
+        app.buttons["Done"].press(forDuration: 0.1)
+
+        open("Goals", app: app)
+        if !app.staticTexts["legendary.primaryProgress"].waitForExistence(timeout: 3) {
+            app.staticTexts["Twilight"].firstMatch.press(forDuration: 0.1)
+        }
+        XCTAssertTrue(app.staticTexts["legendary.primaryProgress"].waitForExistence(timeout: 5))
+        capture("Legendary Twilight", app: app)
+        let mastery = app.buttons["legendary.requirement.19674"]
+        if !mastery.isHittable { app.swipeUp() }
+        XCTAssertTrue(mastery.exists)
+        mastery.press(forDuration: 0.1)
+        XCTAssertEqual(mastery.value as? String, "Expanded")
+        mastery.press(forDuration: 0.1)
+        XCTAssertEqual(mastery.value as? String, "Collapsed")
+
+        open("Today", app: app)
+        app.buttons["today.planSession"].press(forDuration: 0.1)
+        XCTAssertTrue(app.buttons["Create Plan"].waitForExistence(timeout: 5))
+        app.buttons["Create Plan"].press(forDuration: 0.1)
+        XCTAssertTrue(app.buttons["Start Session"].waitForExistence(timeout: 5))
+        capture("Session Planner", app: app)
+        app.buttons["Start Session"].press(forDuration: 0.1)
+        XCTAssertTrue(app.navigationBars["Your Session"].waitForExistence(timeout: 3))
+        capture("Active Session", app: app)
+    }
+
+    func testSupportingScreensAndOnboarding() {
+        XCUIDevice.shared.orientation = UIDevice.current.userInterfaceIdiom == .pad ? .landscapeLeft : .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-smoke", "--phase2-fixtures", "--phase7-preview",
+                               "-wallet.allExpanded.v1.fixture_account", "NO"]
+        app.launch()
+        open("Account", app: app)
+        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
+        capture("Account and Wallet", app: app)
+        let currencies = app.buttons["All Currencies"].firstMatch
+        for _ in 0..<4 {
+            if currencies.exists { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(currencies.waitForExistence(timeout: 3))
+        XCTAssertEqual(currencies.value as? String, "Collapsed")
+        currencies.tap()
+        XCTAssertEqual(currencies.value as? String, "Expanded")
+        capture("Wallet expanded", app: app)
+        open("Settings", app: app)
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        capture("Settings", app: app)
+        XCTAssertFalse(app.buttons["UI Gallery"].exists)
+        app.terminate()
+        app.launchArguments = ["--phase2-fixtures", "--phase7-preview", "-onboarding.completed.v1", "NO"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 5))
+        capture("Onboarding welcome", app: app)
+        app.buttons["Get Started"].press(forDuration: 0.1)
+        XCTAssertTrue(app.secureTextFields["ArenaNet API key"].waitForExistence(timeout: 5))
+        capture("Onboarding account", app: app)
+        app.buttons["Skip for Now"].press(forDuration: 0.1)
+        XCTAssertTrue(app.buttons["Enter Details Manually"].waitForExistence(timeout: 5))
+        capture("Onboarding PC", app: app)
+        app.buttons["Skip for Now"].press(forDuration: 0.1)
+    }
+
+    private func open(_ name: String, app: XCUIApplication) {
+        let sidebar = app.buttons["sidebar.\(name.lowercased())"]
+        if sidebar.exists && sidebar.isHittable { sidebar.press(forDuration: 0.1); return }
+        if app.tabBars.buttons[name].exists { app.tabBars.buttons[name].press(forDuration: 0.1); return }
+        if app.tabBars.buttons["More"].exists {
+            app.tabBars.buttons["More"].press(forDuration: 0.1)
+            let more = app.buttons["more.\(name.lowercased())"]
+            XCTAssertTrue(more.waitForExistence(timeout: 3)); more.press(forDuration: 0.1); return
+        }
+        let restore = app.buttons["map.chrome.sidebar"]
+        if restore.exists { restore.press(forDuration: 0.1) }
+        XCTAssertTrue(sidebar.waitForExistence(timeout: 3)); sidebar.press(forDuration: 0.1)
+    }
+
+    private func capture(_ name: String, app: XCUIApplication) {
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "Phase 7 \(UIDevice.current.userInterfaceIdiom == .pad ? "iPad landscape" : "iPhone") · \(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+}
+
+
+#if !DEBUG
+@MainActor
+final class PhaseSevenReleaseUITests: XCTestCase {
+    func testReleaseHidesDeveloperToolsEvenWithSavedPreference() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-smoke", "--developer-mode"]
+        app.launch()
+        let sidebar = app.buttons["sidebar.settings"]
+        if sidebar.waitForExistence(timeout: 3) {
+            sidebar.tap()
+        } else {
+            app.tabBars.buttons["More"].tap()
+            app.buttons["Settings"].tap()
+        }
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        app.swipeUp()
+        app.swipeUp()
+        let version = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "GW2 Companion")).firstMatch
+        if version.exists && version.isHittable {
+            for _ in 0..<7 { version.tap() }
+        }
+        XCTAssertFalse(app.staticTexts["Developer"].exists)
+        XCTAssertFalse(app.buttons["UI Gallery"].exists)
+        XCTAssertFalse(app.buttons["settings.developer.qa"].exists)
+        XCTAssertFalse(app.buttons["Map Calibration"].exists)
+        XCTAssertFalse(app.buttons["Start Telemetry Simulation"].exists)
+        app.swipeDown()
+        app.swipeDown()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Gaming PC")).firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Connect to PC"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Developer"].exists)
+        XCTAssertFalse(app.buttons["Start simulated movement"].exists)
+    }
+}
+#endif

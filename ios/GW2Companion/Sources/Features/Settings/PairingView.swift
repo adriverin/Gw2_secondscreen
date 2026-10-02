@@ -31,7 +31,7 @@ struct PairingView: View {
                         .textInputAutocapitalization(.never)
                     Button("Connect to PC") { connect() }
                 }
-                if UserDefaults.standard.bool(forKey: "developer.mode.enabled") {
+                if GWPresentation.developerToolsAvailable && UserDefaults.standard.bool(forKey: "developer.mode.enabled") {
                 Section("Developer") {
                     if telemetry.isSimulating {
                         Button("Stop simulated movement") { telemetry.stopSimulation(); dismiss() }

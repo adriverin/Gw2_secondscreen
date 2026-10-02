@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountView: View {
     @EnvironmentObject private var store: AccountStore
     @EnvironmentObject private var navigation: AppNavigation
+    @State private var permissionsExpanded = false
     @State private var localError: String?
     @State private var walletSearch = ""
     @State private var walletPinRevision = 0
@@ -13,7 +14,7 @@ struct AccountView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if store.connectionState == .loading && store.tokenInfo == nil { ProgressView("Loading account…") }
+                if store.connectionState == .loading && store.tokenInfo == nil { GWLoadingRows() }
                 else if store.connectionState == .disconnected { connectView }
                 else { dashboard }
             }
@@ -31,16 +32,20 @@ struct AccountView: View {
 
     private var dashboard: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
+            // Wallet disclosures change section height; keep their scroll layout stable.
+            VStack(alignment: .leading, spacing: 20) {
                 if let error = store.errorMessage {
                     GWErrorBanner(message: error, stale: store.isStale) { Task { await store.refresh() } }
                 }
                 identityCard
-                if !missingPermissions.isEmpty { limitedPermissionsCard }
                 summaryGrid
                 if store.permissions.contains(.wallet) { walletCard }
                 inventoryCard
-                permissionsCard
+                if !missingPermissions.isEmpty { limitedPermissionsCard }
+                DisclosureGroup("Account access", isExpanded: $permissionsExpanded) {
+                    permissionsCard
+                    Button("Replace API Key") { showingReplaceKey = true }.frame(minHeight: 44)
+                }
                 Button("Disconnect Account", role: .destructive) {
                     Task {
                         do { try await store.disconnect() }
@@ -51,6 +56,7 @@ struct AccountView: View {
             }
             .frame(maxWidth: 920).padding().frame(maxWidth: .infinity)
         }
+        .background(GWPalette.background)
         .refreshable { await store.refresh() }
         .toolbar {
             if store.isRefreshing { ToolbarItem(placement: .topBarTrailing) { ProgressView() } }
@@ -59,7 +65,7 @@ struct AccountView: View {
     }
 
     private var identityCard: some View {
-        GWCard {
+        GWPlainSection {
             HStack(spacing: 14) {
                 Image(systemName: "person.crop.circle.fill").font(.system(size: 48)).foregroundStyle(GWPalette.accent)
                 Text(store.account?.name ?? store.tokenInfo?.name ?? "Guild Wars 2 Account")
@@ -100,15 +106,14 @@ struct AccountView: View {
             ? WalletPresentation.ordered(wallet: store.wallet, currencies: store.currencies, query: walletSearch)
             : []
         _ = walletPinRevision
-        return GWCard {
+        return GWPlainSection {
             GWSectionHeader(title: "Wallet", subtitle: "\(store.wallet.count) currencies")
-            TextField("Search currencies", text: $walletSearch)
-                .textFieldStyle(.roundedBorder).padding(.vertical, 8)
+            GWSearchField(prompt: "Search currencies", text: $walletSearch).padding(.vertical, 8)
             if searching {
-                Text("SEARCH RESULTS").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 4)
+                Text("Search results").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 4)
                 ForEach(searchResults) { entry in walletRow(entry, allowPin: true) }
             } else {
-                Text("PINNED / COMMON").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 4)
+                Text("Pinned").font(.caption2.bold()).foregroundStyle(.secondary).padding(.top, 4)
                 if pinned.isEmpty {
                     Text("Pin currencies you use often.").font(.caption).foregroundStyle(.secondary)
                 } else {
@@ -118,12 +123,13 @@ struct AccountView: View {
                     allCurrenciesExpanded.wrappedValue.toggle()
                 } label: {
                     HStack {
-                        Text("ALL CURRENCIES")
+                        Text("All currencies")
                             .font(.caption2.bold()).foregroundStyle(.secondary)
                         Spacer()
                         Image(systemName: walletAllCurrenciesExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption.bold()).foregroundStyle(.secondary)
                     }
+                    .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -135,7 +141,6 @@ struct AccountView: View {
                 }
             }
         }
-        .accessibilityIdentifier("account.wallet")
         .onAppear { restoreWalletDisclosurePreference() }
         .onChange(of: store.account?.id) { _, _ in restoreWalletDisclosurePreference() }
     }
@@ -159,23 +164,12 @@ struct AccountView: View {
             CachedAsyncImage(url: currency?.icon) { Circle().fill(.quaternary) }
                 .frame(width: 32, height: 32)
             VStack(alignment: .leading) {
-                Text(currency?.name ?? "Currency \(entry.id)")
+                Text(currency?.name ?? "Currency details unavailable")
                 if !walletSearch.isEmpty, let description = currency?.description, !description.isEmpty {
                     Text(description.gwPlainText).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
             Spacer()
-            if allowPin {
-                Button {
-                    WalletPresentation.togglePin(entry.id, accountID: store.account?.id)
-                    walletPinRevision += 1
-                } label: {
-                    Image(systemName: WalletPresentation.isPinned(entry.id, accountID: store.account?.id) ? "pin.fill" : "pin")
-                        .font(.caption)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(WalletPresentation.isPinned(entry.id, accountID: store.account?.id) ? "Unpin currency" : "Pin currency")
-            }
             if entry.id == 1 { CoinAmountView(value: entry.value) }
             else { Text(entry.value.formatted()).monospacedDigit().bold() }
         }
@@ -251,21 +245,13 @@ struct AccountView: View {
     }
 
     private var limitedPermissionsCard: some View {
-        GWCard {
-            Label("Connected with limited permissions", systemImage: "exclamationmark.circle.fill")
-                .font(.headline).foregroundStyle(.orange)
-            Text("Unrelated features remain available. Missing permissions:")
-                .font(.subheadline).foregroundStyle(.secondary)
-            ForEach(missingPermissions) { permission in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(permission.title).bold()
-                    Text(permission.affectedFeatures).font(.caption).foregroundStyle(.secondary)
-                }
-                .padding(.top, 5)
-            }
-            Button("Replace API Key") { showingReplaceKey = true }.buttonStyle(.bordered)
-                .padding(.top, 6)
-        }
+        HStack(spacing: GWSpacing.small) {
+            Label("\(missingPermissions.count) permissions not enabled", systemImage: "key")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Review access") { permissionsExpanded = true }
+                .frame(minHeight: 44)
+        }.font(.subheadline)
     }
 
     private func accountAge(created: String) -> Int? {
@@ -286,10 +272,9 @@ private struct SummaryTile: View {
     let detail: String
     let symbol: String
     var body: some View {
-        GWCard {
-            Image(systemName: symbol).foregroundStyle(GWPalette.accent).font(.title2)
+        GWPlainSection {
+            Label(title, systemImage: symbol).foregroundStyle(.secondary).font(.caption)
             Text(value).font(.title2.bold()).monospacedDigit().padding(.top, 5)
-            Text(title).font(.headline)
             Text(detail).font(.caption).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)

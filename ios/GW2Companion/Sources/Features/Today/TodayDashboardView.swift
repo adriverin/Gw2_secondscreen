@@ -6,27 +6,40 @@ struct TodayDashboardView: View {
     @EnvironmentObject private var goals: GoalStore
     @EnvironmentObject private var telemetry: TelemetryStore
     @EnvironmentObject private var sessions: SessionStore
-    @State private var filter: TodayFilter = .all
+    @State private var availableWidth: CGFloat = 0
+    @State private var showingSession = false
+    @State private var showingWideSession = false
     @State private var showingRewards = false
     @State private var showingDiagnostics = false
     @AppStorage("developer.mode.enabled") private var developerMode = false
 
     var body: some View {
         NavigationStack {
-            List {
-                statusSection
-                summarySection
-                claimableSection
-                quickWinsSection
-                planningSection
-                opportunitySections
-                if today.snapshot?.hasProgressionPermission == false { permissionSection }
+            GeometryReader { geometry in
+                if geometry.size.width >= 800 {
+                    HStack(alignment: .top, spacing: GWSpacing.section) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: GWSpacing.large) { statusSection; summaryContent }
+                                .padding(GWSpacing.section)
+                        }.frame(width: 340)
+                        List { quickWinsSection; opportunitySections; if today.snapshot?.hasProgressionPermission == false { permissionSection } }
+                            .listStyle(.plain).scrollContentBackground(.hidden)
+                    }
+                } else {
+                    List { statusSection; summarySection; quickWinsSection; opportunitySections; if today.snapshot?.hasProgressionPermission == false { permissionSection } }
+                        .listStyle(.plain).scrollContentBackground(.hidden)
+                }
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(GWPalette.background)
             .navigationTitle("Today")
+            .navigationBarTitleDisplayMode(.inline)
             .refreshable { await today.refresh() }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    if developerMode {
+                    if GWPresentation.developerToolsAvailable && developerMode {
                         Button { showingDiagnostics = true } label: { Image(systemName: "ladybug") }
                             .accessibilityLabel("Today diagnostics")
                     }
@@ -35,6 +48,8 @@ struct TodayDashboardView: View {
                         .accessibilityLabel("Refresh Today")
                 }
             }
+            .sheet(isPresented: $showingSession) { SessionPlannerView(isSheet: true) }
+            .fullScreenCover(isPresented: $showingWideSession) { SessionPlannerView(isSheet: true) }
             .sheet(isPresented: $showingRewards) { VaultRewardsView() }
             .sheet(isPresented: $showingDiagnostics) { TodayDiagnosticsView() }
             .task {
@@ -46,75 +61,56 @@ struct TodayDashboardView: View {
 
     @ViewBuilder private var statusSection: some View {
         if today.loadState == .loading && today.snapshot == nil {
-            Section { HStack { ProgressView(); Text("Loading today's account state…") } }
+            GWLoadingRows(count: 2).listRowSeparator(.hidden)
         } else if let error = today.errorMessage {
-            Section {
-                Label(today.isStale ? "Offline • cached Today data" : "Today unavailable", systemImage: "wifi.slash")
-                Text(error).font(.caption).foregroundStyle(.secondary)
-            }
-        } else if today.isStale {
-            Section { Label("Offline • cached Today data", systemImage: "clock.badge.exclamationmark") }
-        }
-        if let updated = today.lastUpdatedAt {
-            Section {
-                LabeledContent("Last updated", value: updated, format: .relative(presentation: .named))
-                LabeledContent("Data source", value: today.dataSource.qaLabel)
-            }
+            GWErrorBanner(message: error, stale: today.isStale) { Task { await today.refresh() } }
+                .listRowSeparator(.hidden)
         }
     }
 
     private var summarySection: some View {
-        Section {
-            if let season = today.snapshot?.season {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("WIZARD'S VAULT").font(.caption2.bold()).foregroundStyle(.secondary)
-                    Text(season.title).font(.headline)
-                }
-            }
-            if let meta = today.snapshot?.dailyMeta {
-                summaryRow(
-                    "Wizard's Vault Daily", value: "\(meta.progress.current) / \(meta.progress.complete)",
-                    symbol: meta.state.isComplete ? "checkmark.circle.fill" : "circle.dotted")
-                    .accessibilityLabel("Wizard's Vault daily, \(meta.progress.current) of \(meta.progress.complete) complete")
-            }
-            if let meta = today.snapshot?.weeklyMeta {
-                summaryRow(
-                    "Weekly", value: "\(meta.progress.current) / \(meta.progress.complete) toward meta",
-                    symbol: meta.state.isComplete ? "checkmark.circle.fill" : "calendar.badge.clock")
-            }
-            summaryRow("Active Goals", value: "\(goals.activeGoals.count)", symbol: "target")
-            summaryRow(
-                "Current Map",
-                value: telemetry.latest?.map.map { "Map \($0.id) • LIVE" } ?? "Not connected",
-                symbol: "map")
-            if let balance = today.snapshot?.astralAcclaimBalance {
-                summaryRow("Astral Acclaim", value: balance.formatted(), symbol: "sparkles")
-            } else {
-                summaryRow("Astral Acclaim", value: "Balance unavailable", symbol: "sparkles")
-            }
-            Button("Browse Vault Rewards") { showingRewards = true }
-        } header: { Text("Today") }
+        Section { summaryContent }.listRowBackground(Color.clear).listRowSeparator(.hidden)
     }
 
-    @ViewBuilder private var claimableSection: some View {
-        let claimable = today.snapshot?.claimable ?? []
-        let claimableMetas = [today.snapshot?.dailyMeta, today.snapshot?.weeklyMeta]
-            .compactMap { $0 }.filter { $0.state.isClaimable }
-        if !claimable.isEmpty || !claimableMetas.isEmpty {
-            Section("Ready to Claim") {
-                ForEach(claimable) { opportunity in
-                    Label(opportunity.title, systemImage: "gift.fill")
-                    Text("Ready to claim in game").font(.caption).foregroundStyle(.orange)
+    private var summaryContent: some View {
+            VStack(alignment: .leading, spacing: GWSpacing.section) {
+                Text(greeting).font(GWTypography.hero)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: GWSpacing.screen) { vaultProgress }
+                    VStack(spacing: GWSpacing.large) { vaultProgress }
                 }
-                ForEach(claimableMetas, id: \.resetScope) { meta in
-                    VStack(alignment: .leading) {
-                        Label("\(meta.resetScope == .daily ? "Daily" : "Weekly") meta reward", systemImage: "gift.fill")
-                        Text("Ready to claim in game").font(.caption).foregroundStyle(.orange)
-                    }
+                if let balance = today.snapshot?.astralAcclaimBalance {
+                    Label("\(balance.formatted()) Astral Acclaim", systemImage: "sparkles")
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
-                Text("Rewards can only be claimed inside Guild Wars 2.")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
+                let ready = (today.snapshot?.claimable.count ?? 0)
+                    + [today.snapshot?.dailyMeta, today.snapshot?.weeklyMeta].compactMap { $0 }.filter { $0.state.isClaimable }.count
+                if ready > 0 { GWBadge(text: "\(ready) READY TO CLAIM", color: GWPalette.success, symbol: "gift.fill") }
+                Button {
+                    if availableWidth >= 800 { showingWideSession = true }
+                    else { showingSession = true }
+                } label: {
+                    Label(sessions.activeSession == nil ? "Plan My Session" : "Open Active Session", systemImage: "play.fill")
+                }.buttonStyle(GWPrimaryButtonStyle()).accessibilityIdentifier("today.planSession")
+                Button("Browse Vault Rewards") { showingRewards = true }.font(.subheadline)
+                if let updated = today.lastUpdatedAt { GWFreshnessLabel(updated: updated, saved: today.isStale) }
+            }.padding(.vertical, GWSpacing.medium)
+    }
+
+    @ViewBuilder private var vaultProgress: some View {
+        if let daily = today.snapshot?.dailyMeta {
+            GWProgressSummary(title: "Daily", current: daily.progress.current, total: daily.progress.complete)
+        }
+        if let weekly = today.snapshot?.weeklyMeta {
+            GWProgressSummary(title: "Weekly", current: weekly.progress.current, total: weekly.progress.complete)
+        }
+    }
+
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: "Good morning"
+        case 12..<18: "Good afternoon"
+        default: "Good evening"
         }
     }
 
@@ -127,49 +123,19 @@ struct TodayDashboardView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(opportunity.state.isClaimable ? "Claim reward in game" : opportunity.title).font(.headline)
                             Text(quickWinReason(opportunity)).font(.caption).foregroundStyle(.secondary)
-                            Text("Why this?").font(.caption2).foregroundStyle(.tertiary)
                         }
                     }
                 }
-            }
-        }
-    }
-
-    private var planningSection: some View {
-        Section {
-            if sessions.activeSession != nil {
-                NavigationLink { SessionPlannerView() } label: {
-                    Label("Open Active Session", systemImage: "play.circle.fill")
-                }
-            } else {
-                NavigationLink { SessionPlannerView() } label: {
-                    Label("Plan My Session", systemImage: "checklist")
-                }
-            }
-        } footer: {
-            Text("The existing deterministic planner combines active goals, Today opportunities, current map, and your preferences.")
+            }.listRowBackground(Color.clear)
         }
     }
 
     @ViewBuilder private var opportunitySections: some View {
-        Section {
-            Picker("Today filter", selection: $filter) {
-                ForEach(TodayFilter.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-        }
         ForEach(groupedOpportunities, id: \.0) { group in
-            Section(group.0) {
-                if group.1.allSatisfy(\.state.isComplete), !group.1.isEmpty {
-                    Label("All supported opportunities complete", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                }
-                ForEach(group.1) { opportunity in
-                    NavigationLink { OpportunityDetailView(opportunity: opportunity) } label: {
-                        OpportunityRow(opportunity: opportunity)
-                    }
-                }
-            }
+            Section {
+                TodayOpportunityGroup(title: group.0, opportunities: group.1,
+                                      initiallyExpanded: group.1.contains { $0.resetScope == .daily })
+            }.listRowBackground(Color.clear).listRowSeparator(.hidden)
         }
     }
 
@@ -181,22 +147,10 @@ struct TodayDashboardView: View {
         }
     }
 
-    private var filtered: [AccountOpportunity] {
-        today.opportunities.filter { value in
-            switch filter {
-            case .all: true
-            case .daily: value.resetScope == .daily
-            case .weekly: value.resetScope == .weekly
-            case .vault: [.wizardVaultDaily, .wizardVaultWeekly, .wizardVaultSpecial].contains(value.type)
-            case .pve: value.activity == .pve
-            }
-        }
-    }
-
     private var groupedOpportunities: [(String, [AccountOpportunity])] {
         OpportunityType.allCases.compactMap { type in
-            let values = filtered.filter { $0.type == type }
-            return values.isEmpty ? nil : (type.title.uppercased(), values)
+            let values = today.opportunities.filter { $0.type == type }
+            return values.isEmpty ? nil : (type.title, values)
         }
     }
 
@@ -210,17 +164,38 @@ struct TodayDashboardView: View {
     }
 
     private func quickWinReason(_ opportunity: AccountOpportunity) -> String {
-        if opportunity.state.isClaimable { return "ArenaNet reports the reward complete and unclaimed." }
+        if opportunity.state.isClaimable { return "Ready to claim in game." }
         if let progress = opportunity.progress { return "Daily objective is \(progress.current) of \(progress.complete) complete." }
         return "Current daily opportunity."
     }
 
-    private func summaryRow(_ title: String, value: String, symbol: String) -> some View {
-        HStack {
-            Label(title, systemImage: symbol)
-            Spacer()
-            Text(value).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
-        }
+
+}
+
+private struct TodayOpportunityGroup: View {
+    let title: String
+    let opportunities: [AccountOpportunity]
+    @State private var expanded: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    init(title: String, opportunities: [AccountOpportunity], initiallyExpanded: Bool) {
+        self.title = title; self.opportunities = opportunities
+        _expanded = State(initialValue: initiallyExpanded)
+    }
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            ForEach(opportunities) { opportunity in
+                NavigationLink { OpportunityDetailView(opportunity: opportunity) } label: {
+                    OpportunityRow(opportunity: opportunity).padding(.vertical, GWSpacing.small)
+                }.tint(.primary)
+            }
+        } label: {
+            HStack {
+                Text(title).font(GWTypography.row)
+                Spacer()
+                Text("\(opportunities.filter { $0.state.isComplete }.count) / \(opportunities.count)")
+                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }.frame(minHeight: 44)
+        }.animation(GWPresentation.motion(reduced: reduceMotion), value: expanded)
     }
 }
 
@@ -238,8 +213,8 @@ private struct OpportunityRow: View {
                     Text("\(progress.current) / \(progress.complete)").font(.caption)
                 }
                 if let acclaim = opportunity.reward?.astralAcclaim { Text("\(acclaim) Astral Acclaim").font(.caption).foregroundStyle(.secondary) }
-                if opportunity.state.isClaimable { Text("Ready to claim in game").font(.caption.bold()).foregroundStyle(.orange) }
-                else if opportunity.state == .completeClaimed { Text("Claimed").font(.caption).foregroundStyle(.green) }
+                if opportunity.state.isClaimable { Text("Ready to claim in game").font(.caption.bold()).foregroundStyle(GWPalette.warning) }
+                else if opportunity.state == .completeClaimed { Text("Claimed").font(.caption).foregroundStyle(GWPalette.success) }
                 else if opportunity.state == .unknown { Text("Account completion unavailable").font(.caption).foregroundStyle(.secondary) }
             }
         }
@@ -272,6 +247,7 @@ private struct OpportunityDetailView: View {
     @EnvironmentObject private var telemetry: TelemetryStore
     @EnvironmentObject private var objectives: MapObjectiveStore
     @EnvironmentObject private var navigation: AppNavigation
+    @AppStorage("developer.mode.enabled") private var developerMode = false
 
     var body: some View {
         List {
@@ -283,7 +259,7 @@ private struct OpportunityDetailView: View {
                 if let map = opportunity.mapName { LabeledContent("Map", value: map) }
             }
             if opportunity.state.isClaimable {
-                Section { Text("Claim this reward inside Guild Wars 2. The public API is read-only for rewards.") }
+                Section { Text("Claim this reward inside Guild Wars 2. Rewards are claimed in game.") }
             }
             Section("Sources") {
                 ForEach(opportunity.provenance) { Text($0.title) }
@@ -321,9 +297,11 @@ private struct OpportunityDetailView: View {
                     }
                 }
             }
+            if GWPresentation.developerToolsAvailable && developerMode {
             Section("Diagnostics") {
                 LabeledContent("Opportunity ID", value: opportunity.id.rawValue)
                 LabeledContent("API identifier", value: opportunity.sourceIdentifier)
+            }
             }
         }
         .navigationTitle(opportunity.title)
@@ -389,6 +367,7 @@ private struct VaultRewardsView: View {
 private struct TodayDiagnosticsView: View {
     @EnvironmentObject private var today: TodayStore
     @EnvironmentObject private var sessions: SessionStore
+    @State private var availableWidth: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -455,11 +434,11 @@ struct TodayCompactView: View {
                     Text("Weekly \(weekly.progress.current) / \(weekly.progress.complete)").font(.caption)
                 }
                 if let claimable = today.snapshot?.diagnostics.claimableCount, claimable > 0 {
-                    Text("\(claimable) ready to claim in game").font(.caption).foregroundStyle(.orange)
+                    Text("\(claimable) ready to claim in game").font(.caption).foregroundStyle(GWPalette.warning)
                 }
                 Button("Plan Session") { navigation.selectedTab = .session }
-                    .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                    .buttonStyle(GWPrimaryButtonStyle())
             }
-        }.padding(12)
+        }.padding(GWSpacing.medium)
     }
 }

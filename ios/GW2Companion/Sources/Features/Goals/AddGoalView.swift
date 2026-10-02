@@ -6,22 +6,33 @@ struct AddGoalView: View {
     var body: some View {
         NavigationStack {
             List {
-                NavigationLink { AchievementBrowserView() } label: {
-                    Label("Achievement", systemImage: "trophy.fill")
+                Section("What do you want to do?") {
+                    NavigationLink { LegendaryBrowserView() } label: {
+                        goalChoice("Legendary", detail: "Build a plan for your next legendary.", symbol: "sparkles.rectangle.stack")
+                    }
+                    NavigationLink { CraftableItemBrowserView() } label: {
+                        goalChoice("Craft Item", detail: "Use your materials to make something.", symbol: "hammer.fill")
+                    }
+                    NavigationLink { AchievementBrowserView() } label: {
+                        goalChoice("Achievement", detail: "Work toward an achievement or collection.", symbol: "trophy.fill")
+                    }
+                    NavigationLink { CustomGoalEditorView() } label: {
+                        goalChoice("Custom Goal", detail: "Keep a personal checklist.", symbol: "checklist")
+                    }
                 }
-                NavigationLink { CraftableItemBrowserView() } label: {
-                    Label("Craft Item", systemImage: "hammer.fill")
-                }
-                NavigationLink { LegendaryBrowserView() } label: {
-                    Label("Legendary", systemImage: "sparkles.rectangle.stack")
-                }
-                NavigationLink { CustomGoalEditorView() } label: {
-                    Label("Custom Goal", systemImage: "checklist")
-                }
-            }
+            }.listStyle(.plain)
             .navigationTitle("Add Goal")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
         }
+    }
+    private func goalChoice(_ title: String, detail: String, symbol: String) -> some View {
+        HStack(spacing: GWSpacing.large) {
+            Image(systemName: symbol).font(.title2).foregroundStyle(title == "Legendary" ? GWPalette.accent : .secondary).frame(width: 36)
+            VStack(alignment: .leading, spacing: GWSpacing.xSmall) {
+                Text(title).font(.headline)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }.padding(.vertical, GWSpacing.medium)
     }
 }
 
@@ -188,7 +199,7 @@ private struct AchievementPreviewView: View {
                         Label(isTracked ? "Tracked" : "Track Goal", systemImage: isTracked ? "checkmark" : "plus")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent).tint(GWPalette.accent).disabled(isTracked)
+                    .buttonStyle(GWPrimaryButtonStyle()).disabled(isTracked)
                 }.padding()
             } else {
                 ProgressView("Loading achievement…").padding()
@@ -229,7 +240,7 @@ private struct CraftableItemBrowserView: View {
                     HStack {
                         GWItemIcon(item: item, size: 40)
                         VStack(alignment: .leading) {
-                            Text(item.name)
+                            Text(GWPresentation.itemName(item))
                             Text("\(store.recipeIndex?.recipesProducing(itemID: item.id).count ?? 0) recipe option(s)")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
@@ -239,7 +250,7 @@ private struct CraftableItemBrowserView: View {
             if query.isEmpty, store.recipeIndex != nil {
                 ContentUnavailableView(
                     "Search Craftable Items", systemImage: "magnifyingglass",
-                    description: Text("Search runs locally over recipe-backed item metadata."))
+                    description: Text("Search crafting items in your saved catalog."))
             }
             if !query.isEmpty, store.searchCraftableItems(query).isEmpty, store.recipeIndex != nil {
                 ContentUnavailableView.search(text: query)
@@ -261,7 +272,7 @@ private struct CraftingGoalEditorView: View {
     var body: some View {
         Form {
             Section {
-                HStack { GWItemIcon(item: item, size: 54); Text(item.name).font(.headline) }
+                HStack { GWItemIcon(item: item, size: 54); Text(GWPresentation.itemName(item)).font(.headline) }
             }
             Section("Target") {
                 Stepper("Quantity: \(quantity)", value: $quantity, in: 1...10_000)

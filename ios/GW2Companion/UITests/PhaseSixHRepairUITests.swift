@@ -37,7 +37,7 @@ final class PhaseSixHRepairUITests: XCTestCase {
         app.launchArguments = ["--ui-smoke", "--phase2-fixtures", "--phase6h-fixtures", "--phase6h-price-race"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Loading item details…"].waitForExistence(timeout: 6))
-        XCTAssertTrue(app.staticTexts["Lowest sell offer"].exists, "Price fixture is already available while metadata is delayed")
+        XCTAssertTrue(app.staticTexts["Buy now · each"].exists, "Price fixture is already available while metadata is delayed")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Phase 6H price before metadata"
         screenshot.lifetime = .keepAlways
@@ -56,7 +56,7 @@ final class PhaseSixHRepairUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Dusk"].exists)
         XCTAssertFalse(app.staticTexts["Trading Post price unavailable"].exists)
         XCTAssertFalse(app.staticTexts["A Trading Post price is not available."].exists)
-        XCTAssertTrue(app.staticTexts["Lowest sell offer"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Buy now · each"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts["Checking Trading Post…"].exists)
     }
 
@@ -66,9 +66,9 @@ final class PhaseSixHRepairUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["Refreshing…"].waitForExistence(timeout: 6))
         XCTAssertTrue(app.staticTexts["Last known price"].exists)
-        XCTAssertTrue(app.staticTexts["Lowest sell offer"].exists)
+        XCTAssertTrue(app.staticTexts["Buy now · each"].exists)
         XCTAssertFalse(app.staticTexts["Trading Post price unavailable"].exists)
         XCTAssertTrue(app.staticTexts["Refreshing…"].waitForNonExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Lowest sell offer"].exists)
+        XCTAssertTrue(app.staticTexts["Buy now · each"].exists)
     }
 }

@@ -104,7 +104,7 @@ struct QAModeView: View {
                     Text(key).font(.caption.monospaced())
                     Spacer()
                     if telemetry.state.qaKey == key {
-                        Text("CURRENT").font(.caption2.bold()).foregroundStyle(.green)
+                        Text("CURRENT").font(.caption2.bold()).foregroundStyle(GWPalette.success)
                     }
                 }
                 .listRowBackground(telemetry.state.qaKey == key ? Color.green.opacity(0.12) : Color.clear)
@@ -182,10 +182,10 @@ struct QAModeView: View {
                 permissionRow(permission.rawValue, account.permissions.contains(permission))
             }
             if !account.permissions.contains(.inventories) {
-                Text("missing inventories").foregroundStyle(.orange)
+                Text("missing inventories").foregroundStyle(GWPalette.warning)
             }
             if !account.permissions.contains(.progression) {
-                Text("missing progression").foregroundStyle(.orange)
+                Text("missing progression").foregroundStyle(GWPalette.warning)
             }
             Text("Limited-key test: create a second ArenaNet key with fewer permissions and replace the current key in Account. The app stores one key. Fixture coverage remains `--phase2-no-inventories` in Debug.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -327,7 +327,7 @@ struct QACheckSummaryRow: View {
             }
             Text(check.requiredAction).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             if result.state == .failed, let severity = result.severity {
-                Text(severity.title).font(.caption2.bold()).foregroundStyle(.orange)
+                Text(severity.title).font(.caption2.bold()).foregroundStyle(GWPalette.warning)
             }
         }
     }

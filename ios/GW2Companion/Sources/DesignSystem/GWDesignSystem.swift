@@ -5,7 +5,30 @@ import UIKit
 
 enum GWPalette {
     static let accent = Color(red: 0.93, green: 0.43, blue: 0.16)
-    static let card = Color.primary.opacity(0.055)
+    static let background = adaptive(light: 0xF5F3F0, dark: 0x101418)
+    static let secondaryBackground = adaptive(light: 0xECEAE7, dark: 0x171D23)
+    static let card = adaptive(light: 0xFFFFFF, dark: 0x1E252C)
+    static let interactive = adaptive(light: 0xE5E7E9, dark: 0x29323B)
+    static let text = Color.primary
+    static let secondaryText = Color.secondary
+    static let mutedText = Color(uiColor: .tertiaryLabel)
+    static let success = Color(uiColor: .systemGreen)
+    static let warning = Color(uiColor: .systemYellow)
+    static let danger = Color(uiColor: .systemRed)
+    static let info = Color(uiColor: .systemCyan)
+    static let mapOverlay = adaptive(light: 0xF5F3F0, dark: 0x171D23).opacity(0.94)
+    static let mapOverlayBorder = Color.primary.opacity(0.12)
+
+    private static func adaptive(light: UInt32, dark: UInt32) -> Color {
+        Color(uiColor: UIColor { traits in
+            let hex = traits.userInterfaceStyle == .dark ? dark : light
+            let base = UIColor(red: CGFloat((hex >> 16) & 255) / 255,
+                               green: CGFloat((hex >> 8) & 255) / 255,
+                               blue: CGFloat(hex & 255) / 255, alpha: 1)
+            return traits.accessibilityContrast == .high
+                ? (traits.userInterfaceStyle == .dark ? base.withAlphaComponent(1) : .white) : base
+        })
+    }
 
     static func profession(_ name: String) -> Color {
         switch name.lowercased() {
@@ -35,19 +58,68 @@ enum GWPalette {
     }
 }
 
+enum GWSpacing {
+    static let xSmall: CGFloat = 4
+    static let small: CGFloat = 8
+    static let medium: CGFloat = 12
+    static let large: CGFloat = 16
+    static let section: CGFloat = 24
+    static let screen: CGFloat = 32
+}
+
+enum GWTypography {
+    static let hero = Font.largeTitle.weight(.bold)
+    static let screen = Font.title2.weight(.bold)
+    static let section = Font.title3.weight(.semibold)
+    static let row = Font.headline
+    static let body = Font.body
+    static let secondary = Font.subheadline
+    static let caption = Font.caption
+    static let numeric = Font.title2.weight(.semibold).monospacedDigit()
+}
+
+enum GWAppearance: String, CaseIterable {
+    case dark, light, system
+    var colorScheme: ColorScheme? { self == .system ? nil : (self == .dark ? .dark : .light) }
+}
+
+enum GWPresentation {
+    /// UI-only gate: Release cannot expose development tools through saved defaults.
+    static var developerToolsAvailable: Bool {
+#if DEBUG
+        true
+#else
+        false
+#endif
+    }
+    static var isDesignReview: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--phase7-preview")
+#else
+        false
+#endif
+    }
+    static func itemName(_ item: ItemMetadata) -> String {
+        item.name == "Item \(item.id)" ? "Item details unavailable" : item.name
+    }
+    static func motion(reduced: Bool) -> Animation? { reduced ? nil : .easeInOut(duration: 0.2) }
+}
+
 struct GWCard<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            content
-        }
-            .padding(16)
+        VStack(alignment: .leading, spacing: GWSpacing.medium) { content }
+            .padding(GWSpacing.large)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(GWPalette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(.primary.opacity(0.08), lineWidth: 1)
-            }
+            .background(GWPalette.card, in: RoundedRectangle(cornerRadius: GWSpacing.large, style: .continuous))
+    }
+}
+
+struct GWPlainSection<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: GWSpacing.medium) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -55,29 +127,138 @@ struct GWSectionHeader: View {
     let title: String
     var subtitle: String?
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased()).font(.caption.bold()).tracking(1.1).foregroundStyle(.secondary)
-            if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.tertiary) }
-        }
-        .accessibilityElement(children: .combine)
+        VStack(alignment: .leading, spacing: GWSpacing.xSmall) {
+            Text(title).font(GWTypography.section).foregroundStyle(.primary)
+            if let subtitle { Text(subtitle).font(GWTypography.caption).foregroundStyle(.secondary) }
+        }.accessibilityElement(children: .combine)
     }
 }
 
 struct GWBadge: View {
     let text: String
-    var color: Color = GWPalette.accent
+    var color: Color = GWPalette.info
     var symbol: String?
-
     var body: some View {
-        HStack(spacing: 4) {
-            if let symbol { Image(systemName: symbol) }
+        HStack(spacing: GWSpacing.xSmall) {
+            if let symbol { Image(systemName: symbol).accessibilityHidden(true) }
             Text(text)
         }
-        .font(.caption2.bold())
+        .font(.caption2.weight(.semibold))
         .foregroundStyle(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(color.opacity(0.14), in: Capsule())
+        .padding(.horizontal, GWSpacing.small).padding(.vertical, GWSpacing.xSmall)
+        .background(color.opacity(0.12), in: Capsule())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct GWPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.font(.headline)
+            .padding(.horizontal, GWSpacing.large).padding(.vertical, GWSpacing.medium)
+            .frame(minHeight: 44)
+            .foregroundStyle(.black)
+            .background(GWPalette.accent, in: RoundedRectangle(cornerRadius: GWSpacing.medium))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.75 : 1) : 0.45)
+    }
+}
+
+struct GWSelectionButtonStyle: ButtonStyle {
+    let selected: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.font(.subheadline.weight(selected ? .semibold : .regular))
+            .padding(.horizontal, GWSpacing.medium).frame(minHeight: 44)
+            .foregroundStyle(selected ? Color.primary : Color.secondary)
+            .background(selected ? GWPalette.interactive : .clear, in: RoundedRectangle(cornerRadius: GWSpacing.medium))
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+struct GWSearchField: View {
+    let prompt: String
+    @Binding var text: String
+    var body: some View {
+        HStack(spacing: GWSpacing.small) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+            TextField(prompt, text: $text).textInputAutocapitalization(.never).autocorrectionDisabled()
+            if !text.isEmpty {
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .frame(minWidth: 44, minHeight: 44).foregroundStyle(.secondary)
+                    .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, GWSpacing.medium).frame(minHeight: 44)
+        .background(GWPalette.interactive, in: RoundedRectangle(cornerRadius: GWSpacing.medium))
+    }
+}
+
+struct GWFreshnessLabel: View {
+    let updated: Date
+    var saved = false
+    var body: some View {
+        HStack(spacing: GWSpacing.xSmall) {
+            if saved { Image(systemName: "clock.arrow.circlepath").accessibilityHidden(true) }
+            Text(saved ? "Saved · updated" : "Updated")
+            Text(updated, style: .relative)
+        }.font(.caption).foregroundStyle(.secondary)
+    }
+}
+
+struct GWLoadingRows: View {
+    var count = 4
+    var body: some View {
+        VStack(spacing: GWSpacing.large) {
+            ForEach(0..<count, id: \.self) { _ in
+                HStack(spacing: GWSpacing.medium) {
+                    RoundedRectangle(cornerRadius: GWSpacing.small).fill(GWPalette.interactive).frame(width: 44, height: 44)
+                    VStack(alignment: .leading, spacing: GWSpacing.small) {
+                        Capsule().fill(GWPalette.interactive).frame(maxWidth: 220).frame(height: 12)
+                        Capsule().fill(GWPalette.interactive).frame(maxWidth: 140).frame(height: 8)
+                    }
+                    Spacer()
+                }
+            }
+        }.padding(GWSpacing.large)
+            .accessibilityElement(children: .ignore).accessibilityLabel("Loading content")
+    }
+}
+
+struct GWProgressSummary: View {
+    let title: String
+    let current: Int
+    let total: Int
+    var body: some View {
+        VStack(alignment: .leading, spacing: GWSpacing.small) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.subheadline).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(current) / \(total)").font(GWTypography.numeric)
+            }
+            ProgressView(value: Double(current), total: Double(max(1, total)))
+                .tint(current >= total && total > 0 ? GWPalette.success : GWPalette.accent)
+        }.accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(title), \(current) of \(total) complete")
+    }
+}
+
+struct GWUIGallery: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: GWSpacing.section) {
+                GWSectionHeader(title: "Your second screen for Tyria", subtitle: "Component gallery")
+                GWCard {
+                    HStack { GWBadge(text: "LIVE", color: GWPalette.success, symbol: "circle.fill"); GWBadge(text: "READY", color: GWPalette.success); GWBadge(text: "SAVED", symbol: "clock") }
+                    HStack { GWBadge(text: "ACCOUNT-BOUND", color: .secondary, symbol: "lock"); GWBadge(text: "MISSING", color: GWPalette.warning) }
+                    GWProgressSummary(title: "Daily", current: 3, total: 4)
+                    CoinAmountView(value: 124218)
+                    Button("Plan My Session") {}.buttonStyle(GWPrimaryButtonStyle())
+                }
+                GWLoadingRows()
+                GWErrorBanner(message: "Some item details aren't available yet", stale: false)
+                GWEmptyState(title: "No active goals", message: "Choose something to work toward.", symbol: "target", actionTitle: "Add Goal", action: {})
+            }.padding(GWSpacing.section).frame(maxWidth: 720)
+        }.navigationTitle("UI Gallery")
     }
 }
 
@@ -107,12 +288,12 @@ struct GWErrorBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: stale ? "clock.arrow.circlepath" : "exclamationmark.triangle.fill")
-            Text(message)
+            Text(stale ? "Using saved data. Pull to refresh when you’re connected." : message)
                 .font(.caption).frame(maxWidth: .infinity, alignment: .leading)
             if let retry { Button("Try Again", action: retry).font(.caption.bold()) }
         }
         .padding(12)
-        .background(.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+        .background(GWPalette.secondaryBackground, in: RoundedRectangle(cornerRadius: GWSpacing.medium))
         .accessibilityElement(children: .combine)
     }
 }
@@ -128,8 +309,8 @@ struct GWItemIcon: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 9))
-        .overlay { RoundedRectangle(cornerRadius: 9).stroke(GWPalette.rarity(item.rarity), lineWidth: 2) }
-        .accessibilityLabel("\(item.name), \(item.rarity)")
+        .overlay { RoundedRectangle(cornerRadius: 9).stroke(GWPalette.rarity(item.rarity).opacity(0.7), lineWidth: 1) }
+        .accessibilityLabel("\(GWPresentation.itemName(item)), \(item.rarity)")
     }
 }
 
@@ -219,5 +400,17 @@ extension String {
                 options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue],
                 documentAttributes: nil) else { return self }
         return value.string.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Display-only conversion through the existing map transformer; navigation thresholds stay in continent units.
+enum GWMapDistancePresentation {
+    static func text(from: ContinentPoint, to: ContinentPoint, metadata: GW2MapMetadata?) -> String {
+        guard let metadata else { return "Distance unavailable" }
+        let transformer = GW2CoordinateTransformer(metadata: metadata)
+        guard let start = try? transformer.mapPoint(from: from),
+              let end = try? transformer.mapPoint(from: to) else { return "Distance unavailable" }
+        let meters = hypot(end.x - start.x, end.y - start.y) / 39.370_078_740_157_48
+        return "\(meters.formatted(.number.precision(.fractionLength(0)))) m"
     }
 }

@@ -11,6 +11,8 @@ struct LiveMapView: View {
     @EnvironmentObject private var sessions: SessionStore
     @EnvironmentObject private var today: TodayStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var availableWidth: CGFloat = 0
     @State private var metadata: GW2MapMetadata?
     @State private var metadataFailed = false
     @State private var followPlayer = true
@@ -46,7 +48,8 @@ struct LiveMapView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if horizontalSizeClass == .regular {
+                GeometryReader { geometry in
+                if horizontalSizeClass == .regular && geometry.size.width >= 800 {
                     HStack(spacing: 0) {
                         mapSurface
                         if !navigation.navigatorHidden {
@@ -57,14 +60,16 @@ struct LiveMapView: View {
                                 }
                                 NavigatorPanelView(player: playerPoint, onSelect: select)
                             }
-                            .frame(minWidth: 280, idealWidth: 310, maxWidth: 340)
-                            .background(.regularMaterial)
+                            .frame(width: 280)
+                            .background(GWPalette.secondaryBackground)
                         }
                     }
                 } else {
                     mapSurface
                 }
             }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingLayers) { LayerPanelView() }
             .sheet(isPresented: $showingPairing) { PairingView() }
@@ -125,7 +130,7 @@ struct LiveMapView: View {
                 }(),
                 showTiles: artworkAvailable,
                 onSelectObjective: select,
-                onBackgroundTap: { navigation.toggleMapChrome() },
+                onBackgroundTap: { withAnimation(GWPresentation.motion(reduced: reduceMotion)) { navigation.toggleMapChrome() } },
                 routeIDs: Set(objectives.route?.objectives ?? []),
                 onVisibleCoordinateChange: { center, zoom, tileWorld, tile, tileCount, markerCount, cameraZoom in
                     viewportCenter = center
@@ -159,18 +164,15 @@ struct LiveMapView: View {
                     sidebarRestoreButton
                     compactHUD
                 }
-                connectionBanner
+                if !navigation.mapChromeHidden { connectionBanner }
                 if let notice = objectives.arrivalNotice { arrivalBanner(notice) }
                 if metadataFailed || !artworkAvailable { unavailableArtworkBanner }
-                if developerMode && !navigation.mapChromeHidden { calibrationHUD }
-                if !navigation.mapChromeHidden { objectiveStatusBanner }
+                if GWPresentation.developerToolsAvailable && developerMode && !navigation.mapChromeHidden { calibrationHUD }
                 Spacer()
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 10) {
                         if !navigation.mapChromeHidden {
-                            if horizontalSizeClass != .regular {
-                                mapSidePanels
-                            }
+                            if navigation.navigatorHidden || availableWidth < 800 { mapSidePanels.frame(maxWidth: 520) }
                             if let target = objectives.currentTarget { targetCard(target) }
                             currentCharacterPanel
                             controls
@@ -191,12 +193,10 @@ struct LiveMapView: View {
     private var mapSidePanels: some View {
         if sessions.activeSession != nil {
             ActiveSessionCompactView(isExpanded: $sessionExpanded)
-                .background(horizontalSizeClass == .regular ? AnyShapeStyle(.clear) : AnyShapeStyle(.regularMaterial),
-                            in: RoundedRectangle(cornerRadius: 15))
+                .background(GWPalette.mapOverlay, in: RoundedRectangle(cornerRadius: GWSpacing.large))
         } else if today.snapshot != nil {
             TodayCompactView(isExpanded: $todayExpanded)
-                .background(horizontalSizeClass == .regular ? AnyShapeStyle(.clear) : AnyShapeStyle(.regularMaterial),
-                            in: RoundedRectangle(cornerRadius: 15))
+                .background(GWPalette.mapOverlay, in: RoundedRectangle(cornerRadius: GWSpacing.large))
         } else if let goal = goals.activeGoals.first {
             mapGoalPanel(goal)
         }
@@ -206,8 +206,8 @@ struct LiveMapView: View {
         Button(action: navigation.toggleSidebar) {
             Image(systemName: "sidebar.left")
                 .font(.headline)
-                .padding(10)
-                .background(.ultraThinMaterial, in: Circle())
+                .frame(minWidth: 44, minHeight: 44)
+                .background(GWPalette.mapOverlay, in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(navigation.sidebarHidden ? "Show Navigation" : "Hide Navigation")
@@ -216,7 +216,7 @@ struct LiveMapView: View {
 
     private var navigatorRestoreButton: some View {
         Button {
-            if horizontalSizeClass == .regular {
+            if horizontalSizeClass == .regular && availableWidth >= 800 {
                 navigation.toggleNavigator()
             } else if showingNavigator {
                 showingNavigator = false
@@ -228,49 +228,39 @@ struct LiveMapView: View {
         } label: {
             Image(systemName: "list.bullet.rectangle")
                 .font(.headline)
-                .padding(10)
-                .background(.ultraThinMaterial, in: Circle())
+                .frame(minWidth: 44, minHeight: 44)
+                .background(GWPalette.mapOverlay, in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            (horizontalSizeClass == .regular ? navigation.navigatorHidden : !showingNavigator)
+            (horizontalSizeClass == .regular && availableWidth >= 800 ? navigation.navigatorHidden : !showingNavigator)
                 ? "Show Navigator" : "Hide Navigator")
         .accessibilityIdentifier("map.chrome.navigator")
     }
 
-    private var chromeRestoreButtons: some View {
-        sidebarRestoreButton
+    private var compactHUD: some View {
+        HStack(spacing: GWSpacing.medium) {
+            if !navigation.mapChromeHidden {
+                Text(metadata?.name ?? "Tyria").font(.headline).lineLimit(1)
+                Spacer(minLength: GWSpacing.small)
+            }
+            Button { if telemetry.state != .connectedLive { showingPairing = true } } label: {
+                GWBadge(text: telemetry.state == .connectedLive ? "LIVE" : connectionTitle,
+                        color: statusColor, symbol: "circle.fill")
+            }.buttonStyle(.plain).frame(minHeight: 44)
+                .accessibilityLabel(telemetry.state == .connectedLive ? "Live position" : "Connect gaming PC")
+        }
+        .padding(.horizontal, GWSpacing.medium)
+        .background(GWPalette.mapOverlay, in: Capsule())
     }
 
-    private var compactHUD: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text(telemetry.state == .connectedLive ? "LIVE" : telemetry.state.label)
-                        .font(.caption2.bold())
-                        .foregroundStyle(statusColor)
-                    Text(metadata?.name ?? telemetry.latest?.map.map { "Map ID \($0.id)" } ?? "Live Map")
-                        .font(.headline)
-                }
-                if let target = objectives.currentTarget {
-                    HStack(spacing: 6) {
-                        Text(target.name).font(.caption).lineLimit(1)
-                        if let playerPoint {
-                            Text(ObjectiveDistanceEngine.cardinalDirection(from: playerPoint, to: target.coordinate).rawValue)
-                                .font(.caption.bold())
-                        }
-                    }
-                    .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            Button { if telemetry.state == .unpaired { showingPairing = true } } label: {
-                Text(telemetry.state.label).font(.caption2.bold()).foregroundStyle(statusColor)
-                    .padding(.horizontal, 9).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule())
-            }
-            .buttonStyle(.plain)
+    private var connectionTitle: String {
+        switch telemetry.state {
+        case .connectedLive: "LIVE"
+        case .connecting, .reconnecting: "CONNECTING"
+        case .stale: "WAITING"
+        default: "OFFLINE"
         }
-        .padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15)).padding(.top, 8)
     }
 
     private func immersiveTargetHint(_ target: MapObjective) -> some View {
@@ -305,14 +295,14 @@ struct LiveMapView: View {
                     Text("Next useful: \(action.title)").font(.caption).lineLimit(2)
                     if [.navigate, .gather].contains(action.type), !action.objectiveIDs.isEmpty {
                         Button("Show") { navigate(action, goal: goal) }
-                            .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                            .buttonStyle(GWPrimaryButtonStyle())
                     }
                 }
             }
         }
-        .padding(12)
+        .padding(GWSpacing.medium)
         .background(horizontalSizeClass == .regular ? AnyShapeStyle(.clear) : AnyShapeStyle(.regularMaterial),
-                    in: RoundedRectangle(cornerRadius: 15))
+                    in: RoundedRectangle(cornerRadius: GWSpacing.large))
     }
 
     private var goalContextID: String {
@@ -354,64 +344,39 @@ struct LiveMapView: View {
             HStack(spacing: 10) {
                 Image(systemName: "scope").font(.title3).foregroundStyle(.cyan)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("NEXT • \(target.type.title.uppercased())").font(.caption2).foregroundStyle(.secondary)
+                    Text(target.type.title).font(.caption2).foregroundStyle(.secondary)
                     Text(target.name).font(.subheadline.bold()).lineLimit(1)
                 }
                 Spacer()
                 if let playerPoint {
                     VStack(alignment: .trailing) {
                         Text(ObjectiveDistanceEngine.cardinalDirection(from: playerPoint, to: target.coordinate).rawValue).bold()
-                        Text("\(ObjectiveDistanceEngine.distance(from: playerPoint, to: target.coordinate).formatted(.number.precision(.fractionLength(0)))) units")
+                        Text(GWMapDistancePresentation.text(from: playerPoint, to: target.coordinate, metadata: metadata))
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                 }
             }
-            .padding(11).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .padding(GWSpacing.medium).background(GWPalette.mapOverlay, in: RoundedRectangle(cornerRadius: GWSpacing.large))
         }
         .buttonStyle(.plain)
     }
 
     private var controls: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: GWSpacing.small) {
             Button { showingLayers = true } label: { Label("Layers", systemImage: "square.3.layers.3d") }
                 .buttonStyle(MapControlButtonStyle())
-            if horizontalSizeClass != .regular {
-                Button {
-                    navigation.navigatorHidden = false
-                    showingNavigator = true
-                } label: { Label("Nearby", systemImage: "list.bullet") }
-                    .buttonStyle(MapControlButtonStyle())
-                    .accessibilityLabel("Show Navigator")
-            }
             Spacer()
-            Button { focusRequest = MapFocusRequest(mode: .player) } label: { Image(systemName: "location.fill") }
+            Menu {
+                Toggle("Follow player", isOn: $followPlayer)
+                if objectives.currentTarget != nil {
+                    Button("Center target") { focusRequest = MapFocusRequest(mode: .target) }
+                    Button("Fit player and target") { focusRequest = MapFocusRequest(mode: .both) }
+                }
+                Button("Gaming PC") { showingPairing = true }
+            } label: { Image(systemName: "ellipsis") }
+                .buttonStyle(MapControlButtonStyle()).accessibilityLabel("Map controls")
+            Button { followPlayer = true; focusRequest = MapFocusRequest(mode: .player) } label: { Image(systemName: "location.fill") }
                 .buttonStyle(MapControlButtonStyle()).accessibilityLabel("Center player")
-            if objectives.currentTarget != nil {
-                Button { focusRequest = MapFocusRequest(mode: .target) } label: { Image(systemName: "scope") }
-                    .buttonStyle(MapControlButtonStyle()).accessibilityLabel("Center target")
-                Button { focusRequest = MapFocusRequest(mode: .both) } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
-                    .buttonStyle(MapControlButtonStyle()).accessibilityLabel("Fit player and target")
-            }
-            Button { showingPairing = true } label: { Image(systemName: "desktopcomputer") }
-                .buttonStyle(MapControlButtonStyle())
-        }
-    }
-
-    @ViewBuilder
-    private var objectiveStatusBanner: some View {
-        switch objectives.state {
-        case .loading: statusBanner("Loading official map objectives…", symbol: "map")
-        case .loaded where objectives.objectives.isEmpty:
-            statusBanner("No official objectives were returned for this map and floor.", symbol: "map")
-        case let .unavailable(message):
-            statusBanner("Objectives unavailable: \(message)", symbol: "exclamationmark.triangle")
-        default:
-            switch gathering.availability {
-            case .unavailable: statusBanner("Gathering coverage unavailable", symbol: "leaf")
-            case .failed: statusBanner("Gathering locations could not be loaded.", symbol: "exclamationmark.triangle")
-            case .available(0): statusBanner("Companion gathering dataset is empty for this map", symbol: "leaf")
-            default: EmptyView()
-            }
         }
     }
 
@@ -447,7 +412,7 @@ struct LiveMapView: View {
                                     Label(mount, systemImage: "hare.fill").font(.caption2)
                                 }
                                 if telemetry.latest?.ui.inCombat == true {
-                                    Label("Combat", systemImage: "flame.fill").font(.caption2).foregroundStyle(.orange)
+                                    Label("Combat", systemImage: "flame.fill").font(.caption2).foregroundStyle(GWPalette.warning)
                                 }
                             }
                         }
@@ -467,11 +432,11 @@ struct LiveMapView: View {
                         Text("Connect your GW2 account for equipment, build and inventory details.")
                             .font(.caption).foregroundStyle(.secondary)
                         Button("Connect Account") { navigation.selectedTab = .account }
-                            .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                            .buttonStyle(GWPrimaryButtonStyle())
                     }
                 }
             }
-            .padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+            .padding(GWSpacing.medium).background(GWPalette.mapOverlay, in: RoundedRectangle(cornerRadius: GWSpacing.large))
             .frame(maxWidth: horizontalSizeClass == .regular ? 520 : .infinity)
         }
     }
@@ -488,15 +453,15 @@ struct LiveMapView: View {
         case .unpaired:
             VStack(spacing: 8) {
                 Label("Connect your gaming PC", systemImage: "desktopcomputer").font(.headline)
-                Text("Scan the bridge QR code, enter its LAN address, or start the built-in simulation.")
+                Text("Enable live position with the bridge running on your gaming PC.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Button("Connect to PC") { showingPairing = true }.buttonStyle(.borderedProminent).tint(.orange)
-            }.padding(14).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+            }.padding(14).background(GWPalette.mapOverlay, in: RoundedRectangle(cornerRadius: GWSpacing.large))
         case .connectedNoGW2: statusBanner("Connected to your PC. Launch Guild Wars 2 and enter the game.", symbol: "gamecontroller")
         case let .positionUnavailable(message): statusBanner(message, symbol: "location.slash")
-        case .stale: statusBanner("Guild Wars 2 telemetry is temporarily stale. Waiting for fresh data…", symbol: "clock.arrow.circlepath")
+        case .stale: statusBanner("Waiting for live position…", symbol: "clock.arrow.circlepath")
         case .disconnected: statusBanner("Can't reach your PC. Check the network, bridge, and Private-network firewall access.", symbol: "wifi.slash")
-        case .connecting: statusBanner("Connecting to GW2 Companion Bridge…", symbol: "arrow.triangle.2.circlepath")
+        case .connecting: statusBanner("Connecting to your gaming PC…", symbol: "arrow.triangle.2.circlepath")
         case .reconnecting: statusBanner("Connection lost. Reconnecting automatically…", symbol: "arrow.triangle.2.circlepath")
         case .pairingInvalid:
             VStack(spacing: 8) {
@@ -561,14 +526,14 @@ struct LiveMapView: View {
         }
         .font(.system(size: 11, design: .monospaced))
         .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: GWSpacing.medium))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Map calibration overlay")
     }
 
     private func statusBanner(_ message: String, symbol: String) -> some View {
         Label(message, systemImage: symbol).font(.caption).padding(10)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: GWSpacing.medium))
     }
 
     private func arrivalBanner(_ notice: ObjectiveArrivalNotice) -> some View {
@@ -583,7 +548,7 @@ struct LiveMapView: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 13).padding(.vertical, 10)
-        .background(.green.opacity(0.92), in: RoundedRectangle(cornerRadius: 12))
+        .background(.green.opacity(0.92), in: RoundedRectangle(cornerRadius: GWSpacing.medium))
     }
 
     private var statusColor: Color {
@@ -633,7 +598,7 @@ struct LiveMapView: View {
 
 private struct MapControlButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.subheadline.bold()).padding(.horizontal, 13).padding(.vertical, 10)
-            .background(.regularMaterial, in: Capsule()).opacity(configuration.isPressed ? 0.65 : 1)
+        configuration.label.font(.subheadline.bold()).padding(.horizontal, GWSpacing.medium).frame(minWidth: 44, minHeight: 44)
+            .background(GWPalette.mapOverlay, in: Capsule()).opacity(configuration.isPressed ? 0.65 : 1)
     }
 }

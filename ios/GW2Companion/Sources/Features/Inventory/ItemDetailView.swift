@@ -40,6 +40,9 @@ struct ItemDetailView: View {
     var skins: [Int: SkinMetadata] = [:]
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var goals: GoalStore
+    @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var navigation: AppNavigation
+    @State private var priceLoading = true
 
     private var attributes: [ItemAttribute] {
         if let selected = inspected.stats?.attributes {
@@ -55,7 +58,7 @@ struct ItemDetailView: View {
                 Section {
                     VStack(spacing: 12) {
                         GWItemIcon(item: inspected.item, size: 94)
-                        Text(inspected.item.name).font(.title3.bold()).multilineTextAlignment(.center)
+                        Text(GWPresentation.itemName(inspected.item)).font(.title3.bold()).multilineTextAlignment(.center)
                         HStack {
                             Text(inspected.item.rarity).foregroundStyle(GWPalette.rarity(inspected.item.rarity))
                             if let type = itemType { Text("• \(type)") }
@@ -82,7 +85,7 @@ struct ItemDetailView: View {
                     Section("Upgrades") {
                         ForEach(inspected.upgrades, id: \.self) { id in
                             if let item = metadata[id] { metadataRow(name: item.name, icon: item.icon, rarity: item.rarity) }
-                            else { Text("Item \(id)").foregroundStyle(.secondary) }
+                            else { Text("Item details unavailable").foregroundStyle(.secondary) }
                         }
                     }
                 }
@@ -91,12 +94,38 @@ struct ItemDetailView: View {
                     Section("Infusions") {
                         ForEach(inspected.infusions, id: \.self) { id in
                             if let item = metadata[id] { metadataRow(name: item.name, icon: item.icon, rarity: item.rarity) }
-                            else { Text("Infusion \(id)").foregroundStyle(.secondary) }
+                            else { Text("Infusion details unavailable").foregroundStyle(.secondary) }
                         }
                     }
                 }
 
-                if inspected.quantity > 1 { Section { LabeledContent("Quantity", value: inspected.quantity.formatted()) } }
+                if let holding = account.holdings.first(where: { $0.itemID == inspected.item.id }) {
+                    Section("You own") {
+                        LabeledContent("Total", value: holding.totalQuantity.formatted()).monospacedDigit()
+                        ForEach(holding.locations) { location in
+                            LabeledContent(location.location.title, value: location.quantity.formatted()).monospacedDigit()
+                        }
+                    }
+                } else if inspected.quantity > 1 {
+                    Section { LabeledContent("Quantity", value: inspected.quantity.formatted()) }
+                }
+                let related = goals.activeGoals.filter { goal in
+                    if case let .craftItem(id, _) = goal.type, id == inspected.item.id { return true }
+                    if let plan = goals.legendaryPlan(for: goal, account: account) {
+                        return plan.sessionNodes.contains { $0.itemID == inspected.item.id }
+                    }
+                    return goals.craftingPlan(for: goal, account: account)?.flattenedRequirements.contains { requirement in
+                        if case let .item(id) = requirement.requirement { return id == inspected.item.id }
+                        return false
+                    } == true
+                }
+                if !related.isEmpty {
+                    Section("Used by your goals") {
+                        ForEach(related) { goal in
+                            Button(goal.title) { goals.selectedGoalID = goal.id; navigation.show(.goals); dismiss() }
+                        }
+                    }
+                }
 
                 marketSection
 
@@ -111,14 +140,17 @@ struct ItemDetailView: View {
                 }
 
                 if let description = inspected.item.description?.gwPlainText, !description.isEmpty {
-                    Section("Description") { Text(description).foregroundStyle(.secondary) }
+                    Section("Description") { Text(description == "Metadata for this item has not loaded yet." ? "Some item details are not available yet." : description).foregroundStyle(.secondary) }
                 }
             }
+            .listStyle(.plain)
             .navigationTitle("Item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Done") { dismiss() } }
             .task(id: inspected.item.id) {
+                priceLoading = true
                 await goals.refreshOwnedItemPrice(itemID: inspected.item.id)
+                priceLoading = false
             }
         }
     }
@@ -128,32 +160,36 @@ struct ItemDetailView: View {
         let values = OwnedItemMarketValues(
             item: inspected.item, quantity: inspected.quantity,
             price: goals.marketPrices[inspected.item.id])
-        Section("Trading Post") {
+        Section("Market") {
             if values.sellState == .nonTradable || values.buyState == .nonTradable {
                 Text("Not tradable").foregroundStyle(.secondary)
             } else {
                 if let sell = values.sellNow {
-                    LabeledContent("Unit sell-now", value: CoinAmount(copperValue: sell.unitCopper).compactFormatted)
-                    LabeledContent("Stack sell-now", value: sell.amount.compactFormatted)
+                    LabeledContent("Sell now · each", value: CoinAmount(copperValue: sell.unitCopper).compactFormatted)
+                    LabeledContent("Estimated stack · sell", value: sell.amount.compactFormatted)
                 } else {
-                    LabeledContent("Sell-now", value: "No current buy orders")
+                    LabeledContent("Sell now", value: priceLoading ? "Checking price…" : (values.sellState == .noBuyOrders ? "No current buy orders" : "Price unavailable"))
                 }
                 if let buy = values.buyNow {
-                    LabeledContent("Unit buy-now", value: CoinAmount(copperValue: buy.unitCopper).compactFormatted)
-                    LabeledContent("Stack replacement", value: buy.amount.compactFormatted)
+                    LabeledContent("Buy now · each", value: CoinAmount(copperValue: buy.unitCopper).compactFormatted)
+                    LabeledContent("Estimated stack · buy", value: buy.amount.compactFormatted)
                 } else {
-                    LabeledContent("Buy-now", value: "No current sell offers")
+                    LabeledContent("Buy now", value: priceLoading ? "Checking price…" : (values.buyState == .noSellOrders ? "No current sell offers" : "Price unavailable"))
                 }
                 if let updatedAt = values.updatedAt {
                     LabeledContent("Updated", value: updatedAt.formatted(date: .omitted, time: .shortened))
-                } else {
-                    ProgressView("Loading current prices…")
+                } else if priceLoading {
+                    GWLoadingRows(count: 1)
                 }
             }
         }
     }
 
-    private var itemType: String? { inspected.item.details?.type ?? inspected.item.type }
+    private var itemType: String? {
+        guard let type = inspected.item.details?.type ?? inspected.item.type else { return nil }
+        // ArenaNet type names are identifiers; display readable words in the item hero.
+        return type.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
+    }
 
     private func displayAttribute(_ value: String) -> String {
         value.replacingOccurrences(of: "ConditionDamage", with: "Condition Damage")

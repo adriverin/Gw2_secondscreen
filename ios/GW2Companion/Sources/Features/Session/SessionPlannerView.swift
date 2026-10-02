@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SessionPlannerView: View {
+    var isSheet = false
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var sessions: SessionStore
     @EnvironmentObject private var goals: GoalStore
     @EnvironmentObject private var account: AccountStore
@@ -8,6 +10,9 @@ struct SessionPlannerView: View {
     @EnvironmentObject private var objectives: MapObjectiveStore
     @EnvironmentObject private var navigation: AppNavigation
     @EnvironmentObject private var today: TodayStore
+    @AppStorage("developer.mode.enabled") private var developerMode = false
+    @State private var focusExpanded = false
+    @State private var completedExpanded = false
     @State private var selectedTask: SessionTask?
     @State private var showingPreferences = false
     @State private var showingHistory = false
@@ -23,6 +28,7 @@ struct SessionPlannerView: View {
             }
             .navigationTitle(sessions.activeSession == nil ? "Plan My Session" : "Your Session")
             .toolbar {
+                if isSheet { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { showingHistory = true } label: { Image(systemName: "clock.arrow.circlepath") }
                         .accessibilityLabel("Session history")
@@ -41,15 +47,59 @@ struct SessionPlannerView: View {
     }
 
     private var planner: some View {
-        List {
-            Section("Planning Horizon") {
+        GeometryReader { geometry in
+            if geometry.size.width >= 800 {
+                HStack(spacing: GWSpacing.section) {
+                    List { plannerSetup }
+                        .listStyle(.plain).scrollContentBackground(.hidden).frame(width: 300)
+                    List { plannerItinerary; plannerDetails }
+                        .listStyle(.plain).scrollContentBackground(.hidden)
+                }
+            } else {
+                List { plannerItinerary; plannerSetup; plannerDetails }
+                    .listStyle(.plain).scrollContentBackground(.hidden)
+            }
+        }.background(GWPalette.background)
+    }
+
+    @ViewBuilder private var plannerItinerary: some View {
+            if let plan = sessions.draftPlan {
+                Section {
+                    if plan.tasks.isEmpty {
+                        ContentUnavailableView(
+                            "No useful tasks found", systemImage: "checklist.unchecked",
+                            description: Text("Enable another acquisition method, select another goal, or refresh account data."))
+                    } else {
+                        Button("Start Session") {
+                            let snapshot = SessionPlanningAdapter.snapshot(account: account, tasks: plan.tasks)
+                            sessions.startDraft(
+                                snapshot: snapshot, todaySnapshot: today.progressSnapshot,
+                                playerPosition: playerPoint)
+                        }
+                        .buttonStyle(GWPrimaryButtonStyle())
+                        ForEach(Array(plan.tasks.enumerated()), id: \.element.id) { index, task in
+                            taskRow(task, number: index + 1, active: false)
+                        }
+                    }
+                } header: {
+                    Text("Your Session")
+                } footer: {
+                    if GWPresentation.developerToolsAvailable && developerMode {
+                        Text("\(plan.diagnostics.candidateCount) candidates · \(plan.diagnostics.selectedCount) selected")
+                    } else { Text("\(plan.tasks.count) steps · \(sessions.parameters.duration.title)") }
+                }
+            }
+    }
+
+    @ViewBuilder private var plannerSetup: some View {
+            Section("Session preferences") {
                 Picker("Duration", selection: $sessions.parameters.duration) {
                     ForEach(SessionDuration.allCases) { Text($0.title).tag($0) }
                 }
-                Text("This is a planning horizon, not a promise of real-world task duration.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("A suggested plan for the time you have.").font(.caption).foregroundStyle(.secondary)
             }
-            Section("Focus") {
+            Section {
+                DisclosureGroup("Session focus", isExpanded: $focusExpanded) {
                 Picker("Goals", selection: Binding(
                     get: { sessions.parameters.selectedGoalIDs == nil ? "all" : "selected" },
                     set: { value in
@@ -73,16 +123,20 @@ struct SessionPlannerView: View {
                 methodToggle("Crafting", .craft)
                 methodToggle("Trading Post", .tradingPost)
                 methodToggle("Achievement objectives", .worldObjective)
-                methodToggle("Manual / unknown", .manual)
+                methodToggle("Other tasks", .manual)
+                }
             }
             Section {
-                Button("Create Plan") { createPlan() }
-                    .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                Button(sessions.draftPlan == nil ? "Create Plan" : "Replan") { createPlan() }
+                    .buttonStyle(GWPrimaryButtonStyle())
                     .disabled(goals.activeGoals.isEmpty && today.opportunities.allSatisfy { $0.state.isComplete || $0.state == .unknown })
                 if goals.activeGoals.isEmpty && today.opportunities.isEmpty {
                     Text("Activate a goal or refresh Today opportunities before planning.").font(.caption).foregroundStyle(.secondary)
                 }
             }
+    }
+
+    @ViewBuilder private var plannerDetails: some View {
             if let error = sessions.knowledgeError {
                 Section("Acquisition Catalog") {
                     Label(error, systemImage: "exclamationmark.triangle")
@@ -90,33 +144,8 @@ struct SessionPlannerView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            if let plan = sessions.draftPlan {
-                Section {
-                    if plan.tasks.isEmpty {
-                        ContentUnavailableView(
-                            "No useful tasks found", systemImage: "checklist.unchecked",
-                            description: Text("Enable another acquisition method, select another goal, or refresh account data."))
-                    } else {
-                        ForEach(Array(plan.tasks.enumerated()), id: \.element.id) { index, task in
-                            taskRow(task, number: index + 1, active: false)
-                        }
-                        Button("Start Session") {
-                            let snapshot = SessionPlanningAdapter.snapshot(account: account, tasks: plan.tasks)
-                            sessions.startDraft(
-                                snapshot: snapshot, todaySnapshot: today.progressSnapshot,
-                                playerPosition: playerPoint)
-                        }
-                        .buttonStyle(.borderedProminent).tint(GWPalette.accent)
-                    }
-                } header: {
-                    Text("Your Session")
-                } footer: {
-                    Text("\(plan.diagnostics.candidateCount) candidates • \(plan.diagnostics.selectedCount) selected • \(plan.diagnostics.planningDurationMilliseconds.formatted(.number.precision(.fractionLength(1)))) ms")
-                }
-            }
-            dataDetails
+            if GWPresentation.developerToolsAvailable && developerMode { dataDetails }
             privacy
-        }
     }
 
     private func activeSession(_ active: ActiveSession) -> some View {
@@ -136,7 +165,7 @@ struct SessionPlannerView: View {
                         HStack {
                             if next.mapID != nil || !next.mapObjectiveIDs.isEmpty {
                                 Button("Open Map") { startMapTask(next) }
-                                    .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                                    .buttonStyle(GWPrimaryButtonStyle())
                             }
                             Button("Why this?") { selectedTask = next }.buttonStyle(.bordered)
                         }
@@ -144,7 +173,7 @@ struct SessionPlannerView: View {
                 }
             }
             Section("Tasks") {
-                ForEach(Array(active.tasks.enumerated()), id: \.element.id) { index, task in
+                ForEach(Array(active.tasks.enumerated()).filter { !$0.element.state.isFinished }, id: \.element.id) { index, task in
                     VStack(alignment: .leading, spacing: 8) {
                         taskRow(task, number: index + 1, active: true)
                         HStack {
@@ -159,6 +188,16 @@ struct SessionPlannerView: View {
                                 sessions.updateTask(task.id, locked: !task.isLocked)
                             }
                         }.font(.caption)
+                    }
+                }
+            }
+            let finished = active.tasks.enumerated().filter { $0.element.state.isFinished }
+            if !finished.isEmpty {
+                Section {
+                    DisclosureGroup("Completed & skipped · \(finished.count)", isExpanded: $completedExpanded) {
+                        ForEach(finished, id: \.element.id) { index, task in
+                            taskRow(task, number: index + 1, active: true).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -180,7 +219,7 @@ struct SessionPlannerView: View {
             } footer: {
                 Text("A visit does not prove a gathering yield. Refresh Progress compares account quantities without inferring why they changed.")
             }
-            dataDetails
+            if GWPresentation.developerToolsAvailable && developerMode { dataDetails }
         }
     }
 
@@ -196,13 +235,23 @@ struct SessionPlannerView: View {
                     if let quantity = task.quantity { Text("\(quantity) missing").font(.caption).foregroundStyle(.secondary) }
                     Text("Helps: \(task.benefitTitles.isEmpty ? "Today" : task.benefitTitles.joined(separator: ", "))")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    Text(active ? task.state.rawValue.capitalized : "Score \(task.scoreBreakdown.total) • Why this?")
+                    Text(active ? taskStateTitle(task.state) : "View step")
                         .font(.caption2).foregroundStyle(.tertiary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)
             }.contentShape(Rectangle())
         }.buttonStyle(.plain)
+    }
+
+    private func taskStateTitle(_ state: SessionTaskState) -> String {
+        switch state {
+        case .pending: "Next up"
+        case .visited: "Visited"
+        case .completed: "Completed"
+        case .skipped: "Skipped"
+        case .doLater: "Later"
+        }
     }
 
     private func methodToggle(_ title: String, _ method: AcquisitionMethodType) -> some View {
@@ -266,6 +315,7 @@ struct SessionPlannerView: View {
         if task.type == .gather { objectives.applyPreset(.gather) }
         if !route.isEmpty { objectives.startGoalRoute(name: task.title, objectives: route) }
         navigation.selectedTab = .map
+        if isSheet { dismiss() }
     }
 
     private var playerPoint: ContinentPoint? {
@@ -280,6 +330,7 @@ struct SessionPlannerView: View {
 
 struct SessionTaskDetailView: View {
     let task: SessionTask
+    @AppStorage("developer.mode.enabled") private var developerMode = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -287,8 +338,9 @@ struct SessionTaskDetailView: View {
             List {
                 Section("Why this?") {
                     Text(task.reason)
-                    LabeledContent("Planning score", value: "\(task.scoreBreakdown.total)")
+
                 }
+                if GWPresentation.developerToolsAvailable && developerMode {
                 Section("Score Breakdown") {
                     ForEach(task.scoreBreakdown.contributions) { contribution in
                         VStack(alignment: .leading, spacing: 3) {
@@ -296,6 +348,7 @@ struct SessionTaskDetailView: View {
                             Text(contribution.explanation).font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                }
                 }
                 Section("Goals") {
                     if task.relatedGoalTitles.isEmpty { Text("No goal source") }
@@ -321,11 +374,13 @@ struct SessionTaskDetailView: View {
                         LabeledContent("Coverage", value: coverage.rawValue.capitalized)
                     }
                 }
+                if GWPresentation.developerToolsAvailable && developerMode {
                 Section("Diagnostics") {
                     LabeledContent("Candidate ID", value: task.id.uuidString)
                     LabeledContent("Deduplication key", value: task.deduplicationKey)
                     LabeledContent("Acquisition method", value: task.acquisitionMethodID ?? "None")
                     LabeledContent("Map", value: task.mapID.map(String.init) ?? "None")
+                }
                 }
             }
             .navigationTitle(task.title)
@@ -334,7 +389,7 @@ struct SessionTaskDetailView: View {
     }
 }
 
-private struct PlanningPreferencesView: View {
+struct PlanningPreferencesView: View {
     @EnvironmentObject private var sessions: SessionStore
     @Environment(\.dismiss) private var dismiss
     private let methods: [AcquisitionMethodType] = [.gathering, .tradingPost, .craft, .vendor, .mysticForge, .manual]
@@ -390,7 +445,7 @@ private struct SessionHistoryView: View {
                         Text("\(entry.completedTaskCount) of \(entry.totalTaskCount) tasks • \(entry.goalCount) goals")
                             .font(.caption).foregroundStyle(.secondary)
                         ForEach(entry.accountChanges) { change in
-                            Text("\(change.kind.rawValue.capitalized) \(change.numericID): account quantity changed \(change.delta.formatted(.number.sign(strategy: .always())))")
+                            Text("\(change.kind.rawValue.capitalized): quantity changed \(change.delta.formatted(.number.sign(strategy: .always())))")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                         ForEach(entry.todayChanges ?? []) { change in
@@ -416,7 +471,7 @@ struct ActiveSessionCompactView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Button { isExpanded.toggle() } label: {
                     HStack {
-                        Text("Session").font(.subheadline.bold())
+                        Text("Session · \(active.tasks.filter { $0.state.isFinished }.count) / \(active.tasks.count)").font(.subheadline.bold())
                         if let next = active.tasks.first(where: { $0.state == .pending }) {
                             Text(next.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
@@ -433,12 +488,12 @@ struct ActiveSessionCompactView: View {
                         Text("Helps \(next.relatedGoalIDs.count) goal\(next.relatedGoalIDs.count == 1 ? "" : "s")")
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Label("Plan complete", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        Label("Plan complete", systemImage: "checkmark.circle.fill").foregroundStyle(GWPalette.success)
                     }
                     Button("Open Session") { navigation.selectedTab = .session }
-                        .buttonStyle(.borderedProminent).tint(GWPalette.accent)
+                        .buttonStyle(GWPrimaryButtonStyle())
                 }
-            }.padding(12)
+            }.padding(GWSpacing.medium)
         }
     }
 }
