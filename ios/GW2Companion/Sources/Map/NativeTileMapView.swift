@@ -32,6 +32,7 @@ struct NativeTileMapView: View {
     @State private var center = ContinentPoint(x: 44_615.5, y: 29_863.7)
     @State private var zoom = 6
     @State private var cameraZoom = 6.0
+    @State private var sourcePrefetch = MapSourcePrefetchPolicy()
     @State private var pinch: ContinuousMapCamera.Pinch?
     @State private var markerScene = MapMarkerScene(objectives: [])
     @State private var dragOffset: CGSize = .zero
@@ -96,6 +97,7 @@ struct NativeTileMapView: View {
                 center = newPlayer
             }
             .onChange(of: metadata?.id) { _, _ in
+                sourcePrefetch.reset()
                 cameraZoom = min(Double(tileReferenceZoom), max(2, cameraZoom))
                 zoom = min(tileReferenceZoom, max(2, zoom))
                 if let metadata, let bounds = metadata.continentBounds {
@@ -108,6 +110,7 @@ struct NativeTileMapView: View {
                 Task { await MapTileImageCache.shared.handleMemoryPressure() }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                sourcePrefetch.reset()
                 Task { await DerivedDetailedTileProvider.shared.handleMemoryPressure() }
             }
             .onChange(of: focusRequest) { _, request in
@@ -115,11 +118,12 @@ struct NativeTileMapView: View {
             }
             .onChange(of: center) { _, _ in reportVisibleCoordinate() }
             .onChange(of: zoom) { _, _ in reportVisibleCoordinate() }
-            .onChange(of: cameraZoom) { _, value in
+            .onChange(of: cameraZoom) { previous, value in
                 zoom = ContinuousMapCamera.sourceZoom(cameraZoom: value, current: zoom, maximum: tileReferenceZoom)
+                sourcePrefetch.update(from: previous, to: value, currentSource: zoom)
                 reportVisibleCoordinate()
             }
-            .onChange(of: mapDetailRaw) { _, _ in reportVisibleCoordinate() }
+            .onChange(of: mapDetailRaw) { _, _ in sourcePrefetch.reset(); reportVisibleCoordinate() }
             .onChange(of: geometry.size) { _, size in
                 lastViewportSize = size
                 reportVisibleCoordinate()
@@ -150,6 +154,10 @@ struct NativeTileMapView: View {
             detailed: mapDetail == .detailed && candidate.permitsDetailed)
         let backingRequest = MapRasterLayerRequest.backing(continent: continentID, floor: floor)
         let backingReady = backingFrame?.request == backingRequest
+        let earlyPrefetch = mapDetail == .detailed && backingReady
+            ? sourcePrefetch.request(transform: transform, currentSource: zoom, continent: continentID, floor: floor) : nil
+        let ringPrefetch = backingReady && activeFrame?.request == request && earlyPrefetch == nil && pinch == nil && paddedTiles != tileIDs
+            ? MapRasterLayerRequest(continent: continentID, floor: floor, tiles: paddedTiles, detailed: request.detailed) : nil
         ZStack {
             // Never draw progressively loaded placeholders under a retained
             // frame. The complete coarse mosaic covers newly exposed geography.
@@ -184,6 +192,14 @@ struct NativeTileMapView: View {
             var transaction = Transaction(); transaction.disablesAnimations = true
             withTransaction(transaction) { replacementOpacity = 1 }
         }
+        .task(id: earlyPrefetch) {
+            if let earlyPrefetch { await MapRasterLayerLoader.prefetch(earlyPrefetch) }
+        }
+        .task(id: ringPrefetch) {
+            // Pinch start cancels the old same-level border warm-up, leaving
+            // the single speculative lane for the next useful source level.
+            if let ringPrefetch { await MapRasterLayerLoader.prefetch(ringPrefetch) }
+        }
         .task(id: RasterLoadKey(request: request, backingReady: backingReady)) {
             guard backingReady, !Task.isCancelled else { return }
             if request.detailed {
@@ -210,12 +226,6 @@ struct NativeTileMapView: View {
                     }
                     do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 }
-            }
-            // Cache warming must never delay the visible frame's promotion.
-            if !Task.isCancelled, paddedTiles != tileIDs {
-                let prefetch = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: paddedTiles,
-                                                    detailed: request.detailed)
-                _ = await MapRasterLayerLoader.frame(for: prefetch)
             }
         }
         .onAppear { lastVisibleTileCount = tileIDs.count }

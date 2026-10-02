@@ -92,6 +92,13 @@ actor AsyncWorkLimiter {
         await withCheckedContinuation { waiters.append($0) }
     }
 
+    /// Speculative work never queues ahead of visible rendering.
+    func tryAcquire() -> Bool {
+        guard permits > 0, waiters.isEmpty else { return false }
+        permits -= 1
+        return true
+    }
+
     func release() {
         if waiters.isEmpty {
             permits = min(limit, permits + 1)

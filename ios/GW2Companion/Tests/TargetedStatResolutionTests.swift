@@ -36,11 +36,10 @@ final class TargetedStatResolutionTests: XCTestCase {
         XCTAssertTrue(StatCoverageReport(stats: stats, build: repaired.buildTabs[0].build, traits: repaired.traits, specializations: repaired.specializations).isComplete)
         XCTAssertTrue(store.statSourceProgress[character.name]?.allSatisfy { $0.status == "resolved" } == true)
         let paths = TargetedRepairProtocol.paths
-        XCTAssertEqual(paths.count, 5)
+        XCTAssertEqual(paths.count, 3)
         XCTAssertTrue(paths.contains { $0.contains("/equipment?") })
         XCTAssertTrue(paths.contains { $0.contains("items?ids=48073") })
-        XCTAssertTrue(paths.contains { $0.contains("specializations?ids=4") })
-        XCTAssertTrue(paths.contains { $0.contains("traits?ids=1446,1448,1453") })
+        XCTAssertFalse(paths.contains { $0.contains("specializations?") || $0.contains("traits?") }, "Verified Strength rules execute offline")
         XCTAssertTrue(paths.contains { $0.contains("equipmenttabs/1?") })
         XCTAssertFalse(paths.contains { $0.contains("/account") || $0.contains("inventory") || $0.contains("wallet") || $0.contains("equipmenttabs?") })
         await store.resolveMissingStatSources(character: character, equipmentTab: 1, weaponSet: "A")
@@ -111,7 +110,7 @@ final class TargetedStatResolutionTests: XCTestCase {
         XCTAssertEqual(restored.characterDetails[character.name]?.equipmentTabs[0].equipment[0].stats, selected.equipment[0].stats)
     }
 
-    func testFreshTabWithoutLegendarySelectionDoesNotReimportHistoricCachedPrefix() async throws {
+    func testPoorerSameTemplateResponseRetainsKnownLegendarySelectionAsCached() async throws {
         var detail = CharacterDetailData()
         let shoulder = CharacterEquipment(itemID: 4633, slot: "Shoulders")
         let historic = CharacterEquipment(itemID: 30703, slot: "WeaponA1", stats: SelectedItemStats(id: 161, attributes: ["Power":251]))
@@ -123,16 +122,24 @@ final class TargetedStatResolutionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         await store.resolveMissingStatSources(character: character, equipmentTab: 1, weaponSet: "A")
         let repaired = try XCTUnwrap(store.characterDetails[character.name])
-        XCTAssertNil(repaired.equipmentTabs[0].equipment[1].stats)
+        XCTAssertEqual(repaired.equipmentTabs[0].equipment[1].stats, historic.stats)
+        XCTAssertTrue(repaired.equipmentTabs[0].equipment[1].statsAreCached)
+        XCTAssertEqual(repaired.source, .cached)
+        let restored = AccountStore(api: GW2APIClient(credentials: CredentialStore(secureStore: InMemorySecureStore()), diskCache: MetadataDiskCache(directory: directory)), cache: MetadataDiskCache(directory: directory))
+        await restored.restoreCachedState()
+        XCTAssertEqual(restored.characterDetails[character.name]?.equipmentTabs[0].equipment[1].stats, historic.stats)
+        XCTAssertTrue(restored.characterDetails[character.name]?.equipmentTabs[0].equipment[1].statsAreCached == true)
         XCTAssertTrue(store.statEquipmentDiagnostics[character.name]?.contains { $0.itemID == 30703 && !$0.statsObjectPresent } == true)
     }
 
-    private func makeStore(detail: CharacterDetailData, unavailable: Bool = false, tabOverride: EquipmentTab? = nil) async throws -> (AccountStore, URL) {
+    private func makeStore(detail: CharacterDetailData, unavailable: Bool = false, tabOverride: EquipmentTab? = nil, buildsEnabled: Bool = false, equipmentOverride: CharacterEquipmentResponse? = nil) async throws -> (AccountStore, URL) {
         let tabBody = (tabOverride ?? detail.equipmentTabs.first).flatMap { try? JSONEncoder().encode($0) }.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        TargetedRepairProtocol.reset(unavailable: unavailable, tabBody: tabBody)
+        let equipmentBody = equipmentOverride.flatMap { try? JSONEncoder().encode($0) }.flatMap { String(data: $0, encoding: .utf8) } ?? #"{"equipment":[]}"#
+        TargetedRepairProtocol.reset(unavailable: unavailable, tabBody: tabBody, equipmentBody: equipmentBody)
         let directory = FileManager.default.temporaryDirectory.appending(path: "target-stat-repair-\(UUID())")
         let cache = MetadataDiskCache(directory: directory)
-        await cache.save(RepairSnapshot(characters: [character], characterDetails: [character.name: detail]), named: "account-snapshot")
+        await cache.save(RepairSnapshot(characters: [character], characterDetails: [character.name: detail],
+            tokenInfo: buildsEnabled ? TokenInfo(id: "fixture", name: "Fixture permissions", permissions: ["account", "characters", "builds"]) : nil), named: "account-snapshot")
         let credentials = CredentialStore(secureStore: InMemorySecureStore())
         try credentials.saveAPIKey("local-test-key-not-an-account-key")
         let configuration = URLSessionConfiguration.ephemeral
@@ -143,11 +150,79 @@ final class TargetedStatResolutionTests: XCTestCase {
         XCTAssertNotNil(store.characterDetails[character.name])
         return (store, directory)
     }
+
+    func testNormalPartialRefreshRestartAndOutagePreserveSelectedStatsAndVerifiedDefense() async throws {
+        let selected = CharacterEquipment(itemID: 30703, slot: "WeaponA1", stats: SelectedItemStats(id: 161, attributes: ["Power": 251]))
+        let shoulder = CharacterEquipment(itemID: 4633, slot: "Shoulders", stats: SelectedItemStats(id: 161, attributes: ["Power": 25]))
+        var detail = CharacterDetailData()
+        detail.equipmentTabs = [EquipmentTab(tab: 1, name: "Active", isActive: true, equipment: [selected, shoulder])]
+        // Synthetic verified metadata fixture, not a claim about live item 4633.
+        detail.items = [4633: ItemMetadata(id: 4633, name: "Verified fixture", icon: nil, rarity: "Exotic", type: "Armor", details: ItemDetails(type: "Shoulders", defense: 121))]
+        detail.updatedAt = Date(timeIntervalSince1970: 1000)
+        let (store, directory) = try await makeStore(detail: detail, unavailable: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var poorCharacter = character
+        poorCharacter.equipment = [CharacterEquipment(itemID: 30703, slot: "WeaponA1"), CharacterEquipment(itemID: 4633, slot: "Shoulders")]
+        await store.loadCharacterDetails(poorCharacter, force: true)
+        let retained = try XCTUnwrap(store.characterDetails[character.name])
+        XCTAssertEqual(retained.equipmentTabs[0].equipment[0].stats, selected.stats)
+        XCTAssertTrue(retained.equipmentTabs[0].equipment[0].statsAreCached)
+        XCTAssertEqual(retained.items[4633]?.details?.defense, 121)
+        XCTAssertEqual(retained.source, .cached)
+        XCTAssertEqual(retained.updatedAt, detail.updatedAt)
+        var otherCharacter = GW2Character(name: "Other character", race: "Human", gender: "Male", profession: "Warrior", level: 80, age: 1)
+        otherCharacter.equipment = [CharacterEquipment(itemID: 30703, slot: "WeaponA1")]
+        await store.loadCharacterDetails(otherCharacter, force: true)
+        XCTAssertNil(store.characterDetails[otherCharacter.name]?.equipmentTabs[0].equipment[0].stats, "No selections may cross character keys")
+        let restored = AccountStore(api: GW2APIClient(credentials: CredentialStore(secureStore: InMemorySecureStore()), diskCache: MetadataDiskCache(directory: directory)), cache: MetadataDiskCache(directory: directory))
+        await restored.restoreCachedState()
+        XCTAssertEqual(restored.characterDetails[character.name]?.equipmentTabs[0].equipment[0].stats, selected.stats)
+        XCTAssertTrue(restored.characterDetails[character.name]?.equipmentTabs[0].equipment[0].statsAreCached == true)
+        XCTAssertEqual(restored.characterDetails[character.name]?.items[4633]?.details?.defense, 121)
+    }
+
+    func testSuccessfulEquipmentTabsWithPoorerStatsMergeInsteadOfReplacingSavedSelection() async throws {
+        let known = CharacterEquipment(itemID: 30703, slot: "WeaponA1", stats: SelectedItemStats(id: 161, attributes: ["Power": 251]))
+        var detail = CharacterDetailData()
+        detail.equipmentTabs = [EquipmentTab(tab: 1, name: "Active", isActive: true, equipment: [known])]
+        detail.updatedAt = Date(timeIntervalSince1970: 1000)
+        let poor = EquipmentTab(tab: 1, name: "Active", isActive: true, equipment: [CharacterEquipment(itemID: 30703, slot: "WeaponA1")])
+        let (store, directory) = try await makeStore(detail: detail, tabOverride: poor, buildsEnabled: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        await store.loadCharacterDetails(character, force: true)
+        let retained = try XCTUnwrap(store.characterDetails[character.name])
+        XCTAssertEqual(retained.equipmentTabs[0].equipment[0].stats, known.stats)
+        XCTAssertTrue(retained.equipmentTabs[0].equipment[0].statsAreCached)
+        XCTAssertEqual(retained.source, .cached)
+        XCTAssertEqual(retained.updatedAt, detail.updatedAt)
+        XCTAssertEqual(store.domainStates[.equipmentTabs]?.phase, .cached)
+    }
+
+    func testInactiveTargetedFullEquipmentSelectionPublishesPersistsAndDoesNotBorrowActivePrefix() async throws {
+        let active = CharacterEquipment(itemID: 30703, slot: "WeaponA1", stats: SelectedItemStats(id: 584, attributes: ["Vitality": 200]))
+        let inactive = CharacterEquipment(itemID: 30703, slot: "WeaponA1")
+        var detail = CharacterDetailData()
+        detail.equipmentTabs = [EquipmentTab(tab: 1, name: "Active", isActive: true, equipment: [active]),
+                                EquipmentTab(tab: 2, name: "Inactive", isActive: false, equipment: [inactive])]
+        detail.items = [30703: ItemMetadata(id: 30703, name: "Sunrise", icon: nil, rarity: "Legendary", type: "Weapon",
+            details: ItemDetails(type: "Greatsword", defense: 0, statChoices: [161, 584], attributeAdjustment: 717.024))]
+        var repaired = CharacterEquipment(itemID: 30703, slot: "WeaponA1", stats: SelectedItemStats(id: 161, attributes: ["Power": 251]))
+        repaired.tabs = [2]
+        let (store, directory) = try await makeStore(detail: detail, equipmentOverride: CharacterEquipmentResponse(equipment: [repaired]))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        await store.resolveMissingStatSources(character: character, equipmentTab: 2, weaponSet: "A")
+        XCTAssertEqual(store.characterDetails[character.name]?.equipmentTabs[0].equipment[0].stats, active.stats)
+        XCTAssertEqual(store.characterDetails[character.name]?.equipmentTabs[1].equipment[0].stats, repaired.stats)
+        let restored = AccountStore(api: GW2APIClient(credentials: CredentialStore(secureStore: InMemorySecureStore()), diskCache: MetadataDiskCache(directory: directory)), cache: MetadataDiskCache(directory: directory))
+        await restored.restoreCachedState()
+        XCTAssertEqual(restored.characterDetails[character.name]?.equipmentTabs[1].equipment[0].stats, repaired.stats)
+    }
 }
 
 private struct RepairSnapshot: Encodable, Sendable {
     let characters: [GW2Character]
     let characterDetails: [String: CharacterDetailData]
+    var tokenInfo: TokenInfo? = nil
     var professions: [String: ProfessionMetadata] = [:]
     var characterInventories: [String: CharacterInventoryResponse] = [:]
     var bank: [InventorySlot] = []
@@ -161,10 +236,10 @@ private struct RepairSnapshot: Encodable, Sendable {
 }
 
 private final class TargetedRepairProtocol: URLProtocol, @unchecked Sendable {
-    private struct State { var paths: [String] = []; var unavailable = false; var tabBody = "{}" }
+    private struct State { var paths: [String] = []; var unavailable = false; var tabBody = "{}"; var equipmentBody = #"{"equipment":[]}"# }
     private static let state = OSAllocatedUnfairLock(initialState: State())
     static var paths: [String] { state.withLock { $0.paths } }
-    static func reset(unavailable: Bool, tabBody: String) { state.withLock { $0 = State(unavailable: unavailable, tabBody: tabBody) } }
+    static func reset(unavailable: Bool, tabBody: String, equipmentBody: String) { state.withLock { $0 = State(unavailable: unavailable, tabBody: tabBody, equipmentBody: equipmentBody) } }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -173,7 +248,9 @@ private final class TargetedRepairProtocol: URLProtocol, @unchecked Sendable {
         let body: String
         switch url.lastPathComponent {
         case "1": body = Self.state.withLock { $0.tabBody }
-        case "equipment": body = #"{"equipment":[]}"#
+        case "equipmenttabs": body = Self.state.withLock { "[" + $0.tabBody + "]" }
+        case "buildtabs": body = "[]"
+        case "equipment": body = Self.state.withLock { $0.equipmentBody }
         case "items": body = #"[{"id":48073,"name":"Zojja's Breastplate","rarity":"Ascended","type":"Armor","details":{"type":"Coat","defense":381,"attribute_adjustment":403.326,"infix_upgrade":{"id":161,"attributes":[{"attribute":"Power","modifier":141},{"attribute":"Precision","modifier":101},{"attribute":"CritDamage","modifier":101}]}}},{"id":24771,"name":"Superior Rune of Melandru","rarity":"Exotic","type":"UpgradeComponent","details":{"type":"Rune","infix_upgrade":{"id":112,"attributes":[]}}}]"#
         case "itemstats": body = #"[{"id":161,"name":"Berserker's","attributes":[{"attribute":"Power","multiplier":0.35,"value":0},{"attribute":"Precision","multiplier":0.25,"value":0},{"attribute":"CritDamage","multiplier":0.25,"value":0}]}]"#
         case "specializations": body = #"[{"id":4,"name":"Strength","profession":"Warrior","elite":false,"minor_traits":[1446,1448,1453],"major_traits":[1449]}]"#

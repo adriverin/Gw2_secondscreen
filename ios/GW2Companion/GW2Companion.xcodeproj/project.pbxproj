@@ -171,6 +171,7 @@
 		EF7C1C48CCDC7101ADCE2117 /* acquisition-catalog-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = B790302447EF87CEB7F1AD5A /* acquisition-catalog-v1.json */; };
 		FBCF11D4AB3880DBFEEB042B /* TelemetryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 257418ACDDC9486519D78389 /* TelemetryModels.swift */; };
 		FC69A7C2938C80ED4C160F61 /* account-checklists-phase6.json in Resources */ = {isa = PBXBuildFile; fileRef = 196CE44B83A378DA0B5AC223 /* account-checklists-phase6.json */; };
+		FCAD60B81ECEDC2FD7E63B15 /* PhaseSixKTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C608F66EF8AE00DE6E418DD8 /* PhaseSixKTests.swift */; };
 		FCDCB4E710520B5FEED1CE4F /* ContinuousMapCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5FDE435A86FC31BF7C4EEF6 /* ContinuousMapCamera.swift */; };
 		FDDDAE1746E51F1F7B5690E3 /* GoalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D75BDAD33AB0AB64A189167E /* GoalStore.swift */; };
 		FE61C82B08EF1A46D10384B1 /* phase7-wallet-25.json in Resources */ = {isa = PBXBuildFile; fileRef = 77D60CBBD9DE7AB6E6432438 /* phase7-wallet-25.json */; };
@@ -328,6 +329,7 @@
 		C0263ADCBE21D6BF1D796FD4 /* SuggestedActionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestedActionEngine.swift; sourceTree = "<group>"; };
 		C1629D04C80758090CF0F8DF /* holdings-phase4.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "holdings-phase4.json"; sourceTree = "<group>"; };
 		C348FD05D07B2140CE5A5A5E /* wizards-vault-special-phase6.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "wizards-vault-special-phase6.json"; sourceTree = "<group>"; };
+		C608F66EF8AE00DE6E418DD8 /* PhaseSixKTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseSixKTests.swift; sourceTree = "<group>"; };
 		C75929349FD9E5B2360FB64A /* APIDecoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIDecoding.swift; sourceTree = "<group>"; };
 		C88C89B9D35DD00A2EED593E /* LegendaryPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendaryPlanner.swift; sourceTree = "<group>"; };
 		CC274837A7D3B8C3642DB078 /* MapTileProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTileProjectionTests.swift; sourceTree = "<group>"; };
@@ -411,6 +413,7 @@
 				5081C3D0B06666E7D12D89F1 /* PhaseSixBHardeningTests.swift */,
 				913CC630B4A4B4732D54944B /* PhaseSixDQATests.swift */,
 				E58F69A7AE902D2BFCA66FCC /* PhaseSixHRepairTests.swift */,
+				C608F66EF8AE00DE6E418DD8 /* PhaseSixKTests.swift */,
 				16F159AE3A4E9196618DFE52 /* PhaseSixTodayTests.swift */,
 				83B7381FBD92A441E5565ABD /* PhaseThreeNavigationTests.swift */,
 				7183D0ADE5373FB638ACAADF /* PhysicalCorrectnessTests.swift */,
@@ -1103,6 +1106,7 @@
 				CD16410E6F3E63B12DEA4CAE /* PhaseSixBHardeningTests.swift in Sources */,
 				1E692F514066812F38D427D7 /* PhaseSixDQATests.swift in Sources */,
 				C4BC8269827FAB8DF28051AA /* PhaseSixHRepairTests.swift in Sources */,
+				FCAD60B81ECEDC2FD7E63B15 /* PhaseSixKTests.swift in Sources */,
 				A1F93FEF0C15B363CF5DBFA5 /* PhaseSixTodayTests.swift in Sources */,
 				BB953A410E36C7726F8F3581 /* PhaseThreeNavigationTests.swift in Sources */,
 				307399AE288EC9421F08674A /* PhysicalCorrectnessTests.swift in Sources */,

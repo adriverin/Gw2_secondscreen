@@ -234,7 +234,8 @@ final class AccountStore: ObservableObject {
 
         if allowed.contains(.builds) {
             do {
-                detail.equipmentTabs = try await api.equipmentTabs(character: character.name)
+                let freshTabs = try await api.equipmentTabs(character: character.name)
+                detail.equipmentTabs = EquipmentStatInputResolver.mergingTabs(freshTabs, cached: detail.equipmentTabs)
                 detail.equipmentError = nil
                 markDomain(.equipmentTabs, phase: .live, endpoint: "characters/{name}/equipmenttabs")
             } catch {
@@ -252,9 +253,9 @@ final class AccountStore: ObservableObject {
         } else {
             markDomain(.buildTabs, phase: .missingPermission, endpoint: "characters/{name}/buildtabs")
             if let equipment = character.equipment {
-                detail.equipmentTabs = [
+                detail.equipmentTabs = EquipmentStatInputResolver.mergingTabs([
                     EquipmentTab(tab: character.activeEquipmentTab ?? 1, name: "Equipment", isActive: true, equipment: equipment)
-                ]
+                ], cached: detail.equipmentTabs)
             }
         }
 
@@ -320,7 +321,9 @@ final class AccountStore: ObservableObject {
 
         let parts = [detail.buildError, detail.equipmentError, detail.inventoryError].compactMap { $0 }
         detail.errorMessage = parts.isEmpty ? nil : parts.first
-        if parts.isEmpty {
+        let retainedSelection = detail.equipmentTabs.flatMap(\.equipment).contains { $0.statsAreCached }
+        if retainedSelection { markDomain(.equipmentTabs, phase: .cached, endpoint: "characters/{name}/equipmenttabs") }
+        if parts.isEmpty && !retainedSelection {
             detail.source = .live
             detail.updatedAt = Date()
         } else if let previous = characterDetails[character.name],
@@ -392,7 +395,13 @@ final class AccountStore: ObservableObject {
             latest.equipmentTabs = latest.equipmentTabs.map { candidate in
                 guard candidate.tab == tab.tab, let repaired = detail.equipmentTabs.first(where: { $0.tab == tab.tab }),
                       candidate.equipment.map(\.id) == repaired.equipment.map(\.id) else { return candidate }
-                return EquipmentStatInputResolver.hydratedTabs([candidate], from: CharacterEquipmentResponse(equipment: repaired.equipment))[0]
+                // These records already passed hydration for this exact tab.
+                // Reattach that proven scope when publishing to an inactive
+                // template: it has no active-equipment fallback association.
+                let scopedRecords = repaired.equipment.map { record in
+                    var copy = record; copy.tabs = [candidate.tab]; return copy
+                }
+                return EquipmentStatInputResolver.hydratedTabs([candidate], from: CharacterEquipmentResponse(equipment: scopedRecords))[0]
             }
             characterDetails[character.name] = latest
             updateProgress(final: false)
@@ -423,16 +432,15 @@ final class AccountStore: ObservableObject {
                 do {
                     let fresh = try await api.equipmentTab(character: character.name, tab: tab.tab)
                     guard fresh.tab == tab.tab, account?.id == accountID else { return }
-                    // An explicit tab response is authoritative for identity,
-                    // upgrades, selected stats and location. Preserve known
-                    // attributes from THIS authenticated full response when
-                    // absent. A historic cached legendary prefix is not proof
-                    // of the selection on a freshly fetched template.
-                    let hydrated = EquipmentStatInputResolver.hydratedTabs([fresh],
-                        from: refreshedEquipment ?? CharacterEquipmentResponse(equipment: []))[0]
+                    // Fresh non-null selections win. A poorer response retains
+                    // same-template/item selections with explicit cached origin.
+                    let hydratedFresh = EquipmentStatInputResolver.hydratedTabs([fresh],
+                        from: refreshedEquipment ?? CharacterEquipmentResponse(equipment: []))
+                    let hydrated = EquipmentStatInputResolver.mergingTabs(hydratedFresh, cached: detail.equipmentTabs)[0]
                     detail.equipmentTabs = detail.equipmentTabs.map { $0.tab == tab.tab ? hydrated : $0 }
                     if var latest = characterDetails[character.name] {
                         latest.equipmentTabs = latest.equipmentTabs.map { $0.tab == tab.tab ? hydrated : $0 }
+                        if hydrated.equipment.contains(where: { $0.statsAreCached }) { latest.source = .cached }
                         characterDetails[character.name] = latest
                         updateProgress(final: false)
                     }

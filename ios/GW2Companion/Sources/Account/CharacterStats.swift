@@ -106,7 +106,7 @@ enum StaticRuneAttributeCatalog {
 }
 
 enum StaticTraitModifierCatalog {
-    static let version = "pve-2026-10-02-v3"
+    static let version = "pve-2026-10-02-v4"
     static let verifiedMinorIDs: [Int: Set<Int>] = [4: [1446, 1448, 1453]]
 
     /// Verified /v2/traits/1453: Percent 5 is unconditional; its AttributeAdjust
@@ -123,8 +123,8 @@ enum StaticTraitModifierCatalog {
         case conversion(apiSource: String, source: String, apiTarget: String, target: String, percent: Double)
     }
 
-    /// Curated PvE rules. The engine still requires a matching structured API fact;
-    /// the catalog only decides that its semantics are unconditionally static.
+    /// Curated PvE rules execute locally. Structured facts validate the shipped
+    /// catalog, but absence/incomplete metadata is not evidence of a rule change.
     static let rules: [Int: [Rule]] = [
         232: [.conversion(apiSource: "Precision", source: "Precision", apiTarget: "CritDamage", target: "Ferocity", percent: 7)],
         275: [.conversion(apiSource: "Toughness", source: "Toughness", apiTarget: "ConditionDamage", target: "ConditionDamage", percent: 10)],
@@ -169,6 +169,74 @@ enum StaticTraitModifierCatalog {
 
     static func hasPotentialStaticFacts(_ trait: TraitMetadata) -> Bool {
         trait.facts.contains { ["AttributeAdjust", "BuffConversion"].contains($0.type) }
+    }
+
+    static func supports(_ id: Int) -> Bool { rules[id] != nil || id == 1453 }
+
+    enum Validation: Equatable {
+        case verified, metadataDiffers, mechanicalMismatch
+    }
+
+    /// Only positive contradictions in relevant mechanical fields block a rule.
+    /// Missing fields/facts, order, text, icons and unrelated targets do not.
+    static func validation(id: Int, metadata: TraitMetadata?) -> Validation {
+        guard let metadata else { return .metadataDiffers }
+        if (id == 1449 || id == 1453), let specialization = metadata.specialization, specialization != 4 {
+            return .mechanicalMismatch
+        }
+        for rule in rules[id] ?? [] {
+            switch rule {
+            case let .adjust(apiTarget, _, value):
+                for fact in metadata.facts where fact.target.map(CharacterStatEngine.canonicalAttribute) == CharacterStatEngine.canonicalAttribute(apiTarget) {
+                    if fact.type == "AttributeAdjust", let actual = fact.value, actual != value { return .mechanicalMismatch }
+                    if fact.type == "BuffConversion", fact.source != nil, fact.percent != nil { return .mechanicalMismatch }
+                }
+            case let .conversion(apiSource, _, apiTarget, _, percent):
+                for fact in metadata.facts where fact.target.map(CharacterStatEngine.canonicalAttribute) == CharacterStatEngine.canonicalAttribute(apiTarget) {
+                    if fact.type == "AttributeAdjust", fact.value != nil { return .mechanicalMismatch }
+                    if fact.type == "BuffConversion" {
+                        if let source = fact.source, CharacterStatEngine.canonicalAttribute(source) != CharacterStatEngine.canonicalAttribute(apiSource) { return .mechanicalMismatch }
+                        if let actual = fact.percent, abs(actual - percent) > 0.001 { return .mechanicalMismatch }
+                    }
+                }
+            }
+        }
+        if id == 1449 {
+            // A full two-conversion replacement can positively identify a
+            // changed target. A lone unrelated/incomplete fact cannot. Extra
+            // conversions never invalidate the intact known pair.
+            let powerConversions = metadata.facts.filter { $0.type == "BuffConversion" && $0.source == "Power" && $0.target != nil && $0.percent != nil }
+            let targets = Set(powerConversions.compactMap(\.target).map(CharacterStatEngine.canonicalAttribute))
+            let expected: Set<String> = ["Vitality", "Ferocity"]
+            if targets.count >= 2 && !expected.isSubset(of: targets) && !targets.subtracting(expected).isEmpty {
+                return .mechanicalMismatch
+            }
+        }
+        if id == 1453 {
+            // Pinnacle's sole Percent fact is critical chance. Other fact types
+            // (notably Power per Might) are irrelevant to its unconditional rule.
+            let percentages = metadata.facts.filter { $0.type == "Percent" }.compactMap(\.percent)
+            if percentages.count == 1, percentages[0] != 5 { return .mechanicalMismatch }
+            return criticalChance(in: metadata) == 5 ? .verified : .metadataDiffers
+        }
+        let expected = rules[id]?.count ?? 0
+        return adjustments(in: metadata).count + conversions(in: metadata).count == expected ? .verified : .metadataDiffers
+    }
+
+    static func runtimeAdjustments(id: Int, metadata: TraitMetadata?) -> [(String, Int)] {
+        guard validation(id: id, metadata: metadata) != .mechanicalMismatch else { return [] }
+        return (rules[id] ?? []).compactMap {
+            guard case let .adjust(_, attribute, value) = $0 else { return nil }
+            return (attribute, value)
+        }
+    }
+
+    static func runtimeConversions(id: Int, metadata: TraitMetadata?) -> [(source: String, target: String, percent: Double)] {
+        guard validation(id: id, metadata: metadata) != .mechanicalMismatch else { return [] }
+        return (rules[id] ?? []).compactMap {
+            guard case let .conversion(_, source, _, target, percent) = $0 else { return nil }
+            return (source, target, percent)
+        }
     }
 }
 
@@ -304,14 +372,15 @@ enum CharacterStatEngine {
         var criticalChanceModifier = 0.0
         for id in activeTraitIDs.sorted() {
             if id == 1449 && build?.specializations.contains(where: { $0.id == 4 && $0.traits.contains(1449) }) != true { continue }
-            guard let trait = traits[id] else {
+            let trait = traits[id]
+            guard trait != nil || StaticTraitModifierCatalog.supports(id) else {
                 excludedTraits += 1
                 continue
             }
-            let adjustments = StaticTraitModifierCatalog.adjustments(in: trait)
-            let traitConversions = StaticTraitModifierCatalog.conversions(in: trait)
-            let crit = build?.specializations.contains(where: { $0.id == 4 }) == true
-                ? StaticTraitModifierCatalog.criticalChance(in: trait) : 0
+            let adjustments = StaticTraitModifierCatalog.runtimeAdjustments(id: id, metadata: trait)
+            let traitConversions = StaticTraitModifierCatalog.runtimeConversions(id: id, metadata: trait)
+            let crit = id == 1453 && build?.specializations.contains(where: { $0.id == 4 }) == true
+                && StaticTraitModifierCatalog.validation(id: id, metadata: trait) != .mechanicalMismatch ? 5.0 : 0
             criticalChanceModifier += crit
             if !adjustments.isEmpty || !traitConversions.isEmpty || crit != 0 {
                 modeledTraits += 1
@@ -319,7 +388,7 @@ enum CharacterStatEngine {
                     breakdowns[canonicalAttribute(key), default: CharacterStatBreakdown()].traits += value
                 }
                 conversions.append(contentsOf: traitConversions)
-            } else if StaticTraitModifierCatalog.hasPotentialStaticFacts(trait) {
+            } else if StaticTraitModifierCatalog.supports(id) || trait.map(StaticTraitModifierCatalog.hasPotentialStaticFacts) == true {
                 excludedTraits += 1
             }
         }
@@ -413,8 +482,9 @@ enum CharacterStatEngine {
         guard let build else { return [] }
         var ids = Set(build.specializations.flatMap(\.traits).compactMap { $0 })
         for selected in build.specializations {
-            guard let id = selected.id, let specialization = specializations[id] else { continue }
-            ids.formUnion(specialization.minorTraits)
+            guard let id = selected.id else { continue }
+            ids.formUnion(StaticTraitModifierCatalog.verifiedMinorIDs[id] ?? [])
+            ids.formUnion(specializations[id]?.minorTraits ?? [])
         }
         return ids
     }

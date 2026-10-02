@@ -177,6 +177,8 @@ struct CharacterEquipment: Codable, Sendable, Identifiable, Equatable {
     var dyes: [Int]? = nil
     var skin: Int? = nil
     var stats: SelectedItemStats? = nil
+    /// App persistence provenance, not an ArenaNet field.
+    var statsAreCached = false
     var binding: String? = nil
     var boundTo: String? = nil
     var location: String? = nil
@@ -186,6 +188,7 @@ struct CharacterEquipment: Codable, Sendable, Identifiable, Equatable {
         case slot, infusions, upgrades, dyes, skin, stats, binding, location, tabs
         case itemID = "id"
         case boundTo = "bound_to"
+        case statsAreCached = "stats_are_cached"
     }
 
     init(
@@ -218,6 +221,7 @@ struct CharacterEquipment: Codable, Sendable, Identifiable, Equatable {
         boundTo = try values.decodeIfPresent(String.self, forKey: .boundTo)
         location = try values.decodeIfPresent(String.self, forKey: .location)
         tabs = values.decodeCompactInts(forKey: .tabs)
+        statsAreCached = (try? values.decodeIfPresent(Bool.self, forKey: .statsAreCached)) ?? false
     }
 }
 
@@ -710,14 +714,15 @@ struct TraitMetadata: Codable, Sendable, Identifiable, Equatable {
     let tier: Int?
     let slot: String?
     var facts: [TraitFact] = []
+    var specialization: Int? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, icon, description, tier, slot, facts
+        case id, name, icon, description, tier, slot, facts, specialization
     }
 
     init(
         id: Int, name: String, icon: URL?, description: String, tier: Int?, slot: String?,
-        facts: [TraitFact] = []
+        facts: [TraitFact] = [], specialization: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -726,6 +731,7 @@ struct TraitMetadata: Codable, Sendable, Identifiable, Equatable {
         self.tier = tier
         self.slot = slot
         self.facts = facts
+        self.specialization = specialization
     }
 
     init(from decoder: Decoder) throws {
@@ -737,6 +743,7 @@ struct TraitMetadata: Codable, Sendable, Identifiable, Equatable {
         tier = try values.decodeIfPresent(Int.self, forKey: .tier)
         slot = try values.decodeIfPresent(String.self, forKey: .slot)
         facts = values.decodeLossyArray(TraitFact.self, forKey: .facts)
+        specialization = try values.decodeIfPresent(Int.self, forKey: .specialization)
     }
 }
 

@@ -32,23 +32,37 @@ struct StatSourceResolutionPlan: Equatable, Sendable {
         for selected in build?.specializations ?? [] {
             if let id = selected.id {
                 let required = StaticTraitModifierCatalog.verifiedMinorIDs[id] ?? []
-                if specializations[id] == nil || !required.isSubset(of: Set(specializations[id]?.minorTraits ?? [])) {
+                if required.isEmpty && specializations[id] == nil {
                     specializationIDs.insert(id)
                 }
             }
             let ids = selected.traits.compactMap { $0 } + (selected.id.flatMap { specializations[$0]?.minorTraits } ?? [])
+                + Array(selected.id.flatMap { StaticTraitModifierCatalog.verifiedMinorIDs[$0] } ?? [])
             for id in ids {
-                if let trait = traits[id] {
-                    let expected = StaticTraitModifierCatalog.rules[id]?.count ?? 0
-                    let actual = StaticTraitModifierCatalog.adjustments(in: trait).count + StaticTraitModifierCatalog.conversions(in: trait).count
-                    if expected > actual || (id == 1453 && StaticTraitModifierCatalog.criticalChance(in: trait) == 0) { traitIDs.insert(id) }
-                } else { traitIDs.insert(id) }
+                if StaticTraitModifierCatalog.supports(id) {
+                    if (id == 1449 || id == 1453) && selected.id != 4 { continue }
+                    if StaticTraitModifierCatalog.validation(id: id, metadata: traits[id]) == .mechanicalMismatch { traitIDs.insert(id) }
+                    continue
+                }
+                if StaticTraitModifierCatalog.verifiedMinorIDs.values.contains(where: { $0.contains(id) }) { continue }
+                if traits[id] == nil { traitIDs.insert(id) }
             }
         }
     }
 }
 
 struct StatCoverageReport: Equatable, Sendable {
+    struct Count: Equatable, Sendable {
+        var resolved = 0
+        var total = 0
+        var summary: String { "\(resolved) / \(total)" }
+    }
+    enum Group { case local, account, metadata }
+    var localRules = Count()
+    var accountData = Count()
+    var publicMetadata = Count()
+    var diagnostics: [String] = []
+    var networkRequired: Int { missing.count }
     var resolved = 0
     var total = 0
     var missing: [String] = []
@@ -57,14 +71,20 @@ struct StatCoverageReport: Equatable, Sendable {
     var summary: String { "Deterministic sources resolved \(resolved) / \(total)" }
 
     init(stats: CharacterStaticStats, build: CharacterBuild?, traits: [Int: TraitMetadata], specializations: [Int: SpecializationMetadata]) {
-        func record(_ complete: Bool, _ identity: String) {
+        func record(_ complete: Bool, _ identity: String, group: Group = .metadata) {
             total += 1
-            if complete { resolved += 1 } else { missing.append(identity) }
+            switch group {
+            case .local: localRules.total += 1; if complete { localRules.resolved += 1 }
+            case .account: accountData.total += 1; if complete { accountData.resolved += 1 }
+            case .metadata: publicMetadata.total += 1; if complete { publicMetadata.resolved += 1 }
+            }
+            if complete { resolved += 1 } else { missing.append(identity + " — Requires ArenaNet metadata refresh") }
         }
         for entry in stats.equipmentSources where entry.included {
             let identity = "\(entry.equipment.slot) • \(entry.itemName) • item \(entry.equipment.itemID) • stats \(entry.equipment.stats?.id.map(String.init) ?? "missing")"
             if entry.equipment.slot != "Relic" {
-                record(!entry.baseAttributes.isEmpty, identity + " — " + (entry.sources.first?.explanation ?? "Missing equipment.stats"))
+                record(!entry.baseAttributes.isEmpty, identity + " — " + (entry.sources.first?.explanation ?? "Missing equipment.stats"),
+                       group: entry.equipment.stats == nil && !entry.baseAttributes.isEmpty ? .metadata : .account)
             }
             if entry.equipment.slot == "Relic" && entry.baseAttributes.isEmpty { dynamic.append(identity + " — conditional relic effects excluded") }
             for source in entry.sources where source.label == "Item metadata" || source.label == "Defense" || source.label.hasPrefix("Upgrade") || source.label.hasPrefix("Infusion") {
@@ -73,7 +93,8 @@ struct StatCoverageReport: Equatable, Sendable {
                     continue
                 }
                 record(source.state == .used || source.state == .fallback,
-                       identity + " — " + source.label + ": " + source.explanation)
+                       identity + " — " + source.label + ": " + source.explanation,
+                       group: source.explanation.contains("Versioned ID-keyed") ? .local : .metadata)
             }
         }
         var seenTraits = Set<Int>()
@@ -81,26 +102,32 @@ struct StatCoverageReport: Equatable, Sendable {
             guard let id = selected.id else { continue }
             let specialization = specializations[id]
             let required = StaticTraitModifierCatalog.verifiedMinorIDs[id] ?? []
-            record(specialization != nil && required.isSubset(of: Set(specialization?.minorTraits ?? [])),
-                   "Specialization \(id) — missing/incomplete metadata; automatic minor traits not fully evaluated")
-            for traitID in selected.traits.compactMap({ $0 }) + (specialization?.minorTraits ?? []) where seenTraits.insert(traitID).inserted {
+            if required.isEmpty {
+                record(specialization != nil, "Specialization \(id) — missing metadata; automatic minor traits not fully evaluated")
+            }
+            for traitID in selected.traits.compactMap({ $0 }) + Array(required) + (specialization?.minorTraits ?? []) where seenTraits.insert(traitID).inserted {
+                if StaticTraitModifierCatalog.supports(traitID) {
+                    let valid = StaticTraitModifierCatalog.validation(id: traitID, metadata: traits[traitID])
+                    let context = (traitID != 1449 && traitID != 1453) || selected.id == 4 && (traitID == 1453 || selected.traits.contains(1449))
+                    if context {
+                        record(valid != .mechanicalMismatch, "Trait \(traitID) — mechanical fields contradict verified catalog; rule suppressed", group: .local)
+                        if valid == .metadataDiffers { diagnostics.append("Trait \(traitID) — API metadata differs from verified catalog; local rule applied") }
+                    }
+                    continue
+                }
+                if required.contains(traitID) { dynamic.append("Trait \(traitID) — known conditional Strength minor; no static rule"); continue }
                 guard let trait = traits[traitID] else {
                     record(false, "Trait \(traitID) — missing metadata")
                     continue
                 }
-                let expected = StaticTraitModifierCatalog.rules[traitID]?.count ?? (traitID == 1453 ? 1 : 0)
-                let actual = StaticTraitModifierCatalog.adjustments(in: trait).count
-                    + StaticTraitModifierCatalog.conversions(in: trait).count
-                    + (StaticTraitModifierCatalog.criticalChance(in: trait) > 0 ? 1 : 0)
-                if expected > 0 { record(actual == expected, "Trait \(traitID) • \(trait.name) — static rule/API facts mismatch") }
-                else if traitID == 1343 {
+                if traitID == 1343 {
                     dynamic.append("Trait 1343 • \(trait.name) — Fury/bleeding-target conditional effects excluded")
                 } else if StaticTraitModifierCatalog.hasPotentialStaticFacts(trait) {
                     record(false, "Trait \(traitID) • \(trait.name) — unsupported static/conditional facts; no safe rule")
                 } else { dynamic.append("Trait \(traitID) • \(trait.name) — conditional/combat effect excluded") }
             }
         }
-        if build == nil { record(false, "Active build unavailable; deterministic traits not evaluated") }
+        if build == nil { record(false, "Active build unavailable; deterministic traits not evaluated", group: .account) }
     }
 }
 

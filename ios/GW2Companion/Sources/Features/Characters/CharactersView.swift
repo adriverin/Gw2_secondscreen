@@ -401,6 +401,7 @@ private struct EquipmentStatsView: View {
             let coverage = StatCoverageReport(stats: stats, build: build, traits: traits, specializations: specializations)
             Text(coverage.isComplete ? "Static Stats complete" : "Static Stats incomplete").font(.caption.bold())
             Text(coverage.summary).font(.caption)
+            Text("Local rules \(coverage.localRules.summary) • Account data \(coverage.accountData.summary) • Public metadata \(coverage.publicMetadata.summary) • Network required \(coverage.networkRequired)").font(.caption)
             let missingEquipment = stats.equipmentSources.filter { $0.included && $0.equipment.slot != "Relic" && $0.baseAttributes.isEmpty }.count
             if missingEquipment > 0 { Text("\(missingEquipment) equipment sources still unresolved").font(.caption).foregroundStyle(.orange) }
             HStack {
@@ -523,6 +524,11 @@ struct CharacterStatAuditView: View {
                 Text(coverage.isComplete ? "Static Stats complete" : "Static Stats incomplete")
                     .foregroundStyle(coverage.isComplete ? .green : .orange)
                 Text(coverage.summary)
+                LabeledContent("Local rules", value: coverage.localRules.summary)
+                LabeledContent("Account data", value: coverage.accountData.summary)
+                LabeledContent("Public metadata", value: coverage.publicMetadata.summary)
+                LabeledContent("Network required", value: "\(coverage.networkRequired)")
+                ForEach(coverage.diagnostics, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
                 Text("Account freshness and static metadata completeness are independent.").font(.caption)
                 if developerMode {
                     Button("Resolve Missing Stat Sources") {

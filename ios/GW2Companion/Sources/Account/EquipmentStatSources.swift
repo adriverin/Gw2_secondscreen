@@ -4,7 +4,7 @@ enum EquipmentStatSourceState: String, Equatable, Sendable {
     case used = "USED"
     case ignored = "IGNORED"
     case fallback = "FALLBACK"
-    case unresolved = "UNRESOLVED"
+    case unresolved = "Requires ArenaNet metadata refresh"
 }
 
 struct EquipmentStatSource: Equatable, Sendable, Identifiable {
@@ -91,7 +91,8 @@ enum EquipmentStatInputResolver {
             var sources = [
                 EquipmentStatSource(
                     label: "Selected equipment stats", state: selectedState, attributes: selected, value: nil,
-                    explanation: !accountAttributes.isEmpty ? "Account endpoint attributes are authoritative"
+                    explanation: equipped.statsAreCached ? "Cached selected stats retained from the same character/tab/slot/item; account refresh incomplete"
+                        : !accountAttributes.isEmpty ? "Account endpoint attributes are authoritative"
                         : !reconstructed.isEmpty ? "Selected prefix reconstructed from structured item metadata (not generic defaults)"
                         : item == nil || item?.details == nil ? "Missing item metadata"
                         : selectedID == nil ? "Missing equipment.stats; no selected prefix ID"
@@ -146,21 +147,64 @@ enum EquipmentStatInputResolver {
     static func hydratedTabs(_ tabs: [EquipmentTab], from response: CharacterEquipmentResponse) -> [EquipmentTab] {
         tabs.map { tab in
             let equipment = tab.equipment.map { record in
-                guard record.stats?.attributes?.isEmpty ?? true else { return record }
+                guard record.statsAreCached || (record.stats?.attributes?.isEmpty ?? true) else { return record }
                 let matches = response.equipment.filter { candidate in
                     candidate.itemID == record.itemID && candidate.slot == record.slot
                         && (candidate.tabs?.contains(tab.tab)
                             ?? (tab.isActive && ["Equipped", "EquippedFromLegendaryArmory"].contains(candidate.location ?? "Equipped")))
-                        && (record.stats?.id == nil || record.stats?.id == candidate.stats?.id)
+                        && (record.statsAreCached || record.stats?.id == nil || record.stats?.id == candidate.stats?.id)
                 }
                 guard matches.count == 1, let source = matches.first,
                       source.stats?.id != nil || !(source.stats?.attributes?.isEmpty ?? true) else { return record }
                 var result = record
-                result.stats = source.stats
+                result = mergingRecord(source, cached: record, identity: record)
                 return result
             }
             return EquipmentTab(tab: tab.tab, name: tab.name, isActive: tab.isActive, equipment: equipment)
         }
+    }
+
+    /// Callers supply tabs from ONE character only. Match the template and the
+    /// exact slot/item; never append disappeared slots or borrow another tab.
+    static func mergingTabs(_ incoming: [EquipmentTab], cached: [EquipmentTab]) -> [EquipmentTab] {
+        incoming.map { tab in
+            guard let previous = cached.first(where: { $0.tab == tab.tab }) else { return tab }
+            let records = tab.equipment.map { record in
+                let matches = previous.equipment.filter { $0.slot == record.slot && $0.itemID == record.itemID }
+                guard matches.count == 1 else { return record }
+                return mergingRecord(record, cached: matches[0])
+            }
+            return EquipmentTab(tab: tab.tab, name: tab.name, isActive: tab.isActive, equipment: records)
+        }
+    }
+
+    private static func mergingRecord(_ incoming: CharacterEquipment, cached: CharacterEquipment,
+                                      identity: CharacterEquipment? = nil) -> CharacterEquipment {
+        var result = identity ?? incoming
+        result.upgrades = incoming.upgrades ?? cached.upgrades
+        result.infusions = incoming.infusions ?? cached.infusions
+        result.dyes = incoming.dyes ?? cached.dyes
+        result.skin = incoming.skin ?? cached.skin
+        result.binding = incoming.binding ?? cached.binding
+        result.boundTo = incoming.boundTo ?? cached.boundTo
+        result.stats = incoming.stats
+        result.statsAreCached = incoming.statsAreCached
+        if let old = cached.stats {
+            let fresh = incoming.stats
+            let freshAttributes = fresh?.attributes.flatMap { $0.isEmpty ? nil : $0 }
+            if let newID = fresh?.id, newID != old.id {
+                // A known different prefix invalidates every previous attribute.
+            } else if freshAttributes == nil {
+                result.stats = SelectedItemStats(id: fresh?.id ?? old.id, attributes: old.attributes)
+                result.statsAreCached = incoming.statsAreCached || (fresh?.id == nil && old.id != nil) || !(old.attributes?.isEmpty ?? true)
+            } else if fresh?.id == nil, old.id != nil {
+                // Nested fields follow the same non-null merge policy. Fresh
+                // attributes win; only the omitted selected ID is cached.
+                result.stats = SelectedItemStats(id: old.id, attributes: freshAttributes)
+                result.statsAreCached = true
+            }
+        }
+        return result
     }
 }
 

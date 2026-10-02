@@ -35,6 +35,52 @@ enum ContinuousMapCamera {
     }
 }
 
+/// Scheduling only: this never changes the camera, raster selection or handoff.
+struct MapSourcePrefetchPolicy {
+    static let prefetchThreshold = 0.10
+    static let reversalThreshold = 0.08
+    private(set) var direction = 0
+    private var extreme: Double?
+    private var requestedFrom: Int?
+    private(set) var nextSource: Int?
+
+    mutating func reset() { self = Self() }
+
+    mutating func update(from previous: Double, to camera: Double, currentSource: Int) {
+        if extreme == nil { extreme = previous }
+        let anchor = extreme ?? previous
+        if direction == 0 {
+            if abs(camera - anchor) >= 0.04 { direction = camera > anchor ? 1 : -1; extreme = camera }
+        } else if Double(direction) * (camera - anchor) >= 0 {
+            extreme = camera
+        } else if abs(camera - anchor) >= Self.reversalThreshold {
+            direction = -direction
+            extreme = camera
+            nextSource = nil
+            requestedFrom = nil
+        }
+        if requestedFrom != currentSource { nextSource = nil; requestedFrom = currentSource }
+        // Once latched, threshold jitter doesn't repeatedly restart requests.
+        if nextSource == nil, direction != 0,
+           Double(direction) * (camera - Double(currentSource)) >= Self.prefetchThreshold - 0.000001 {
+            let target = currentSource + direction
+            if (4...6).contains(target) { nextSource = target }
+        }
+    }
+
+    func request(transform: MapViewportTransform, currentSource: Int, continent: Int, floor: Int) -> MapRasterLayerRequest? {
+        guard let nextSource, abs(nextSource - currentSource) == 1 else { return nil }
+        var predicted = transform
+        // Warm coverage at the unchanged promotion boundary, not merely the
+        // smaller viewport at prefetch start. Outward promotion is strict <.
+        predicted.cameraZoom = Double(currentSource) + Double(direction) * (ContinuousMapCamera.sourceThreshold + 0.001)
+        let tiles = ArenaNetTileProjection.shared.tiles(coveringContinentRect: predicted.visibleContinentRect(),
+                                                       zoom: nextSource, continentID: continent, mapFloor: floor)
+        let request = MapRasterLayerRequest(continent: continent, floor: floor, tiles: tiles, detailed: true)
+        return request.permitsDetailed ? request : nil
+    }
+}
+
 struct MapRasterLayerRequest: Hashable, Sendable {
     let continent: Int
     let floor: Int
@@ -108,6 +154,32 @@ struct MapRasterLayerHandoff {
 enum MapRasterLayerLoader {
     static let maximumConcurrentParents = 2
     private static let parentLimiter = AsyncWorkLimiter(limit: maximumConcurrentParents)
+    private static let speculativeLimiter = AsyncWorkLimiter(limit: 1)
+
+    /// Cache-only, one parent at a time. No visual frame is published; foreground
+    /// requests keep the other parent permit and take precedence over warm work.
+    static func prefetch(_ request: MapRasterLayerRequest,
+                         nativeLoader: @escaping @Sendable (URL) async -> UIImage? = { await MapTileImageCache.shared.image(for: $0) },
+                         derivedLoader: @escaping @Sendable (DerivedDetailedTileRequest) async -> UIImage? = { await DerivedDetailedTileProvider.shared.image(for: $0)?.image }) async {
+#if DEBUG
+        // The handoff stress fixture paints synthetic frames; speculative work
+        // must not escape that fixture and issue real artwork requests.
+        if ProcessInfo.processInfo.arguments.contains("--map-handoff-regression") { return }
+#endif
+        guard !Task.isCancelled, !request.tiles.isEmpty, request.tiles.count <= MapRasterLayerRequest.maximumParentTiles,
+              !request.detailed || request.permitsDetailed,
+              await speculativeLimiter.tryAcquire() else { return }
+        for tile in request.tiles {
+            guard !Task.isCancelled, await parentLimiter.tryAcquire() else { break }
+            if request.detailed {
+                _ = await derivedLoader(DerivedDetailedTileRequest(continent: request.continent, floor: request.floor, displayTile: tile, sourceZoom: 7))
+            } else if let url = ArenaNetTileProvider().tileURL(continent: request.continent, floor: request.floor, zoom: tile.zoom, x: tile.x, y: tile.y) {
+                _ = await nativeLoader(url)
+            }
+            await parentLimiter.release()
+        }
+        await speculativeLimiter.release()
+    }
     static func retryingNativeFrame(for request: MapRasterLayerRequest) async -> MapRasterLayerFrame? {
         while !Task.isCancelled {
             if let frame = await frame(for: request) { return frame }

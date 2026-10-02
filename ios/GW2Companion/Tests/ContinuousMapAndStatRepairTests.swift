@@ -325,8 +325,8 @@ final class DeterministicStatRepairTests: XCTestCase {
         let plan = StatSourceResolutionPlan(equipment: [record], items: [24771: rune], build: build([1449]), traits: [:], specializations: [:], weaponSet: "A")
         XCTAssertEqual(plan.itemIDs, [48073, 999])
         XCTAssertEqual(plan.itemStatIDs, [161])
-        XCTAssertEqual(plan.specializationIDs, [4])
-        XCTAssertEqual(plan.traitIDs, [1449])
+        XCTAssertTrue(plan.specializationIDs.isEmpty)
+        XCTAssertTrue(plan.traitIDs.isEmpty)
         XCTAssertTrue(plan.needsEquipmentAttributes)
         let stats = CharacterStatEngine.calculate(character: warrior, equipment: [record], items: [24771: rune])
         let report = StatCoverageReport(stats: stats, build: nil, traits: [:], specializations: [:])
@@ -342,14 +342,15 @@ final class DeterministicStatRepairTests: XCTestCase {
         XCTAssertNil(detail.itemStats)
     }
 
-    func testIncompleteCachedStrengthMinorMetadataIsResolvableNotComplete() {
+    func testIncompleteCachedStrengthMinorMetadataUsesVerifiedLocalMinorIdentity() {
         let old = SpecializationMetadata(id: 4, name: "Strength", profession: "Warrior", elite: false, icon: nil,
                                         background: nil, minorTraits: [], majorTraits: [1449])
         let plan = StatSourceResolutionPlan(equipment: [], items: [:], build: build([]), traits: [:], specializations: [4: old], weaponSet: "A")
-        XCTAssertEqual(plan.specializationIDs, [4])
+        XCTAssertTrue(plan.specializationIDs.isEmpty)
         let stats = CharacterStatEngine.calculate(character: warrior, equipment: [], items: [:], build: build([]), specializations: [4: old])
         let report = StatCoverageReport(stats: stats, build: build([]), traits: [:], specializations: [4: old])
-        XCTAssertFalse(report.isComplete)
-        XCTAssertTrue(report.missing.contains { $0.contains("automatic minor traits") })
+        XCTAssertTrue(report.isComplete)
+        XCTAssertEqual(report.localRules.resolved, 1)
+        XCTAssertEqual(stats.derived.criticalChanceBuildModifier, 5)
     }
 }
