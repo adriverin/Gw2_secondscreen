@@ -40,6 +40,8 @@ final class AccountStore: ObservableObject {
     @Published private(set) var characterDetails: [String: CharacterDetailData] = [:]
     @Published private(set) var resolvingStatCharacters: Set<String> = []
     @Published private(set) var statResolutionMessages: [String: String] = [:]
+    @Published private(set) var statSourceProgress: [String: [StatSourceRepairProgress]] = [:]
+    @Published private(set) var statEquipmentDiagnostics: [String: [EquipmentPayloadDiagnostic]] = [:]
     @Published private(set) var loadingCharacterNames: Set<String> = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var isStale = false
@@ -354,10 +356,29 @@ final class AccountStore: ObservableObject {
         var repairedPrefixes: [Int: ItemStatMetadata] = [:]
         var repairedTraits: [Int: TraitMetadata] = [:]
         var repairedSpecializations: [Int: SpecializationMetadata] = [:]
+        var refreshedEquipment: CharacterEquipmentResponse?
         func plan() -> StatSourceResolutionPlan {
             StatSourceResolutionPlan(equipment: detail.equipmentTabs.first(where: { $0.tab == tab.tab })?.equipment ?? tab.equipment,
                 items: detail.items, itemStats: detail.itemStats ?? [:], build: build, traits: detail.traits,
                 specializations: detail.specializations, weaponSet: weaponSet)
+        }
+        func sourceKey(_ label: String) -> String { label.components(separatedBy: " • ").prefix(2).joined(separator: " • ") }
+        func updateProgress(final: Bool) {
+            let equipment = detail.equipmentTabs.first(where: { $0.tab == tab.tab })?.equipment ?? []
+            let entries = EquipmentStatInputResolver.audit(equipment: equipment, items: detail.items,
+                itemStats: detail.itemStats ?? [:], weaponSet: weaponSet)
+            statSourceProgress[character.name] = statSourceProgress[character.name]?.map { progress in
+                var result = progress
+                if progress.id.hasPrefix("trait-"), let id = Int(progress.id.dropFirst(6)) {
+                    if !plan().traitIDs.contains(id) { result.status = "resolved" }
+                    else if final { result.status = "still unavailable — required structured facts missing/mismatched" }
+                } else if let entry = entries.first(where: { progress.id.hasPrefix($0.id + "|") }),
+                          let source = entry.sources.first(where: { progress.id == entry.id + "|" + sourceKey($0.label) }) {
+                    if source.state != .unresolved { result.status = "resolved" }
+                    else if final { result.status = source.explanation.hasPrefix("Unsupported") ? "unsupported/conditional" : "still unavailable" }
+                } else if final { result.status = "replaced by refreshed equipment tab" }
+                return result
+            }
         }
         func publish() {
             guard account?.id == accountID else { return }
@@ -374,14 +395,51 @@ final class AccountStore: ObservableObject {
                 return EquipmentStatInputResolver.hydratedTabs([candidate], from: CharacterEquipmentResponse(equipment: repaired.equipment))[0]
             }
             characterDetails[character.name] = latest
+            updateProgress(final: false)
         }
         let initial = plan()
+        let unresolvedEntries = EquipmentStatInputResolver.audit(equipment: tab.equipment, items: detail.items,
+            itemStats: detail.itemStats ?? [:], weaponSet: weaponSet).filter { $0.included && $0.sources.contains { $0.state == .unresolved } }
+        statSourceProgress[character.name] = unresolvedEntries.flatMap { entry in
+            entry.sources.filter { $0.state == .unresolved && $0.label != "Item infix attributes" }.map { source in
+                StatSourceRepairProgress(id: entry.id + "|" + sourceKey(source.label),
+                    label: "\(entry.equipment.slot) • item \(entry.equipment.itemID) • \(source.label)", status: "checking…")
+            }
+        } + initial.traitIDs.sorted().map {
+            StatSourceRepairProgress(id: "trait-\($0)", label: "\(detail.traits[$0]?.name ?? "Trait") • \($0) facts", status: "checking…")
+        }
+        statResolutionMessages[character.name] = nil
         if initial.needsEquipmentAttributes {
             do {
                 let response = try await api.characterEquipment(name: character.name)
+                refreshedEquipment = response
                 detail.equipmentTabs = EquipmentStatInputResolver.hydratedTabs(detail.equipmentTabs, from: response)
                 publish()
             } catch { errors.append(error.userFacingMessage(fallback: "Equipment attributes unavailable")) }
+            guard account?.id == accountID, !Task.isCancelled else { return }
+            // Retry the specific template as well: the full endpoint may omit
+            // a legendary instance's selection or only represent active gear.
+            if plan().needsEquipmentAttributes {
+                do {
+                    let fresh = try await api.equipmentTab(character: character.name, tab: tab.tab)
+                    guard fresh.tab == tab.tab, account?.id == accountID else { return }
+                    // An explicit tab response is authoritative for identity,
+                    // upgrades, selected stats and location. Preserve known
+                    // attributes from THIS authenticated full response when
+                    // absent. A historic cached legendary prefix is not proof
+                    // of the selection on a freshly fetched template.
+                    let hydrated = EquipmentStatInputResolver.hydratedTabs([fresh],
+                        from: refreshedEquipment ?? CharacterEquipmentResponse(equipment: []))[0]
+                    detail.equipmentTabs = detail.equipmentTabs.map { $0.tab == tab.tab ? hydrated : $0 }
+                    if var latest = characterDetails[character.name] {
+                        latest.equipmentTabs = latest.equipmentTabs.map { $0.tab == tab.tab ? hydrated : $0 }
+                        characterDetails[character.name] = latest
+                        updateProgress(final: false)
+                    }
+                } catch { errors.append(error.userFacingMessage(fallback: "Selected equipment tab unavailable")) }
+            }
+            guard account?.id == accountID, !Task.isCancelled else { return }
+            statEquipmentDiagnostics[character.name] = await api.equipmentPayloadDiagnostics[character.name] ?? []
         }
         guard account?.id == accountID, !Task.isCancelled else { return }
         let itemPlan = plan()
@@ -420,6 +478,7 @@ final class AccountStore: ObservableObject {
             catch { errors.append(error.userFacingMessage(fallback: "Trait metadata unavailable")) }
         }
         guard account?.id == accountID else { return }
+        updateProgress(final: true)
         statResolutionMessages[character.name] = errors.isEmpty
             ? "Targeted repair complete. Any remaining sources are listed below; cached account freshness is unchanged."
             : errors.joined(separator: "\n")

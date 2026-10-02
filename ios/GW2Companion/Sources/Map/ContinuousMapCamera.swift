@@ -41,6 +41,18 @@ struct MapRasterLayerRequest: Hashable, Sendable {
     let tiles: [TileIndex]
     let detailed: Bool
 
+    /// Small, retained native mosaic beneath viewport frames. Unlike an old
+    /// viewport crop it still covers newly exposed geography during a pinch.
+    static func backing(continent: Int, floor: Int) -> Self {
+        let projection = ArenaNetTileProjection.shared
+        let config = projection.configuration(continentID: continent)
+        let rect = config.paintedContinentRect
+            ?? CGRect(x: 0, y: 0, width: config.continentWidth, height: config.continentHeight)
+        return Self(continent: continent, floor: floor,
+                    tiles: projection.tiles(coveringContinentRect: rect, zoom: 0, continentID: continent, mapFloor: floor),
+                    detailed: false)
+    }
+
     // Upper bound on cold leaf work. A z4 parent is always built from four
     // cached z5 parents, never from a flattened 8×8 operation.
     static let maximumColdSourceTiles = 3_072
@@ -63,9 +75,25 @@ struct MapRasterLayerFrame: @unchecked Sendable {
 struct MapRasterLayerHandoff {
     private(set) var active: MapRasterLayerFrame?
     private(set) var outgoing: MapRasterLayerFrame?
+    private(set) var pending: MapRasterLayerRequest?
 
-    mutating func accept(_ frame: MapRasterLayerFrame) -> Bool {
+    func activeOpacity(progress: Double) -> Double { outgoing == nil ? 1 : min(1, max(0, progress)) }
+    func outgoingOpacity(progress: Double) -> Double { 1 - min(1, max(0, progress)) }
+
+    mutating func begin(_ request: MapRasterLayerRequest) {
+        pending = request
+        // An interrupted fade's incoming frame is already complete. Retain it
+        // at full opacity, not the half-faded composition of two old viewports.
+        outgoing = nil
+    }
+
+    mutating func accept(_ frame: MapRasterLayerFrame, for target: MapRasterLayerRequest? = nil) -> Bool {
         guard frame.isComplete else { return false }
+        if let pending {
+            guard (target ?? frame.request) == pending,
+                  frame.request.continent == pending.continent, frame.request.floor == pending.floor,
+                  frame.request.tiles == pending.tiles else { return false }
+        }
         outgoing = active
         active = frame
         return true
@@ -80,10 +108,34 @@ struct MapRasterLayerHandoff {
 enum MapRasterLayerLoader {
     static let maximumConcurrentParents = 2
     private static let parentLimiter = AsyncWorkLimiter(limit: maximumConcurrentParents)
+    static func retryingNativeFrame(for request: MapRasterLayerRequest) async -> MapRasterLayerFrame? {
+        while !Task.isCancelled {
+            if let frame = await frame(for: request) { return frame }
+            do { try await Task.sleep(for: .seconds(1)) } catch { return nil }
+        }
+        return nil
+    }
     static func frame(for request: MapRasterLayerRequest,
                       nativeLoader: @escaping @Sendable (URL) async -> UIImage? = { await MapTileImageCache.shared.image(for: $0) },
                       derivedLoader: @escaping @Sendable (DerivedDetailedTileRequest) async -> UIImage? = { await DerivedDetailedTileProvider.shared.image(for: $0)?.image }) async -> MapRasterLayerFrame? {
         guard !request.tiles.isEmpty, request.tiles.count <= 96, !request.detailed || request.permitsDetailed else { return nil }
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--map-handoff-regression") {
+            // Deterministic UI stress fixture: slow incoming frames and a failed
+            // z4 Detailed build. Production always uses the real loaders below.
+            do { try await Task.sleep(for: .milliseconds(request.detailed ? 450 : 180)) } catch { return nil }
+            if request.detailed && request.tiles.first?.zoom == 4 { return nil }
+            let image = await MainActor.run {
+                let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
+                return UIGraphicsImageRenderer(size: CGSize(width: 256, height: 256), format: format).image { context in
+                    (request.detailed ? UIColor.systemMint : UIColor.systemCyan).setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
+                }
+            }
+            guard !Task.isCancelled else { return nil }
+            return MapRasterLayerFrame(request: request, images: Dictionary(uniqueKeysWithValues: request.tiles.map { ($0, image) }))
+        }
+#endif
         var images: [TileIndex: UIImage] = [:]
         await withTaskGroup(of: (TileIndex, UIImage?).self) { group in
             for tile in request.tiles {

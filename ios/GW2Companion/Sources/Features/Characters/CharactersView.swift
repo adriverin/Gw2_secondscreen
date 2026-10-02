@@ -533,6 +533,9 @@ struct CharacterStatAuditView: View {
                     .accessibilityIdentifier("audit.resolveMissingSources")
                 }
                 if account.resolvingStatCharacters.contains(character.name) { ProgressView("Resolving targeted sources…") }
+                ForEach(account.statSourceProgress[character.name] ?? []) { progress in
+                    LabeledContent(progress.label, value: progress.status).font(.caption)
+                }
                 if let message = account.statResolutionMessages[character.name] { Text(message).font(.caption) }
                 LabeledContent("Trait modifiers modeled", value: "\(stats.modeledTraitCount)")
                 LabeledContent("Trait modifiers excluded/conditional", value: "\(stats.excludedTraitCount)")
@@ -550,6 +553,19 @@ struct CharacterStatAuditView: View {
                         .font(.caption)
                 }
                 Text("Great Fortitude (1449): \(currentBuild?.specializations.contains(where: { $0.id == 4 && $0.traits.contains(1449) }) == true ? "selected" : "not selected / build unavailable")")
+                if developerMode, let trait = currentTraits[1449] {
+                    ForEach(Array(trait.facts.enumerated()), id: \.offset) { _, fact in
+                        Text("1449 fact: \(fact.type) • \(fact.source ?? "none") → \(fact.target ?? "none") • \(fact.percent.map { String($0) } ?? "no percent")%")
+                            .font(.caption)
+                    }
+                }
+            }
+            if developerMode, let diagnostics = account.statEquipmentDiagnostics[character.name], !diagnostics.isEmpty {
+                Section("Raw equipment DTO shape (no credentials)") {
+                    ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, diagnostic in
+                        Text(diagnostic.summary).font(.caption)
+                    }
+                }
             }
             Section("Equipment stat sources") {
                 ForEach(stats.equipmentSources) { entry in

@@ -50,6 +50,11 @@ struct GW2CompanionApp: App {
                 .environmentObject(DeveloperDiagnostics.shared)
                 .tint(GWPalette.accent)
                 .task {
+#if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--map-handoff-regression") {
+                        UserDefaults.standard.set(MapDetailMode.detailed.rawValue, forKey: MapDetailMode.storageKey)
+                    }
+#endif
                     DeveloperDiagnostics.shared.startNetworkMonitor()
 #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--simulate-telemetry") {
@@ -80,6 +85,7 @@ struct GW2CompanionApp: App {
                     await goals.prepareLegendaries()
 #if DEBUG
                     phaseSixHPriceRace = ProcessInfo.processInfo.arguments.contains("--phase6h-price-race")
+                        || ProcessInfo.processInfo.arguments.contains("--tp-loading-regression")
 #endif
                     await sessions.prepare(recipes: goals.recipes, prices: goals.marketPrices)
                 }

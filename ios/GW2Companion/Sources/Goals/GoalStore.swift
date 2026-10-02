@@ -48,6 +48,8 @@ final class GoalStore: ObservableObject {
     @Published private(set) var achievementState: GoalMetadataLoadState = .idle
     @Published private(set) var recipeState: GoalMetadataLoadState = .idle
     @Published private(set) var priceError: String?
+    @Published private(set) var priceLookups: [Int: PriceLookupPhase] = [:]
+    private var priceLookupRevisions: [Int: UUID] = [:]
     @Published private(set) var legendaryCatalog: LegendaryCatalog?
     @Published private(set) var legendaryArmoryDefinitions: [LegendaryArmoryDefinition] = []
     @Published private(set) var legendaryItems: [Int: ItemMetadata] = [:]
@@ -488,17 +490,35 @@ final class GoalStore: ObservableObject {
 
     func refreshPrices(ids: [Int], force: Bool = false, priority: APIRequestPriority = .normal) async {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--phase6h-fixtures") { return }
+        if ProcessInfo.processInfo.arguments.contains("--phase6h-fixtures") {
+            if ProcessInfo.processInfo.arguments.contains("--tp-loading-regression"), ids.contains(29185) {
+                priceLookups[29185] = .loading
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                marketPrices[29185] = TimedCommercePrice(price: CommercePrice(id: 29185, whitelisted: true,
+                    buys: CommerceListingSummary(quantity: 1, unitPrice: 10000),
+                    sells: CommerceListingSummary(quantity: 1, unitPrice: 12000)), fetchedAt: Date())
+                priceLookups[29185] = .complete
+            }
+            return
+        }
 #endif
         let wanted = Array(Set(ids))
         guard !wanted.isEmpty else { return }
+        let revision = UUID()
+        for id in wanted { priceLookupRevisions[id] = revision; priceLookups[id] = .loading }
         do {
-            let loaded = try await api.commercePrices(ids: wanted, force: force, priority: priority)
-            marketPrices.merge(loaded) { _, new in new }
+            let loaded = try await api.commercePrices(ids: wanted, force: force, priority: priority, reportFailure: true)
+            for id in wanted where priceLookupRevisions[id] == revision {
+                marketPrices[id] = loaded[id]
+                priceLookups[id] = .complete
+            }
             pricesUpdatedAt = Date()
             priceError = nil
         } catch {
-            priceError = error.userFacingMessage(fallback: "Trading Post prices couldn’t be refreshed. Showing saved prices where possible.")
+            let message = error.userFacingMessage(fallback: "Trading Post prices couldn’t be refreshed. Showing saved prices where possible.")
+            priceError = message
+            for id in wanted where priceLookupRevisions[id] == revision { priceLookups[id] = .failed(message) }
         }
     }
 
@@ -514,6 +534,11 @@ final class GoalStore: ObservableObject {
         marketPrices[29185] = TimedCommercePrice(price: CommercePrice(id: 29185, whitelisted: true,
             buys: CommerceListingSummary(quantity: 1, unitPrice: 10000),
             sells: CommerceListingSummary(quantity: 1, unitPrice: 12000)), fetchedAt: Date())
+        if ProcessInfo.processInfo.arguments.contains("--tp-loading-regression") {
+            marketPrices[29185] = ProcessInfo.processInfo.arguments.contains("--tp-stale-regression")
+                ? TimedCommercePrice(price: marketPrices[29185]!.price, fetchedAt: Date().addingTimeInterval(-600)) : nil
+            priceDetailItems[29185] = ItemMetadata(id: 29185, name: "Dusk", icon: nil, rarity: "Exotic", type: "Weapon")
+        }
         legendaryState = .ready
     }
 #endif

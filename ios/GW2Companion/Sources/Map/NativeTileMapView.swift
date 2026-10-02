@@ -38,6 +38,7 @@ struct NativeTileMapView: View {
     @State private var lastVisibleTileCount = 0
     @State private var lastViewportSize = CGSize(width: 390, height: 844)
     @State private var layers = MapRasterLayerHandoff()
+    @State private var backingFrame: MapRasterLayerFrame?
     private var activeFrame: MapRasterLayerFrame? { layers.active }
     private var outgoingFrame: MapRasterLayerFrame? { layers.outgoing }
     @State private var replacementOpacity = 1.0
@@ -140,38 +141,51 @@ struct NativeTileMapView: View {
         let floor = metadata?.defaultFloor ?? 1
         let paddedTiles = projection.tiles(
             coveringContinentRect: viewport, zoom: zoom, continentID: continentID, mapFloor: floor)
-        let paddedRequest = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: paddedTiles, detailed: true)
-        // Shed the prefetch ring before sacrificing visible Detailed coverage.
-        let tileIDs = paddedTiles.count > MapRasterLayerRequest.maximumParentTiles
-            || (mapDetail == .detailed && !paddedRequest.permitsDetailed)
-            ? projection.tiles(coveringContinentRect: transform.visibleContinentRect(), zoom: zoom,
-                               continentID: continentID, mapFloor: floor) : paddedTiles
+        // Promotion is gated ONLY by visible coverage. Prefetch is independent.
+        let tileIDs = projection.tiles(coveringContinentRect: transform.visibleContinentRect(), zoom: zoom,
+                                      continentID: continentID, mapFloor: floor)
         let candidate = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: tileIDs, detailed: true)
         let request = MapRasterLayerRequest(
             continent: continentID, floor: floor, tiles: tileIDs,
             detailed: mapDetail == .detailed && candidate.permitsDetailed)
+        let backingRequest = MapRasterLayerRequest.backing(continent: continentID, floor: floor)
+        let backingReady = backingFrame?.request == backingRequest
         ZStack {
-            // A cold viewport always starts rendering native tiles immediately.
-            // While replacing a frame, fill uncovered areas at the OLD source
-            // level, so no mixed-level grid appears underneath retained artwork.
-            let fallbackZoom = activeFrame?.request.continent == continentID
-                ? (activeFrame?.request.tiles.first?.zoom ?? zoom) : zoom
-            let fallbackTiles = projection.tiles(coveringContinentRect: viewport, zoom: fallbackZoom,
-                                                continentID: continentID, mapFloor: floor)
-            // Bound emergency fill work during a very rapid multi-level pinch.
-            // Never create thousands of old-source image tasks on the main actor.
-            rasterTiles(Array(fallbackTiles.prefix(96)), images: [:], continentID: continentID, floor: floor, transform: transform)
+            // Never draw progressively loaded placeholders under a retained
+            // frame. The complete coarse mosaic covers newly exposed geography.
+            if backingReady, let backingFrame {
+                rasterTiles(backingFrame.request.tiles, images: backingFrame.images,
+                            continentID: continentID, floor: floor, transform: transform)
+            } else { ProgressView("Loading map artwork…") }
             if let outgoingFrame, outgoingFrame.request.continent == continentID && outgoingFrame.request.floor == floor {
                 rasterTiles(outgoingFrame.request.tiles, images: outgoingFrame.images,
                             continentID: continentID, floor: floor, transform: transform)
+                    .opacity(layers.outgoingOpacity(progress: replacementOpacity))
             }
             if let activeFrame, activeFrame.request.continent == continentID && activeFrame.request.floor == floor {
                 rasterTiles(activeFrame.request.tiles, images: activeFrame.images,
                             continentID: continentID, floor: floor, transform: transform)
-                    .opacity(replacementOpacity)
+                    .opacity(layers.activeOpacity(progress: replacementOpacity))
             }
         }
-        .task(id: request) {
+        .task(id: backingRequest) {
+            guard !backingReady else { return }
+            // A transient failure retries without replacing any complete frame.
+            while !Task.isCancelled {
+                if let frame = await MapRasterLayerLoader.frame(for: backingRequest), !Task.isCancelled {
+                    backingFrame = frame
+                    return
+                }
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            }
+        }
+        .onChange(of: request, initial: true) { _, request in
+            layers.begin(request)
+            var transaction = Transaction(); transaction.disablesAnimations = true
+            withTransaction(transaction) { replacementOpacity = 1 }
+        }
+        .task(id: RasterLoadKey(request: request, backingReady: backingReady)) {
+            guard backingReady, !Task.isCancelled else { return }
             if request.detailed {
                 // Native readiness and pyramid generation proceed independently.
                 // A slow cold z4 build cannot hold the camera at an obsolete level.
@@ -179,11 +193,29 @@ struct NativeTileMapView: View {
                 if activeFrame == nil || activeFrame?.request.tiles.first?.zoom != zoom
                     || activeFrame?.request.continent != continentID || activeFrame?.request.floor != floor {
                     let native = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: tileIDs, detailed: false)
-                    if let frame = await MapRasterLayerLoader.frame(for: native), !Task.isCancelled { await display(frame) }
+                    if let frame = await MapRasterLayerLoader.frame(for: native), !Task.isCancelled { display(frame, target: request) }
                 }
-                if let frame = await detailed, !Task.isCancelled { await display(frame) }
-            } else if let frame = await MapRasterLayerLoader.frame(for: request), !Task.isCancelled {
-                await display(frame)
+                if let frame = await detailed, !Task.isCancelled { display(frame, target: request) }
+                else if !Task.isCancelled {
+                    // This also handles same-level Detailed failure, not only
+                    // cold starts/source changes. Native is another whole frame.
+                    let native = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: tileIDs, detailed: false)
+                    if let frame = await MapRasterLayerLoader.retryingNativeFrame(for: native), !Task.isCancelled { display(frame, target: request) }
+                }
+            } else {
+                while !Task.isCancelled {
+                    if let frame = await MapRasterLayerLoader.frame(for: request), !Task.isCancelled {
+                        display(frame, target: request)
+                        break
+                    }
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                }
+            }
+            // Cache warming must never delay the visible frame's promotion.
+            if !Task.isCancelled, paddedTiles != tileIDs {
+                let prefetch = MapRasterLayerRequest(continent: continentID, floor: floor, tiles: paddedTiles,
+                                                    detailed: request.detailed)
+                _ = await MapRasterLayerLoader.frame(for: prefetch)
             }
         }
         .onAppear { lastVisibleTileCount = tileIDs.count }
@@ -191,8 +223,8 @@ struct NativeTileMapView: View {
     }
 
     @MainActor
-    private func display(_ frame: MapRasterLayerFrame) async {
-        guard !Task.isCancelled, layers.accept(frame) else { return }
+    private func display(_ frame: MapRasterLayerFrame, target: MapRasterLayerRequest) {
+        guard !Task.isCancelled, layers.accept(frame, for: target) else { return }
         replacementOpacity = 0
         withAnimation(.linear(duration: ContinuousMapCamera.crossfadeSeconds)) { replacementOpacity = 1 }
         // Cleanup must survive cancellation of the loading viewport task.
@@ -203,20 +235,28 @@ struct NativeTileMapView: View {
         }
     }
 
+    private struct RasterLoadKey: Equatable {
+        let request: MapRasterLayerRequest
+        let backingReady: Bool
+    }
+
     private func rasterTiles(_ tiles: [TileIndex], images: [TileIndex: UIImage], continentID: Int,
                              floor: Int, transform: MapViewportTransform) -> some View {
         ForEach(tiles, id: \.self) { tile in
-            if let url = tileProvider.tileURL(continent: continentID, floor: floor, zoom: tile.zoom, x: tile.x, y: tile.y),
+            if tileProvider.tileURL(continent: continentID, floor: floor, zoom: tile.zoom, x: tile.x, y: tile.y) != nil,
                let rect = projection.tileWorldRect(for: tile, continentID: continentID),
                let point = projection.continentCoordinate(from: TileWorldCoordinate(x: rect.midX, y: rect.midY),
                                                           continentID: continentID, mapFloor: floor) {
                 let side = 256 * ContinuousMapCamera.scale(cameraZoom: cameraZoom, sourceZoom: tile.zoom)
                 Group {
                     if let image = images[tile] { Image(uiImage: image).resizable().interpolation(.high) }
-                    else { MapTileImage(url: url, index: tile, showDebug: showTileDebugGrid) }
+                    // Only complete frames reach this renderer. There is no
+                    // per-tile asynchronous replacement or placeholder here.
                 }
                 .frame(width: side + 0.5, height: side + 0.5)
+                .overlay { if showTileDebugGrid { MapTileDebugLabel(index: tile) } }
                 .position(transform.screenPosition(for: point))
+                .accessibilityHidden(true)
             }
         }
     }
@@ -395,35 +435,19 @@ struct NativeTileMapView: View {
 
 }
 
-private struct MapTileImage: View {
-    let url: URL
+private struct MapTileDebugLabel: View {
     let index: TileIndex
-    let showDebug: Bool
-    @State private var image: UIImage?
 
     var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable()
-            } else {
-                Rectangle().fill(Color.white.opacity(0.035))
-                    .overlay(Rectangle().stroke(Color.white.opacity(0.04)))
-            }
+        VStack(spacing: 1) {
+            Text("z=\(index.zoom)")
+            Text("x=\(index.x)")
+            Text("y=\(index.y)")
         }
-        .overlay {
-            if showDebug {
-                VStack(spacing: 1) {
-                    Text("z=\(index.zoom)")
-                    Text("x=\(index.x)")
-                    Text("y=\(index.y)")
-                }
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(.yellow)
-                .shadow(color: .black, radius: 1)
-                .allowsHitTesting(false)
-            }
-        }
-        .task(id: url) { image = await MapTileImageCache.shared.image(for: url) }
+        .font(.system(size: 9, weight: .bold, design: .monospaced))
+        .foregroundStyle(.yellow)
+        .shadow(color: .black, radius: 1)
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 }

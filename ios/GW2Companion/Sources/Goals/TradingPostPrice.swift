@@ -14,6 +14,12 @@ enum PriceItemHeader {
     }
 }
 
+enum PriceLookupPhase: Equatable, Sendable {
+    case loading, complete, failed(String)
+    var isLoading: Bool { self == .loading }
+    var error: String? { if case let .failed(message) = self { message } else { nil } }
+}
+
 enum TradingPostPriceState: Equatable, Sendable {
     case loading
     case available(TimedCommercePrice)
@@ -74,7 +80,7 @@ struct TradingPostPricePresentation: Equatable, Sendable {
 
     var detailStatus: String {
         switch state {
-        case .loading: "Loading current sell listings…"
+        case .loading: "Checking Trading Post…"
         case .available: "Lowest sell offer"
         case .noSellListings: "No current sell listings"
         case .notTradable: "This item is not tradable on the Trading Post."
@@ -91,12 +97,16 @@ enum TradingPostPriceResolver {
         now: Date = Date(), ttl: TimeInterval = 300,
         failed: String? = nil, loading: Bool = false
     ) -> TradingPostPriceState {
-        if loading { return .loading }
         if item?.flags?.contains(where: { ["AccountBound", "SoulbindOnAcquire"].contains($0) }) == true {
             return .notTradable
         }
-        if let failed { return .failed(failed) }
-        guard let price else { return .unavailable }
+        guard let price else {
+            if loading { return .loading }
+            if let failed { return .failed(failed) }
+            return .unavailable
+        }
+        // Preserve known prices during both refresh and transient failure.
+        if failed != nil { return .stale(price) }
         if now.timeIntervalSince(price.fetchedAt) > ttl {
             if price.price.sells.quantity > 0 && price.price.sells.unitPrice > 0 {
                 return .stale(price)

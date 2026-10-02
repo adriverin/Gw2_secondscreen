@@ -12,6 +12,9 @@ struct TradingPostPriceSheet: View {
     @EnvironmentObject private var store: GoalStore
     @Environment(\.dismiss) private var dismiss
     @State private var metadataLoading = true
+    @State private var priceLoading = true
+
+    private var checkingPrice: Bool { priceLoading || store.priceLookups[item.id]?.isLoading == true }
 
     private var resolvedItem: ItemMetadata? {
         store.priceDetailItems[item.id] ?? (item.isPlaceholder ? nil : item)
@@ -20,7 +23,7 @@ struct TradingPostPriceSheet: View {
     private var presentation: TradingPostPricePresentation {
         let timed = store.marketPrices[item.id]
         let state = TradingPostPriceResolver.state(
-            price: timed, item: resolvedItem, failed: store.priceError)
+            price: timed, item: resolvedItem, failed: store.priceLookups[item.id]?.error, loading: checkingPrice)
         return TradingPostPriceResolver.presentation(
             itemID: item.id, itemName: PriceItemHeader.title(item: resolvedItem, loading: metadataLoading),
             missingQuantity: quantity, state: state)
@@ -43,16 +46,19 @@ struct TradingPostPriceSheet: View {
                 Section("Trading Post") {
                     switch presentation.state {
                     case .loading:
-                        Label("Loading current sell listings…", systemImage: "arrow.triangle.2.circlepath")
+                        ProgressView("Checking Trading Post…")
                     case .available, .stale:
+                        if checkingPrice { Text("Last known price").font(.caption).foregroundStyle(.secondary) }
                         if let unit = presentation.unitCopper {
                             LabeledContent("Lowest sell offer", value: "\(CoinAmount(copperValue: unit).formatted) each")
                         }
                         if let buyNow = presentation.buyNowCopper {
                             LabeledContent("Estimated buy-now", value: CoinAmount(copperValue: buyNow).formatted)
                         }
-                        if case .stale = presentation.state {
-                            Text("This listing is older than five minutes.")
+                        if checkingPrice { ProgressView("Refreshing…") }
+                        else if case .stale = presentation.state {
+                            Text(store.priceLookups[item.id]?.error.map { "Showing last known price. \($0)" }
+                                 ?? "This listing is older than five minutes.")
                                 .font(.caption).foregroundStyle(.orange)
                         }
                     case .noSellListings:
@@ -60,7 +66,7 @@ struct TradingPostPriceSheet: View {
                     case .notTradable:
                         Text("This item is not tradable on the Trading Post.")
                     case .unavailable:
-                        Text("A Trading Post price is not available.")
+                        Text("Trading Post price unavailable")
                     case let .failed(message):
                         Text(message)
                     }
@@ -74,10 +80,12 @@ struct TradingPostPriceSheet: View {
             .toolbar { Button("Done") { dismiss() } }
             .task(id: item.id) {
                 metadataLoading = true
+                priceLoading = true
                 _ = await store.loadPriceItemMetadata(itemID: item.id)
                 guard !Task.isCancelled else { return }
                 metadataLoading = false
                 await store.refreshPrice(itemID: item.id, force: true)
+                priceLoading = false
             }
         }
         .accessibilityIdentifier("tradingpost.price.sheet")

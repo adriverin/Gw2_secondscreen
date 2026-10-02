@@ -154,12 +154,43 @@ enum EquipmentStatInputResolver {
                         && (record.stats?.id == nil || record.stats?.id == candidate.stats?.id)
                 }
                 guard matches.count == 1, let source = matches.first,
-                      !(source.stats?.attributes?.isEmpty ?? true) else { return record }
+                      source.stats?.id != nil || !(source.stats?.attributes?.isEmpty ?? true) else { return record }
                 var result = record
                 result.stats = source.stats
                 return result
             }
             return EquipmentTab(tab: tab.tab, name: tab.name, isActive: tab.isActive, equipment: equipment)
+        }
+    }
+}
+
+/// Allowlisted raw DTO shape captured BEFORE Codable conversion. Neither the
+/// response body nor headers/URLs/API keys are retained in these diagnostics.
+struct EquipmentPayloadDiagnostic: Equatable, Sendable, Identifiable {
+    let endpoint: String
+    let tab: Int?
+    let itemID: Int
+    let slot: String
+    let statsObjectPresent: Bool
+    let selectedStatID: Int?
+    let attributeKeys: [String]
+    var id: String { "\(endpoint)-\(tab ?? 0)-\(slot)-\(itemID)-\(selectedStatID ?? 0)" }
+    var summary: String {
+        "\(endpoint) • tab \(tab.map(String.init) ?? "not supplied") • \(slot) • item \(itemID) • raw stats \(statsObjectPresent ? "present" : "absent") • selected ID \(selectedStatID.map(String.init) ?? "absent") • attributes \(attributeKeys.joined(separator: ", "))"
+    }
+
+    static func capture(_ data: Data, endpoint: String, tab: Int? = nil) -> [Self] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        let containers = (root as? [[String: Any]]) ?? (root as? [String: Any]).map { [$0] } ?? []
+        return containers.flatMap { container in
+            (container["equipment"] as? [[String: Any]] ?? []).compactMap { raw in
+                guard let itemID = raw["id"] as? Int else { return nil }
+                let stats = raw["stats"] as? [String: Any]
+                return Self(endpoint: endpoint, tab: container["tab"] as? Int ?? tab, itemID: itemID,
+                            slot: raw["slot"] as? String ?? "Unknown", statsObjectPresent: stats != nil,
+                            selectedStatID: stats?["id"] as? Int,
+                            attributeKeys: (stats?["attributes"] as? [String: Any])?.keys.sorted() ?? [])
+            }
         }
     }
 }

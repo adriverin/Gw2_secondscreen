@@ -47,4 +47,28 @@ final class PhaseSixHRepairUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Dusk"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts["ITEM 29185"].exists)
     }
+
+    func testPriceRequestShowsCheckingWithKnownMetadataThenAvailable() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-smoke", "--phase2-fixtures", "--phase6h-fixtures", "--tp-loading-regression"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Checking Trading Post…"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["Dusk"].exists)
+        XCTAssertFalse(app.staticTexts["Trading Post price unavailable"].exists)
+        XCTAssertFalse(app.staticTexts["A Trading Post price is not available."].exists)
+        XCTAssertTrue(app.staticTexts["Lowest sell offer"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["Checking Trading Post…"].exists)
+    }
+
+    func testStaleCachedPriceStaysVisibleWhileRefreshing() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-smoke", "--phase2-fixtures", "--phase6h-fixtures", "--tp-loading-regression", "--tp-stale-regression"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Refreshing…"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["Last known price"].exists)
+        XCTAssertTrue(app.staticTexts["Lowest sell offer"].exists)
+        XCTAssertFalse(app.staticTexts["Trading Post price unavailable"].exists)
+        XCTAssertTrue(app.staticTexts["Refreshing…"].waitForNonExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Lowest sell offer"].exists)
+    }
 }

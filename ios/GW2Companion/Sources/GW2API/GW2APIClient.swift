@@ -52,6 +52,7 @@ actor GW2APIClient {
     private var inFlightBatches: [String: Task<Data, Error>] = [:]
     private let scheduler = APIRequestScheduler()
     private(set) var lastUnresolvedMetadataIDs: [String: [Int]] = [:]
+    private(set) var equipmentPayloadDiagnostics: [String: [EquipmentPayloadDiagnostic]] = [:]
 
     init(
         session: URLSession = .shared,
@@ -98,6 +99,16 @@ actor GW2APIClient {
     func equipmentTabs(character name: String) async throws -> [EquipmentTab] {
         try await authenticatedLossyArray(
             "characters/\(Self.encodedPath(name))/equipmenttabs?tabs=all", priority: .high)
+    }
+
+    func equipmentTab(character name: String, tab: Int) async throws -> EquipmentTab {
+        guard let key = try credentials.getAPIKey() else { throw GW2APIError.invalidAPIKey }
+        let data = try await data(for: "characters/\(Self.encodedPath(name))/equipmenttabs/\(tab)?v=2021-07-15T13:00:00.000Z",
+                                  apiKey: key, priority: .high)
+        let diagnostics = EquipmentPayloadDiagnostic.capture(data, endpoint: "equipmenttabs", tab: tab)
+        equipmentPayloadDiagnostics[name, default: []].removeAll { $0.endpoint == "equipmenttabs" && $0.tab == tab }
+        equipmentPayloadDiagnostics[name, default: []].append(contentsOf: diagnostics)
+        return try JSONDecoder().decode(EquipmentTab.self, from: data)
     }
 
     func buildTabs(character name: String) async throws -> [BuildTab] {
@@ -186,8 +197,12 @@ actor GW2APIClient {
     }
 
     func characterEquipment(name: String) async throws -> CharacterEquipmentResponse {
-        try await authenticatedRequest(
-            "characters/\(Self.encodedPath(name))/equipment?v=2021-07-15T13:00:00.000Z", priority: .high)
+        guard let key = try credentials.getAPIKey() else { throw GW2APIError.invalidAPIKey }
+        let data = try await data(for: "characters/\(Self.encodedPath(name))/equipment?v=2021-07-15T13:00:00.000Z",
+                                  apiKey: key, priority: .high)
+        equipmentPayloadDiagnostics[name, default: []].removeAll { $0.endpoint == "equipment" }
+        equipmentPayloadDiagnostics[name, default: []].append(contentsOf: EquipmentPayloadDiagnostic.capture(data, endpoint: "equipment"))
+        return try JSONDecoder().decode(CharacterEquipmentResponse.self, from: data)
     }
 
     func currencies(ids: [Int], priority: APIRequestPriority = .normal) async throws -> [Int: CurrencyMetadata] {
@@ -352,7 +367,7 @@ actor GW2APIClient {
     /// stale fallback data when the network is unavailable.
     func commercePrices(
         ids: [Int], force: Bool = false, now: Date = Date(), ttl: TimeInterval = 300,
-        priority: APIRequestPriority = .normal
+        priority: APIRequestPriority = .normal, reportFailure: Bool = false
     ) async throws -> [Int: TimedCommercePrice] {
         commercePriceCache = await loadedIntCache(commercePriceCache, name: "commerce-prices-v1")
         let wanted = Array(Set(ids)).sorted()
@@ -376,6 +391,7 @@ actor GW2APIClient {
                 await diskCache.save(commercePriceCache, named: "commerce-prices-v1")
             }
         } catch {
+            if reportFailure { throw error }
             let fallback = commercePriceCache.filter { Set(wanted).contains($0.key) }
             if fallback.isEmpty { throw error }
         }
@@ -405,7 +421,10 @@ actor GW2APIClient {
                         sells: CommerceListingSummary(quantity: 0, unitPrice: 0)),
                     fetchedAt: now)
             }
-        } catch {
+        } catch GW2APIError.server(404) {
+            // Only a completed "no such price" response is unavailable. A
+            // timeout/500/decode failure must not erase a cached listing or be
+            // fabricated into a successfully fetched zero-price record.
             if batch.count == 1 {
                 let id = batch[0]
                 commercePriceCache[id] = TimedCommercePrice(

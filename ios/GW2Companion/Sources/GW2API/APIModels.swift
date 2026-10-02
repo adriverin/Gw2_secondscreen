@@ -155,6 +155,17 @@ struct InventorySlot: Codable, Sendable, Equatable {
 struct SelectedItemStats: Codable, Sendable, Equatable {
     let id: Int?
     let attributes: [String: Int]?
+
+    enum CodingKeys: String, CodingKey { case id, attributes }
+    init(id: Int?, attributes: [String: Int]?) { self.id = id; self.attributes = attributes }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(Int.self, forKey: .id)
+        // Preserve the authenticated selection/slot if an attribute payload
+        // evolves. Nil attributes stay unresolved until that selected ID can
+        // be reconstructed from verified item adjustment/itemstats metadata.
+        attributes = try? values.decode([String: Int].self, forKey: .attributes)
+    }
 }
 
 struct CharacterEquipment: Codable, Sendable, Identifiable, Equatable {
@@ -736,6 +747,26 @@ struct TraitFact: Codable, Sendable, Equatable {
     var source: String? = nil
     var value: Int? = nil
     var percent: Double? = nil
+
+    enum CodingKeys: String, CodingKey { case type, text, target, source, value, percent }
+
+    init(type: String, text: String? = nil, target: String? = nil, source: String? = nil,
+         value: Int? = nil, percent: Double? = nil) {
+        self.type = type; self.text = text; self.target = target; self.source = source
+        self.value = value; self.percent = percent
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        type = try values.decode(String.self, forKey: .type)
+        // A conversion does not depend on unrelated numeric/text fields. Do not
+        // drop the whole fact from a lossy array if such a field evolves.
+        text = try? values.decode(String.self, forKey: .text)
+        target = try? values.decode(String.self, forKey: .target)
+        source = try? values.decode(String.self, forKey: .source)
+        value = try? values.decode(Int.self, forKey: .value)
+        percent = try? values.decode(Double.self, forKey: .percent)
+    }
 }
 
 struct SkillMetadata: Codable, Sendable, Identifiable, Equatable {

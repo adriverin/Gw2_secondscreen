@@ -1,5 +1,7 @@
 # Continuous map zoom and deterministic stat-source repair
 
+Follow-up: [physical recording correctness repair](physical-correctness-repair-report.md) supersedes this report's progressive emergency-fill handoff and account-source status notes.
+
 Implementation report, 2026-10-02; public metadata verified 2026-10-01. No new Legendary content or redesign of Today, Inventory, Wallet, Goals, builds, or account browsing.
 
 ## 1. Previous zoom architecture

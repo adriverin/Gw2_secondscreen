@@ -106,7 +106,7 @@ enum StaticRuneAttributeCatalog {
 }
 
 enum StaticTraitModifierCatalog {
-    static let version = "pve-2026-10-01-v2"
+    static let version = "pve-2026-10-02-v3"
     static let verifiedMinorIDs: [Int: Set<Int>] = [4: [1446, 1448, 1453]]
 
     /// Verified /v2/traits/1453: Percent 5 is unconditional; its AttributeAdjust
@@ -159,7 +159,8 @@ enum StaticTraitModifierCatalog {
         return rules.compactMap { rule in
             guard case let .conversion(apiSource, source, apiTarget, target, percent) = rule,
                   trait.facts.contains(where: {
-                    $0.type == "BuffConversion" && $0.source == apiSource && $0.target == apiTarget
+                    $0.type == "BuffConversion" && $0.source == apiSource
+                        && ($0.target == apiTarget || (trait.id == 1449 && apiTarget == "CritDamage" && $0.target == "Ferocity"))
                         && abs(($0.percent ?? -Double.infinity) - percent) < 0.001
                   }) else { return nil }
             return (source, target, percent)

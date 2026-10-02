@@ -93,11 +93,19 @@ struct StatCoverageReport: Equatable, Sendable {
                     + StaticTraitModifierCatalog.conversions(in: trait).count
                     + (StaticTraitModifierCatalog.criticalChance(in: trait) > 0 ? 1 : 0)
                 if expected > 0 { record(actual == expected, "Trait \(traitID) • \(trait.name) — static rule/API facts mismatch") }
-                else if StaticTraitModifierCatalog.hasPotentialStaticFacts(trait) {
+                else if traitID == 1343 {
+                    dynamic.append("Trait 1343 • \(trait.name) — Fury/bleeding-target conditional effects excluded")
+                } else if StaticTraitModifierCatalog.hasPotentialStaticFacts(trait) {
                     record(false, "Trait \(traitID) • \(trait.name) — unsupported static/conditional facts; no safe rule")
                 } else { dynamic.append("Trait \(traitID) • \(trait.name) — conditional/combat effect excluded") }
             }
         }
         if build == nil { record(false, "Active build unavailable; deterministic traits not evaluated") }
     }
+}
+
+struct StatSourceRepairProgress: Identifiable, Equatable, Sendable {
+    let id: String
+    let label: String
+    var status: String
 }
